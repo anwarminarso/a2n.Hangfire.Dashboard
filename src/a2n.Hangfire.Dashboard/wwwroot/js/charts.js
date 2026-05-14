@@ -67,6 +67,7 @@
                             borderColor: colors.succeeded.borderColor,
                             backgroundColor: colors.succeeded.backgroundColor,
                             borderWidth: 2,
+                            fill: true,
                             data: []
                         },
                         {
@@ -74,6 +75,7 @@
                             borderColor: colors.deleted.borderColor,
                             backgroundColor: colors.deleted.backgroundColor,
                             borderWidth: 2,
+                            fill: true,
                             data: []
                         },
                         {
@@ -81,6 +83,7 @@
                             borderColor: colors.failed.borderColor,
                             backgroundColor: colors.failed.backgroundColor,
                             borderWidth: 2,
+                            fill: true,
                             data: []
                         }
                     ]
@@ -103,13 +106,14 @@
                         },
                         y: {
                             grid: { color: colors.cartesianColor },
-                            ticks: { beginAtZero: true, precision: 0, min: 0, maxTicksLimit: 6, suggestedMax: 10 },
+                            ticks: { beginAtZero: true, precision: 0, maxTicksLimit: 6, suggestedMax: 10 },
                             stacked: true,
                             min: 0,
                             suggestedMax: 10
                         }
                     },
                     reponsive: true,
+                    maintainAspectRatio: false,
                     elements: { line: { tension: 0 }, point: { radius: 0 } },
                     animation: { duration: 0 },
                     hover: { animationDuration: 0 },
@@ -170,6 +174,7 @@
                             borderColor: colors.succeeded.borderColor,
                             backgroundColor: colors.succeeded.backgroundColor,
                             borderWidth: 2,
+                            fill: true,
                             data: succeededPoints
                         },
                         {
@@ -177,6 +182,7 @@
                             borderColor: colors.deleted.borderColor,
                             backgroundColor: colors.deleted.backgroundColor,
                             borderWidth: 2,
+                            fill: true,
                             data: deletedPoints
                         },
                         {
@@ -184,6 +190,7 @@
                             borderColor: colors.failed.borderColor,
                             backgroundColor: colors.failed.backgroundColor,
                             borderWidth: 2,
+                            fill: true,
                             data: failedPoints
                         }
                     ]
@@ -208,6 +215,8 @@
                             suggestedMax: 10
                         }
                     },
+                    reponsive: true,
+                    maintainAspectRatio: false,
                     elements: { line: { tension: 0 }, point: { radius: 0 } },
                     plugins: {
                         legend: { display: false },
