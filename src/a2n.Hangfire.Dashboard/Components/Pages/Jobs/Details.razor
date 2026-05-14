@@ -1,5 +1,6 @@
 @page "/jobs/details/{JobId}"
 @inject HangfireMonitorService Monitor
+@implements IDisposable
 
 <PageTitle>Job @JobId</PageTitle>
 
@@ -20,77 +21,65 @@
     {
         <h2 class="page-title">@GetJobTitle()</h2>
 
+        @* Job Status Banner *@
+        var topState = _job.History.FirstOrDefault()?.StateName;
+        var expiryInfo = GetExpiryInfo();
+        if (!string.IsNullOrEmpty(expiryInfo))
+        {
+            <div class="job-status-banner job-status-banner--@(topState?.ToLowerInvariant())">
+                <strong>The job is @(topState?.ToLowerInvariant()).</strong> @expiryInfo
+            </div>
+        }
+
         @* Tags *@
         <TagsViewer JobId="@JobId" />
 
         @* Job Code Snippet *@
-        @if (_job.Job is not null)
+        if (_job.Job is not null)
         {
-            <div class="section-card">
+            <div class="section-card code-card">
                 <div class="code-snippet">
-                    <pre><code>// Job ID: @JobId
-@(_job.Job.Type.FullName).@(_job.Job.Method.Name)(@GetArguments())</code></pre>
+                    <pre><code><span class="code-comment">// Id: #@JobId</span>
+<span class="code-keyword">using</span> <span class="code-namespace">@(_job.Job.Type.Namespace)</span>;
+
+<span class="code-keyword">var</span> sampleJobs = Activate&lt;<span class="code-type">@(_job.Job.Type.Name)</span>&gt;();
+sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupString)GetFormattedArguments()));</code></pre>
                 </div>
             </div>
         }
 
-        @* Properties *@
-        @if (_job.Properties.Any(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
+        @* Parameters *@
+        if (_job.Properties.Any(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
         {
-            <div class="section-card">
-                <h3>Parameters</h3>
-                <table class="data-table">
-                    <tbody>
-                        @foreach (var prop in _job.Properties.Where(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
-                        {
-                            <tr>
-                                <td class="font-mono" style="width:200px">@prop.Key</td>
-                                <td><code>@prop.Value</code></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+            <h3 class="section-title">Parameters</h3>
+            <table class="data-table data-table--borderless">
+                <tbody>
+                    @foreach (var prop in _job.Properties.Where(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
+                    {
+                        <tr>
+                            <td class="param-key">@prop.Key</td>
+                            <td><span class="param-value">@prop.Value</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         }
 
-        @* Actions *@
-        <div class="toolbar">
-            <button class="btn btn--primary" @onclick="Requeue">🔄 Requeue</button>
-            <button class="btn btn--danger" @onclick="Delete">🗑️ Delete</button>
+        
+        @* Actions — aligned right *@
+        <div class="toolbar toolbar--right">
+            <button class="btn btn--outline" @onclick="Requeue" disabled="@_actionInProgress">
+                <span class="btn-icon">@Icons.RotateCcw</span> Requeue
+            </button>
+            <button class="btn btn--danger-fill" @onclick="Delete" disabled="@_actionInProgress">
+                <span class="btn-icon">@Icons.Trash2</span> Delete
+            </button>
         </div>
 
-        @* Console Output — Multiple Sessions *@
-        @if (_consoleSessions.Count > 0)
-        {
-            <h3 class="section-title">Console Output</h3>
-            @for (var i = 0; i < _consoleSessions.Count; i++)
-            {
-                var session = _consoleSessions[i];
-                var isLatest = i == 0;
-                var sessionIndex = i;
+        @* State Section — like original *@
+        <h3 class="section-title">State</h3>
 
-                @if (isLatest)
-                {
-                    <ConsoleViewer JobId="@JobId" StartedAt="@session.StartedAt" IsLive="@_isProcessing" />
-                }
-                else
-                {
-                    <div class="console-collapsible">
-                        <button class="console-collapsible-header" @onclick="() => ToggleSession(sessionIndex)">
-                            <span class="console-collapsible-icon">@(session.IsExpanded ? "▼" : "▶")</span>
-                            <span class="console-collapsible-title">Previous execution — @FormatRelativeTime(session.StartedAt)</span>
-                        </button>
-                        @if (session.IsExpanded)
-                        {
-                            <ConsoleViewer JobId="@JobId" StartedAt="@session.StartedAt" IsLive="false" />
-                        }
-                    </div>
-                }
-            }
-        }
-
-        @* State History *@
-        <h3 class="section-title">State History</h3>
+        @* State cards — chronological (newest first), console embedded in Processing *@
         <div class="state-timeline">
             @foreach (var state in _job.History)
             {
@@ -99,11 +88,132 @@
                         <span class="state-name">@state.StateName</span>
                         <span class="state-time"><RelativeTime UtcTime="@state.CreatedAt" /></span>
                     </div>
+
+                    @* State metadata *@
                     @if (!string.IsNullOrWhiteSpace(state.Reason))
                     {
                         <p class="state-reason">@state.Reason</p>
                     }
-                    @if (state.Data.Count > 0)
+
+                    @* Show relevant data for each state type *@
+                    @if (state.StateName == "Succeeded" && state.Data.Count > 0)
+                    {
+                        <div class="state-data">
+                            @if (state.Data.TryGetValue("Latency", out var latency))
+                            {
+                                <div class="state-data-item">
+                                    <span class="state-data-key">Latency:</span>
+                                    <span class="state-data-value">@FormatDuration(latency)</span>
+                                </div>
+                            }
+                            @if (state.Data.TryGetValue("PerformanceDuration", out var perfDuration))
+                            {
+                                <div class="state-data-item">
+                                    <span class="state-data-key">Duration:</span>
+                                    <span class="state-data-value">@FormatDuration(perfDuration)</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (state.StateName == "Failed" && state.Data.Count > 0)
+                    {
+                        <div class="state-exception">
+                            @if (state.Data.TryGetValue("ExceptionType", out var exType))
+                            {
+                                <div class="exception-type">@exType</div>
+                            }
+                            @if (state.Data.TryGetValue("ExceptionMessage", out var exMsg))
+                            {
+                                <div class="exception-message">@exMsg</div>
+                            }
+                            @if (state.Data.TryGetValue("ExceptionDetails", out var exDetails))
+                            {
+                                <details class="exception-stack">
+                                    <summary>Stack Trace</summary>
+                                    <pre class="exception-stack-content">@exDetails</pre>
+                                </details>
+                            }
+                        </div>
+                    }
+                    else if (state.StateName == "Processing")
+                    {
+                        @* Show Server/Worker info *@
+                        <div class="state-data">
+                            @if (state.Data.TryGetValue("ServerId", out var serverId))
+                            {
+                                <div class="state-data-item">
+                                    <span class="state-data-key">Server:</span>
+                                    <span class="state-data-value">@serverId</span>
+                                </div>
+                            }
+                            @if (state.Data.TryGetValue("WorkerId", out var workerId))
+                            {
+                                <div class="state-data-item">
+                                    <span class="state-data-key">Worker:</span>
+                                    <span class="state-data-value">@workerId</span>
+                                </div>
+                            }
+                        </div>
+
+                        @* Console output embedded in Processing card *@
+                        @if (state.Data.TryGetValue("StartedAt", out var startedAtStr))
+                        {
+                            var startedAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(startedAtStr);
+                            var isLatestProcessing = _job.History.First(h => h.StateName == "Processing") == state;
+                            var isCurrentlyProcessing = _isProcessing && isLatestProcessing;
+
+                            @* Calculate duration for this session *@
+                            var stateIndex = _job.History.IndexOf(state);
+                            var sessionDuration = stateIndex > 0
+                                ? (double?)(_job.History[stateIndex - 1].CreatedAt - state.CreatedAt).TotalSeconds
+                                : null;
+
+                            @if (isLatestProcessing)
+                            {
+                                <ConsoleViewer JobId="@JobId"
+                                               StartedAt="@startedAt"
+                                               IsLive="@isCurrentlyProcessing"
+                                               ServerName="@(state.Data.TryGetValue("ServerId", out var sn2) ? sn2 : null)"
+                                               WorkerId="@(state.Data.TryGetValue("WorkerId", out var wi2) ? wi2 : null)"
+                                               DurationSeconds="@sessionDuration" />
+                            }
+                            else
+                            {
+                                @* Older sessions: collapsed by default, load on demand *@
+                                var sessionKey = $"session-{startedAt.Ticks}";
+                                var isExpanded = _expandedSessions.Contains(sessionKey);
+
+                                <div class="console-collapsible-inline">
+                                    <button class="console-collapsible-header" @onclick="() => ToggleSessionByKey(sessionKey)">
+                                        <span class="console-collapsible-icon">@(isExpanded ? "▼" : "▶")</span>
+                                        <span class="console-collapsible-title">Show console output</span>
+                                    </button>
+                                    @if (isExpanded)
+                                    {
+                                        <ConsoleViewer JobId="@JobId"
+                                                       StartedAt="@startedAt"
+                                                       IsLive="false"
+                                                       ServerName="@(state.Data.TryGetValue("ServerId", out var sn3) ? sn3 : null)"
+                                                       WorkerId="@(state.Data.TryGetValue("WorkerId", out var wi3) ? wi3 : null)"
+                                                       DurationSeconds="@sessionDuration" />
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                    else if (state.StateName == "Scheduled" && state.Data.Count > 0)
+                    {
+                        <div class="state-data">
+                            @if (state.Data.TryGetValue("EnqueueAt", out var enqueueAt))
+                            {
+                                <div class="state-data-item">
+                                    <span class="state-data-key">Enqueue at:</span>
+                                    <span class="state-data-value">@enqueueAt</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (state.Data.Count > 0 && state.StateName != "Enqueued" && state.StateName != "Created")
                     {
                         <div class="state-data">
                             @foreach (var kv in state.Data.Take(5))
@@ -127,54 +237,66 @@
     private JobDetailsDto _job;
     private bool _notFound;
     private bool _isProcessing;
-    private List<ConsoleSession> _consoleSessions = new();
-
-    private class ConsoleSession
-    {
-        public DateTime StartedAt { get; set; }
-        public bool IsExpanded { get; set; }
-    }
+    private bool _actionInProgress;
+    private Timer _autoRefreshTimer;
+    private string _previousState;
+    private HashSet<string> _expandedSessions = new();
 
     protected override async Task OnInitializedAsync()
+    {
+        await LoadJobData();
+        StartAutoRefresh();
+    }
+
+    private async Task LoadJobData()
     {
         await Task.Run(() =>
         {
             _job = Monitor.GetJobDetails(JobId);
             _notFound = _job is null;
-            BuildConsoleSessions();
+            UpdateProcessingState();
         });
     }
 
-    private void BuildConsoleSessions()
+    private void UpdateProcessingState()
     {
-        _consoleSessions.Clear();
-        _isProcessing = false;
-
         if (_job?.History is null) return;
-
-        // Check if job is currently processing
         var currentState = _job.History.FirstOrDefault()?.StateName;
+        _previousState = currentState;
         _isProcessing = currentState == "Processing";
-
-        // Find all Processing states with StartedAt (each represents a console session)
-        var processingSessions = _job.History
-            .Where(h => h.StateName == "Processing" && h.Data.ContainsKey("StartedAt"))
-            .Select(h =>
-            {
-                var startedAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(h.Data["StartedAt"]);
-                return new ConsoleSession { StartedAt = startedAt, IsExpanded = false };
-            })
-            .ToList();
-
-        _consoleSessions = processingSessions;
     }
 
-    private void ToggleSession(int index)
+    private void StartAutoRefresh()
     {
-        if (index >= 0 && index < _consoleSessions.Count)
+        _autoRefreshTimer = new Timer(async _ =>
         {
-            _consoleSessions[index].IsExpanded = !_consoleSessions[index].IsExpanded;
-        }
+            try
+            {
+                var job = Monitor.GetJobDetails(JobId);
+                if (job is null) return;
+
+                var currentState = job.History.FirstOrDefault()?.StateName;
+                var stateChanged = currentState != _previousState;
+                var isNowProcessing = currentState == "Processing";
+
+                if (stateChanged || isNowProcessing)
+                {
+                    await InvokeAsync(() =>
+                    {
+                        _job = job;
+                        UpdateProcessingState();
+                        StateHasChanged();
+                    });
+                }
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private void ToggleSessionByKey(string key)
+    {
+        if (!_expandedSessions.Remove(key))
+            _expandedSessions.Add(key);
     }
 
     private string GetJobTitle()
@@ -183,30 +305,86 @@
         return $"{_job.Job.Type.Name}.{_job.Job.Method.Name}";
     }
 
-    private string GetArguments()
+    private string GetFormattedArguments()
     {
         if (_job?.Job?.Args is null || _job.Job.Args.Count == 0) return "";
-        return string.Join(", ", _job.Job.Args.Select(a => a?.ToString() ?? "null"));
+        return string.Join(", ", _job.Job.Args.Select(a =>
+        {
+            if (a is null) return "<span class=\"code-keyword\">null</span>";
+            if (a is string s) return $"<span class=\"code-string\">\"{System.Net.WebUtility.HtmlEncode(s)}\"</span>";
+            return $"<span class=\"code-number\">{System.Net.WebUtility.HtmlEncode(a.ToString() ?? "")}</span>";
+        }));
+    }
+
+    private string GetExpiryInfo()
+    {
+        if (_job?.Properties is null) return null;
+
+        if (_job.Properties.TryGetValue("ExpireAt", out var expireAtStr) && !string.IsNullOrEmpty(expireAtStr))
+        {
+            try
+            {
+                var expireAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(expireAtStr);
+                var remaining = expireAt - DateTime.UtcNow;
+                if (remaining.TotalSeconds > 0)
+                {
+                    if (remaining.TotalHours >= 1)
+                        return $"It will be removed automatically in {(int)remaining.TotalHours} hours.";
+                    if (remaining.TotalMinutes >= 1)
+                        return $"It will be removed automatically in {(int)remaining.TotalMinutes} minutes.";
+                    return "It will be removed automatically soon.";
+                }
+            }
+            catch { }
+        }
+
+        var currentState = _job.History?.FirstOrDefault()?.StateName;
+        return currentState switch
+        {
+            "Succeeded" => "It will be removed automatically in 24 hours.",
+            "Deleted" => "It will be removed automatically in 24 hours.",
+            _ => null
+        };
+    }
+
+    private static string FormatDuration(string millisOrValue)
+    {
+        if (string.IsNullOrEmpty(millisOrValue)) return "";
+        if (double.TryParse(millisOrValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var ms))
+        {
+            var ts = TimeSpan.FromMilliseconds(ms);
+            if (ts.TotalHours >= 1) return $"{(int)ts.TotalHours}h {ts.Minutes:D2}m {ts.Seconds:D2}s";
+            if (ts.TotalMinutes >= 1) return $"{(int)ts.TotalMinutes}m {ts.Seconds:D2}s";
+            if (ts.TotalSeconds >= 1) return $"{ts.TotalSeconds:F2}s";
+            return $"{ms:F0}ms";
+        }
+        return millisOrValue;
     }
 
     private async Task Requeue()
     {
+        _actionInProgress = true;
+        StateHasChanged();
+
         await Task.Run(() => Monitor.RequeueJob(JobId));
-        await Reload();
+        await Task.Delay(500);
+        await LoadJobData();
+
+        _actionInProgress = false;
+        StateHasChanged();
     }
 
     private async Task Delete()
     {
-        await Task.Run(() => Monitor.DeleteJob(JobId));
-        await Reload();
-    }
+        _actionInProgress = true;
+        StateHasChanged();
 
-    private async Task Reload()
-    {
-        _job = Monitor.GetJobDetails(JobId);
-        _notFound = _job is null;
-        BuildConsoleSessions();
-        await InvokeAsync(StateHasChanged);
+        await Task.Run(() => Monitor.DeleteJob(JobId));
+        await Task.Delay(300);
+        await LoadJobData();
+
+        _actionInProgress = false;
+        StateHasChanged();
     }
 
     private static string GetStateCardClass(string stateName) => stateName switch
@@ -217,6 +395,7 @@
         "Enqueued" => "state-card--info",
         "Scheduled" => "state-card--info",
         "Deleted" => "state-card--muted",
+        "Created" => "state-card--created",
         _ => ""
     };
 
@@ -233,5 +412,10 @@
             < 86400 => $"{(int)diff.TotalHours}h ago",
             _ => $"{(int)diff.TotalDays}d ago"
         };
+    }
+
+    public void Dispose()
+    {
+        _autoRefreshTimer?.Dispose();
     }
 }

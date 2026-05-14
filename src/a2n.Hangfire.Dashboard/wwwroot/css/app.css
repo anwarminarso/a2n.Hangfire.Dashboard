@@ -611,6 +611,13 @@ html, body {
     margin-bottom: 12px;
 }
 
+.toolbar--right {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    justify-content: flex-end;
+}
+
 /* ===== Buttons ===== */
 .btn {
     display: inline-flex;
@@ -660,6 +667,38 @@ html, body {
 .btn--danger:hover:not(:disabled) {
     background-color: rgba(239, 68, 68, 0.04);
     border-color: var(--color-danger);
+}
+
+.btn--danger-fill {
+    background-color: var(--color-danger);
+    border-color: var(--color-danger);
+    color: white;
+}
+
+.btn--danger-fill:hover:not(:disabled) {
+    background-color: #dc2626;
+    border-color: #dc2626;
+}
+
+.btn--outline {
+    background-color: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+}
+
+.btn--outline:hover:not(:disabled) {
+    background-color: var(--color-bg);
+    border-color: var(--color-text-muted);
+}
+
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+.btn-icon svg {
+    width: 14px;
+    height: 14px;
 }
 
 /* ===== Exception Detail ===== */
@@ -721,6 +760,11 @@ html, body {
 }
 
 /* ===== Code Snippet ===== */
+.code-card {
+    background-color: #1e293b;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
 .code-snippet {
     padding: 14px 18px;
     overflow-x: auto;
@@ -731,7 +775,67 @@ html, body {
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 1.7;
+    color: #e2e8f0;
+}
+
+.code-comment { color: #64748b; }
+.code-keyword { color: #7dd3fc; }
+.code-namespace { color: #e2e8f0; }
+.code-type { color: #4ade80; }
+.code-method { color: #e2e8f0; }
+.code-string { color: #d97706; }
+.code-number { color: #a78bfa; }
+
+/* ===== Job Status Banner ===== */
+.job-status-banner {
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    background-color: rgba(59, 130, 246, 0.06);
     color: var(--color-text);
+}
+
+.job-status-banner strong {
+    margin-right: 4px;
+}
+
+.job-status-banner--succeeded {
+    border-color: rgba(16, 185, 129, 0.3);
+    background-color: rgba(16, 185, 129, 0.06);
+}
+
+.job-status-banner--failed {
+    border-color: rgba(239, 68, 68, 0.3);
+    background-color: rgba(239, 68, 68, 0.06);
+}
+
+.job-status-banner--deleted {
+    border-color: rgba(107, 114, 128, 0.3);
+    background-color: rgba(107, 114, 128, 0.06);
+}
+
+.job-status-banner--processing {
+    border-color: rgba(245, 158, 11, 0.3);
+    background-color: rgba(245, 158, 11, 0.06);
+}
+
+.job-status-banner--enqueued {
+    border-color: rgba(59, 130, 246, 0.3);
+    background-color: rgba(59, 130, 246, 0.06);
+}
+
+/* ===== Parameter Table ===== */
+.param-key {
+    width: 200px;
+    color: var(--color-text-muted);
+}
+
+.param-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-danger);
 }
 
 /* ===== Cron Badge ===== */
@@ -777,6 +881,7 @@ html, body {
 .state-card--warning { border-left-color: var(--color-warning); }
 .state-card--info { border-left-color: var(--color-info); }
 .state-card--muted { border-left-color: var(--color-text-muted); opacity: 0.6; }
+.state-card--created { border-left-color: #8b5cf6; }
 
 .state-card-header {
     display: flex;
@@ -820,6 +925,85 @@ html, body {
     font-family: var(--font-mono);
     font-size: 11px;
     word-break: break-all;
+}
+
+/* ===== Exception Formatting ===== */
+.state-exception {
+    margin-top: 10px;
+}
+
+.exception-type {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-danger);
+    margin-bottom: 4px;
+}
+
+.exception-message {
+    font-size: 13px;
+    color: var(--color-text);
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+
+.exception-stack {
+    margin-top: 8px;
+}
+
+.exception-stack summary {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 4px 0;
+}
+
+.exception-stack summary:hover {
+    color: var(--color-text);
+}
+
+.exception-stack-content {
+    margin-top: 8px;
+    padding: 12px 14px;
+    background-color: #1e293b;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    color: #e2e8f0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* ===== Inline Console Collapsible (inside state card) ===== */
+.console-collapsible-inline {
+    margin-top: 10px;
+}
+
+.console-collapsible-inline .console-collapsible-header {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+/* ===== Borderless Data Table ===== */
+.data-table--borderless {
+    margin-bottom: 16px;
+}
+
+.data-table--borderless td {
+    border-bottom: 1px solid var(--color-border);
+    padding: 8px 0;
+}
+
+.data-table--borderless tbody tr:last-child td {
+    border-bottom: none;
 }
 
 /* ===== Pagination Info ===== */
@@ -1025,11 +1209,11 @@ html, body {
 
 /* ===== Console Viewer ===== */
 .console-viewer {
-    background-color: #1a1d2e;
+    background-color: #0d3163;
     border-radius: var(--radius-lg);
     overflow: hidden;
     margin: 16px 0;
-    border: 1px solid var(--color-border);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .console-header {
@@ -1037,16 +1221,34 @@ html, body {
     justify-content: space-between;
     align-items: center;
     padding: 10px 16px;
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .console-title {
     font-size: 12px;
     font-weight: 600;
-    color: #a0a3b1;
+    color: #ffffff;
     text-transform: uppercase;
     letter-spacing: 0.4px;
+}
+
+.console-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.console-server-info {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: #6b7280;
+}
+
+.console-duration {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: #00aad7;
 }
 
 .console-count {
@@ -1066,7 +1268,7 @@ html, body {
 .console-line {
     display: flex;
     gap: 12px;
-    color: #e5e7eb;
+    color: #ffffff;
     padding: 1px 0;
 }
 
@@ -1090,27 +1292,30 @@ html, body {
 .console-progress {
     flex: 1;
     position: relative;
-    height: 18px;
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
+    height: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 2px;
     overflow: hidden;
+    background: transparent;
 }
 
 .console-progress-bar {
     height: 100%;
-    background-color: #6366f1;
-    transition: width 0.3s ease;
-    border-radius: 3px;
+    background-color: rgba(255, 255, 255, 0.8);
+    transition: width 0.6s ease;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2em;
 }
 
 .console-progress-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 10px;
-    color: #fff;
+    font-size: 11px;
     font-weight: 600;
+    white-space: nowrap;
+    color: #0d3163;
+    text-align: center;
 }
 
 /* Console scrollbar */

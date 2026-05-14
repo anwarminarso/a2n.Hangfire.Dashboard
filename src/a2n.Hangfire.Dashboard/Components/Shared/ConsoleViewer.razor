@@ -7,13 +7,16 @@
     <div class="console-viewer">
         <div class="console-header">
             <span class="console-title">Console Output</span>
-            <span class="console-count">@_displayLines.Count lines</span>
-            @if (IsLive)
-            {
-                <span class="console-live-indicator">
-                    <span class="console-live-dot"></span> Live
-                </span>
-            }
+            <div class="console-meta">
+                <span class="console-duration">@FormatDuration()</span>
+                <span class="console-count">@_displayLines.Count lines</span>
+                @if (_isLiveActive)
+                {
+                    <span class="console-live-indicator">
+                        <span class="console-live-dot"></span> Live
+                    </span>
+                }
+            </div>
         </div>
         <div class="console-body">
             @foreach (var line in _displayLines)
@@ -22,15 +25,16 @@
                 {
                     <div class="console-line console-line--progress">
                         <span class="console-time">@FormatTimeOffset(line.TimeOffset)</span>
-                        <div class="console-progress">
-                            <div class="console-progress-bar" style="width: @(line.ProgressValue ?? 0)%"></div>
-                            <span class="console-progress-text">
-                                @if (!string.IsNullOrEmpty(line.ProgressName))
-                                {
-                                    @line.ProgressName @(": ")
-                                }
-                                @($"{line.ProgressValue:F0}%")
-                            </span>
+                        <div class="console-progress" style="@GetProgressBarStyle(line)">
+                            <div class="console-progress-bar" style="width: @(line.ProgressValue ?? 0)%; @GetProgressBarFillStyle(line)">
+                                <span class="console-progress-text">
+                                    @if (!string.IsNullOrEmpty(line.ProgressName))
+                                    {
+                                        @line.ProgressName @(": ")
+                                    }
+                                    @($"{line.ProgressValue:F0}%")
+                                </span>
+                            </div>
                         </div>
                     </div>
                 }
@@ -55,12 +59,30 @@
     /// </summary>
     [Parameter] public bool IsLive { get; set; }
 
+    /// <summary>
+    /// Server name for this execution session.
+    /// </summary>
+    [Parameter] public string ServerName { get; set; }
+
+    /// <summary>
+    /// Worker ID for this execution session.
+    /// </summary>
+    [Parameter] public string WorkerId { get; set; }
+
+    /// <summary>
+    /// Duration of the job execution in seconds (null if still running).
+    /// </summary>
+    [Parameter] public double? DurationSeconds { get; set; }
+
     private IReadOnlyList<ConsoleLineDto> _lines;
     private List<ConsoleLineDto> _displayLines;
     private Timer _liveTimer;
+    private bool _isLiveActive;
 
     protected override async Task OnParametersSetAsync()
     {
+        _isLiveActive = IsLive;
+
         if (JobId is not null && StartedAt.HasValue)
         {
             await Task.Run(() =>
@@ -79,6 +101,7 @@
         {
             _liveTimer.Dispose();
             _liveTimer = null;
+            _isLiveActive = false;
         }
     }
 
@@ -100,6 +123,16 @@
     }
 
     /// <summary>
+    /// Stops live polling (called externally when job state changes).
+    /// </summary>
+    public void StopLive()
+    {
+        _isLiveActive = false;
+        _liveTimer?.Dispose();
+        _liveTimer = null;
+    }
+
+    /// <summary>
     /// Collapses progress bar updates: for each unique ProgressId, only the latest value is kept.
     /// The progress bar is rendered at the position of its first occurrence.
     /// </summary>
@@ -109,9 +142,7 @@
             return [];
 
         var result = new List<ConsoleLineDto>();
-        // Track latest progress value per ProgressId
         var progressLatest = new Dictionary<string, ConsoleLineDto>();
-        // Track which progress IDs we've already placed in result
         var progressPlaced = new HashSet<string>();
 
         // First pass: find the latest value for each progress bar
@@ -130,11 +161,9 @@
             {
                 if (!progressPlaced.Contains(line.ProgressId))
                 {
-                    // Place the latest value at the first occurrence position
                     result.Add(progressLatest[line.ProgressId]);
                     progressPlaced.Add(line.ProgressId);
                 }
-                // Skip subsequent updates for the same progress bar
             }
             else
             {
@@ -143,6 +172,40 @@
         }
 
         return result;
+    }
+
+    private string FormatDuration()
+    {
+        if (DurationSeconds.HasValue)
+        {
+            var ts = TimeSpan.FromSeconds(DurationSeconds.Value);
+            if (ts.TotalHours >= 1)
+                return $"{(int)ts.TotalHours}h {ts.Minutes:D2}m {ts.Seconds:D2}s";
+            if (ts.TotalMinutes >= 1)
+                return $"{(int)ts.TotalMinutes}m {ts.Seconds:D2}s";
+            return $"{ts.TotalSeconds:F1}s";
+        }
+
+        // If still live, calculate from StartedAt
+        if (_isLiveActive && StartedAt.HasValue)
+        {
+            var elapsed = DateTime.UtcNow - StartedAt.Value;
+            if (elapsed.TotalMinutes >= 1)
+                return $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds:D2}s";
+            return $"{elapsed.TotalSeconds:F0}s";
+        }
+
+        // Fallback: calculate from last line's time offset
+        if (_displayLines is not null && _displayLines.Count > 0)
+        {
+            var lastOffset = _displayLines.Max(l => l.TimeOffset);
+            var ts = TimeSpan.FromSeconds(lastOffset);
+            if (ts.TotalMinutes >= 1)
+                return $"{(int)ts.TotalMinutes}m {ts.Seconds:D2}s";
+            return $"{ts.TotalSeconds:F1}s";
+        }
+
+        return "";
     }
 
     private static string FormatTimeOffset(double seconds)
@@ -158,13 +221,28 @@
         return line.TextColor is not null ? $"color: {line.TextColor}" : null;
     }
 
+    private static string GetProgressBarStyle(ConsoleLineDto line)
+    {
+        // Progress bar border uses the color if specified
+        if (line.TextColor is not null)
+            return $"border-color: {line.TextColor}";
+        return null;
+    }
+
+    private static string GetProgressBarFillStyle(ConsoleLineDto line)
+    {
+        // Progress bar fill uses the color if specified
+        if (line.TextColor is not null)
+            return $"background-color: {line.TextColor}";
+        return null;
+    }
+
     private static readonly System.Text.RegularExpressions.Regex UrlRegex = new(
         @"(https?://[^\s<>""']+)",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static string LinkifyText(string text)
     {
-        // Match URLs in raw text first, then encode non-URL parts
         var matches = UrlRegex.Matches(text);
         if (matches.Count == 0)
             return System.Net.WebUtility.HtmlEncode(text);
@@ -174,17 +252,14 @@
 
         foreach (System.Text.RegularExpressions.Match match in matches)
         {
-            // Encode text before the URL
             if (match.Index > lastIndex)
                 sb.Append(System.Net.WebUtility.HtmlEncode(text[lastIndex..match.Index]));
 
-            // Render the URL as a link (encode the display text, use raw URL for href)
             var url = match.Value;
             sb.Append($"<a href=\"{System.Net.WebUtility.HtmlEncode(url)}\" target=\"_blank\" rel=\"nofollow\" class=\"console-link\">{System.Net.WebUtility.HtmlEncode(url)}</a>");
             lastIndex = match.Index + match.Length;
         }
 
-        // Encode remaining text after last URL
         if (lastIndex < text.Length)
             sb.Append(System.Net.WebUtility.HtmlEncode(text[lastIndex..]));
 
