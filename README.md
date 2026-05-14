@@ -36,7 +36,6 @@ This project replaces all of that with a single package:
 | Recurring job management | View only | **Full CRUD + Start/Stop** |
 | Console output (logs, progress bars) | ❌ (plugin) | ✅ Built-in |
 | Job tagging & search | ❌ (plugin) | ✅ Built-in |
-| Realtime charts | ❌ | ✅ Chart.js streaming |
 | Dark mode | ❌ | ✅ Auto/Light/Dark |
 | Mobile responsive | Partial | ✅ Full responsive |
 | Modern UI framework | jQuery + Bootstrap 3 | Blazor + Bootstrap 5 |
