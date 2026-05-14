@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
+@inject AlternateDashboardOptions Options
 @implements IDisposable
 
 <div class="d-flex vh-100 overflow-hidden">
@@ -33,6 +34,13 @@
                 <h1 class="navbar-text fw-semibold fs-6 mb-0">@_pageTitle</h1>
             </div>
             <div class="d-flex align-items-center gap-2">
+                @if (Options.AppPath is not null)
+                {
+                    <a href="@Options.AppPath" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-box-arrow-left"></i>
+                        <span class="d-none d-md-inline ms-1">Back to Site</span>
+                    </a>
+                }
                 <ThemeToggle />
             </div>
         </header>

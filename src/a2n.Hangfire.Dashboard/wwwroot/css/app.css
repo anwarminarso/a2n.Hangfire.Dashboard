@@ -125,6 +125,7 @@
 
 /* ===== Dashboard Tweaks ===== */
 .nav-link.active { background-color: rgba(255, 255, 255, 0.1) !important; color: #fff !important; }
+header.navbar h1 { border: none; outline: none; }
 .hf-code-block {
     background-color: #1e293b;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -134,4 +135,48 @@
     font-size: 12px;
     line-height: 1.7;
     color: #e2e8f0;
+}
+
+/* ===== Stat Card Gradients (Light Mode) ===== */
+.hf-stat-card-info {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #bfdbfe;
+}
+.hf-stat-card-warning {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    border: 1px solid #fde68a;
+}
+.hf-stat-card-success {
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border: 1px solid #bbf7d0;
+}
+.hf-stat-card-danger {
+    background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+    border: 1px solid #fca5a5;
+}
+.hf-stat-card-neutral {
+    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+    border: 1px solid #e5e7eb;
+}
+
+/* ===== Stat Card Gradients (Dark Mode) ===== */
+[data-bs-theme="dark"] .hf-stat-card-info {
+    background: linear-gradient(135deg, #1e3a5f 0%, #1e40af33 100%);
+    border: 1px solid #1e40af;
+}
+[data-bs-theme="dark"] .hf-stat-card-warning {
+    background: linear-gradient(135deg, #422006 0%, #92400e33 100%);
+    border: 1px solid #92400e;
+}
+[data-bs-theme="dark"] .hf-stat-card-success {
+    background: linear-gradient(135deg, #052e16 0%, #16653433 100%);
+    border: 1px solid #166534;
+}
+[data-bs-theme="dark"] .hf-stat-card-danger {
+    background: linear-gradient(135deg, #450a0a 0%, #991b1b33 100%);
+    border: 1px solid #991b1b;
+}
+[data-bs-theme="dark"] .hf-stat-card-neutral {
+    background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+    border: 1px solid #4b5563;
 }
