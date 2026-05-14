@@ -115,8 +115,31 @@
 
     private static string LinkifyText(string text)
     {
-        var encoded = System.Net.WebUtility.HtmlEncode(text);
-        return UrlRegex.Replace(encoded, "<a href=\"$1\" target=\"_blank\" rel=\"nofollow\" class=\"console-link\">$1</a>");
+        // Match URLs in raw text first, then encode non-URL parts
+        var matches = UrlRegex.Matches(text);
+        if (matches.Count == 0)
+            return System.Net.WebUtility.HtmlEncode(text);
+
+        var sb = new System.Text.StringBuilder();
+        var lastIndex = 0;
+
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            // Encode text before the URL
+            if (match.Index > lastIndex)
+                sb.Append(System.Net.WebUtility.HtmlEncode(text[lastIndex..match.Index]));
+
+            // Render the URL as a link (encode the display text, use raw URL for href)
+            var url = match.Value;
+            sb.Append($"<a href=\"{System.Net.WebUtility.HtmlEncode(url)}\" target=\"_blank\" rel=\"nofollow\" class=\"console-link\">{System.Net.WebUtility.HtmlEncode(url)}</a>");
+            lastIndex = match.Index + match.Length;
+        }
+
+        // Encode remaining text after last URL
+        if (lastIndex < text.Length)
+            sb.Append(System.Net.WebUtility.HtmlEncode(text[lastIndex..]));
+
+        return sb.ToString();
     }
 
     public void Dispose()

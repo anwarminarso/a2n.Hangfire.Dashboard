@@ -78,6 +78,11 @@
     padding: 0;
 }
 
+/* Remove focus outline on non-interactive elements */
+h1:focus, h2:focus, h3:focus, div:focus, main:focus, section:focus {
+    outline: none;
+}
+
 html, body {
     height: 100%;
     font-family: var(--font-sans);
@@ -160,6 +165,8 @@ html, body {
     font-weight: 600;
     color: var(--color-text);
     letter-spacing: -0.2px;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .header-right {
@@ -301,14 +308,26 @@ html, body {
 
 /* ===== Dashboard Home ===== */
 .dashboard-home {
-    max-width: 1200px;
+    max-width: 100%;
 }
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 28px;
+}
+
+@media (max-width: 900px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .stat-card {
@@ -318,11 +337,41 @@ html, body {
     padding: 16px 18px;
     box-shadow: var(--shadow-sm);
     transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
 }
 
 .stat-card:hover {
     box-shadow: var(--shadow-md);
     transform: translateY(-1px);
+}
+
+.stat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg);
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+}
+
+.stat-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.stat-card--info .stat-icon { background-color: rgba(59, 130, 246, 0.08); color: var(--color-info); }
+.stat-card--warning .stat-icon { background-color: rgba(245, 158, 11, 0.08); color: var(--color-warning); }
+.stat-card--success .stat-icon { background-color: rgba(16, 185, 129, 0.08); color: var(--color-success); }
+.stat-card--danger .stat-icon { background-color: rgba(239, 68, 68, 0.08); color: var(--color-danger); }
+
+.stat-info {
+    flex: 1;
+    min-width: 0;
 }
 
 .stat-value {
@@ -388,7 +437,7 @@ html, body {
 
 /* ===== Page Container ===== */
 .page-container {
-    max-width: 1200px;
+    max-width: 100%;
 }
 
 .page-title {
@@ -879,6 +928,12 @@ html, body {
 .stat-card--loading .stat-label {
     height: 12px;
     width: 60%;
+}
+
+.stat-card--loading .stat-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
 }
 
 /* ===== Scrollbar ===== */

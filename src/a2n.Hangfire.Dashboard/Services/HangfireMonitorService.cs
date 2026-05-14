@@ -185,11 +185,13 @@ public class HangfireMonitorService
 
         var job = new global::Hangfire.Common.Job(type, method);
 
+#pragma warning disable CS0618 // QueueName is obsolete but no alternative overload available in 1.8.x
         manager.AddOrUpdate(jobId, job, cron, new RecurringJobOptions
         {
             TimeZone = timeZone,
             QueueName = queue ?? "default"
         });
+#pragma warning restore CS0618
     }
 
     /// <summary>

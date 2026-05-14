@@ -124,24 +124,31 @@ public class ConsoleLineDto
 
 /// <summary>
 /// Raw JSON format from storage (matches Hangfire.Console's ConsoleLine).
+/// Dual attributes for Newtonsoft.Json (used by Hangfire's SerializationHelper) and System.Text.Json.
 /// </summary>
 internal class RawConsoleLine
 {
+    [Newtonsoft.Json.JsonProperty("t")]
     [System.Text.Json.Serialization.JsonPropertyName("t")]
     public double TimeOffset { get; set; }
 
+    [Newtonsoft.Json.JsonProperty("r")]
     [System.Text.Json.Serialization.JsonPropertyName("r")]
     public bool IsReference { get; set; }
 
+    [Newtonsoft.Json.JsonProperty("s")]
     [System.Text.Json.Serialization.JsonPropertyName("s")]
     public string? Message { get; set; }
 
+    [Newtonsoft.Json.JsonProperty("c")]
     [System.Text.Json.Serialization.JsonPropertyName("c")]
     public string? TextColor { get; set; }
 
+    [Newtonsoft.Json.JsonProperty("p")]
     [System.Text.Json.Serialization.JsonPropertyName("p")]
     public double? ProgressValue { get; set; }
 
+    [Newtonsoft.Json.JsonProperty("n")]
     [System.Text.Json.Serialization.JsonPropertyName("n")]
     public string? ProgressName { get; set; }
 }

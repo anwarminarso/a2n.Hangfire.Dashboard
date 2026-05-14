@@ -10,36 +10,60 @@
     {
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-value">@_stats.Servers</div>
-                <div class="stat-label">Servers</div>
+                <div class="stat-icon">@Icons.Server</div>
+                <div class="stat-info">
+                    <div class="stat-value">@_stats.Servers</div>
+                    <div class="stat-label">Servers</div>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">@_stats.Recurring</div>
-                <div class="stat-label">Recurring</div>
+                <div class="stat-icon">@Icons.Repeat</div>
+                <div class="stat-info">
+                    <div class="stat-value">@_stats.Recurring</div>
+                    <div class="stat-label">Recurring</div>
+                </div>
             </div>
             <div class="stat-card stat-card--info">
-                <div class="stat-value">@_stats.Enqueued</div>
-                <div class="stat-label">Enqueued</div>
+                <div class="stat-icon">@Icons.Inbox</div>
+                <div class="stat-info">
+                    <div class="stat-value">@_stats.Enqueued</div>
+                    <div class="stat-label">Enqueued</div>
+                </div>
             </div>
             <div class="stat-card stat-card--warning">
-                <div class="stat-value">@_stats.Processing</div>
-                <div class="stat-label">Processing</div>
+                <div class="stat-icon">@Icons.Cog</div>
+                <div class="stat-info">
+                    <div class="stat-value">@_stats.Processing</div>
+                    <div class="stat-label">Processing</div>
+                </div>
             </div>
             <div class="stat-card stat-card--success">
-                <div class="stat-value">@FormatCount(_stats.Succeeded)</div>
-                <div class="stat-label">Succeeded</div>
+                <div class="stat-icon">@Icons.CheckCircle</div>
+                <div class="stat-info">
+                    <div class="stat-value">@FormatCount(_stats.Succeeded)</div>
+                    <div class="stat-label">Succeeded</div>
+                </div>
             </div>
             <div class="stat-card stat-card--danger">
-                <div class="stat-value">@_stats.Failed</div>
-                <div class="stat-label">Failed</div>
+                <div class="stat-icon">@Icons.XCircle</div>
+                <div class="stat-info">
+                    <div class="stat-value">@_stats.Failed</div>
+                    <div class="stat-label">Failed</div>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">@_stats.Scheduled</div>
-                <div class="stat-label">Scheduled</div>
+                <div class="stat-icon">@Icons.Clock</div>
+                <div class="stat-info">
+                    <div class="stat-value">@_stats.Scheduled</div>
+                    <div class="stat-label">Scheduled</div>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">@_stats.Deleted</div>
-                <div class="stat-label">Deleted</div>
+                <div class="stat-icon">@Icons.Trash2</div>
+                <div class="stat-info">
+                    <div class="stat-value">@_stats.Deleted</div>
+                    <div class="stat-label">Deleted</div>
+                </div>
             </div>
         </div>
     }
@@ -49,8 +73,11 @@
             @for (var i = 0; i < 8; i++)
             {
                 <div class="stat-card stat-card--loading">
-                    <div class="stat-value skeleton">&nbsp;</div>
-                    <div class="stat-label skeleton">&nbsp;</div>
+                    <div class="stat-icon skeleton">&nbsp;</div>
+                    <div class="stat-info">
+                        <div class="stat-value skeleton">&nbsp;</div>
+                        <div class="stat-label skeleton">&nbsp;</div>
+                    </div>
                 </div>
             }
         </div>

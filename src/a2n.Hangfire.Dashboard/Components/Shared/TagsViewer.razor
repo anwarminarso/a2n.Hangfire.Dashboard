@@ -1,12 +1,13 @@
 @using a2n.Hangfire.Dashboard.Services
 @inject TagsDataReader TagsReader
+@inject NavigationManager Navigation
 
 @if (_tags is not null && _tags.Length > 0)
 {
     <div class="tags-viewer">
         @foreach (var tag in _tags)
         {
-            <a class="tag-badge" href="/tags/@tag">@tag</a>
+            <a class="tag-badge" href="@GetTagUrl(tag)">@tag</a>
         }
     </div>
 }
@@ -22,5 +23,10 @@
         {
             await Task.Run(() => { _tags = TagsReader.GetJobTags(JobId); });
         }
+    }
+
+    private string GetTagUrl(string tag)
+    {
+        return Navigation.ToAbsoluteUri($"tags/{tag}").PathAndQuery;
     }
 }

@@ -2,6 +2,7 @@
 @page "/tags/{SearchTag}"
 @inject TagsDataReader TagsReader
 @inject HangfireMonitorService Monitor
+@inject NavigationManager Navigation
 
 <PageTitle>Tags</PageTitle>
 
@@ -28,7 +29,7 @@
             <div class="tags-cloud">
                 @foreach (var tag in _allTags)
                 {
-                    <a class="tag-cloud-item" href="/tags/@tag">@tag</a>
+                    <a class="tag-cloud-item" href="@GetTagUrl(tag)">@tag</a>
                 }
             </div>
         }
@@ -37,8 +38,8 @@
     {
         @* Jobs filtered by tag *@
         <div class="tags-viewer" style="margin-bottom: 16px;">
-            <a class="tag-badge" href="/tags/@SearchTag">@SearchTag</a>
-            <a class="btn" href="/tags" style="margin-left: 8px; font-size: 12px;">← All Tags</a>
+            <a class="tag-badge" href="@GetTagUrl(SearchTag!)">@SearchTag</a>
+            <a class="btn" href="@GetTagsBaseUrl()" style="margin-left: 8px; font-size: 12px;">← All Tags</a>
         </div>
 
         @if (_taggedJobs is null || _taggedJobs.Count == 0)
@@ -80,7 +81,8 @@
                 </table>
             </div>
 
-            <div class="pagination-info">@_taggedJobs.Count jobs with tag "@SearchTag"</div>
+            <Pager TotalCount="@_totalTaggedJobs" PageSize="@_pageSize" From="@_from"
+                   OnPageChanged="HandlePageChanged" />
         }
     }
 </div>
@@ -90,9 +92,18 @@
 
     private string[]? _allTags;
     private IReadOnlyList<string>? _taggedJobs;
+    private long _totalTaggedJobs;
+    private int _from = 0;
+    private int _pageSize = 20;
     private Dictionary<string, (string? jobName, string? state)> _jobDetails = new();
 
     protected override async Task OnParametersSetAsync()
+    {
+        _from = 0;
+        await LoadData();
+    }
+
+    private async Task LoadData()
     {
         await Task.Run(() =>
         {
@@ -100,7 +111,8 @@
 
             if (!string.IsNullOrEmpty(SearchTag))
             {
-                _taggedJobs = TagsReader.GetJobsByTag(SearchTag, 0, 50);
+                _totalTaggedJobs = TagsReader.GetJobCountByTag(SearchTag);
+                _taggedJobs = TagsReader.GetJobsByTag(SearchTag, _from, _pageSize);
                 _jobDetails.Clear();
 
                 foreach (var jobId in _taggedJobs)
@@ -116,5 +128,15 @@
         });
     }
 
+    private async Task HandlePageChanged((int From, int PageSize) args)
+    {
+        _from = args.From;
+        _pageSize = args.PageSize;
+        await LoadData();
+    }
+
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+
+    private string GetTagUrl(string tag) => Navigation.ToAbsoluteUri($"tags/{tag}").PathAndQuery;
+    private string GetTagsBaseUrl() => Navigation.ToAbsoluteUri("tags").PathAndQuery;
 }

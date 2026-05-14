@@ -4,6 +4,7 @@ using a2n.Hangfire.Dashboard.Hubs;
 using a2n.Hangfire.Dashboard.Services;
 using Hangfire;
 using Hangfire.Dashboard;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.AspNetCore.Builder;
@@ -94,6 +95,34 @@ public static class HangfireAlternateDashboardExtensions
 
         app.UseStaticFiles();
         app.UseAntiforgery();
+
+        // Authorization middleware for the dashboard
+        var options = app.Services.GetRequiredService<AlternateDashboardOptions>();
+        if (options.Authorization.Any())
+        {
+            app.Use(async (context, next) =>
+            {
+                // Only apply auth to dashboard routes (skip static files already served above)
+                var path = context.Request.Path.Value ?? "";
+                if (path.StartsWith("/hubs/") || path.StartsWith("/_blazor") || path == "/_framework/blazor.web.js"
+                    || path.StartsWith("/_content/") || path.StartsWith("/css/") || path.StartsWith("/js/"))
+                {
+                    await next();
+                    return;
+                }
+
+                foreach (var filter in options.Authorization)
+                {
+                    if (!filter.Authorize(context))
+                    {
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        return;
+                    }
+                }
+
+                await next();
+            });
+        }
 
         // SignalR hub for realtime metrics
         app.MapHub<DashboardHub>("/hubs/dashboard");

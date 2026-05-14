@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <div class="layout @(_sidebarCollapsed ? "layout--collapsed" : "")">
     <aside class="sidebar">
@@ -11,12 +13,12 @@
                 <button class="sidebar-toggle" @onclick="ToggleSidebar" title="Toggle sidebar">
                     @Icons.Menu
                 </button>
-                <h1 class="dashboard-title">Hangfire Dashboard</h1>
+                <h1 class="dashboard-title">@_pageTitle</h1>
             </div>
             <div class="header-right">
-                <div class="search-box">
+                <div class="search-box search-box--disabled" title="Search coming in v1.1">
                     <span class="search-icon">@Icons.Search</span>
-                    <input type="text" placeholder="Search jobs, tags..." />
+                    <input type="text" placeholder="Search (coming soon)" disabled />
                 </div>
                 <ThemeToggle />
             </div>
@@ -30,9 +32,61 @@
 
 @code {
     private bool _sidebarCollapsed = false;
+    private string _pageTitle = "Dashboard";
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        UpdatePageTitle(Navigation.Uri);
+    }
 
     private void ToggleSidebar()
     {
         _sidebarCollapsed = !_sidebarCollapsed;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        UpdatePageTitle(e.Location);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdatePageTitle(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.TrimEnd('/').ToLowerInvariant();
+
+        // Remove path base if present
+        var basePath = Navigation.BaseUri.TrimEnd('/');
+        if (!string.IsNullOrEmpty(basePath))
+        {
+            var baseUri = new Uri(basePath);
+            var baseAbsPath = baseUri.AbsolutePath.TrimEnd('/');
+            if (path.StartsWith(baseAbsPath))
+                path = path[baseAbsPath.Length..];
+        }
+
+        _pageTitle = path switch
+        {
+            "" or "/" => "Dashboard",
+            "/jobs/enqueued" => "Enqueued Jobs",
+            "/jobs/processing" => "Processing Jobs",
+            "/jobs/scheduled" => "Scheduled Jobs",
+            "/jobs/succeeded" => "Succeeded Jobs",
+            "/jobs/failed" => "Failed Jobs",
+            "/jobs/deleted" => "Deleted Jobs",
+            "/jobs/awaiting" => "Awaiting Jobs",
+            "/recurring" => "Recurring Jobs",
+            "/servers" => "Servers",
+            "/retries" => "Retries",
+            "/tags" => "Tags",
+            _ when path.StartsWith("/jobs/details/") => $"Job #{path.Split('/').Last()}",
+            _ when path.StartsWith("/recurring/") => "Recurring Job Editor",
+            _ => "Hangfire Dashboard"
+        };
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
     }
 }
