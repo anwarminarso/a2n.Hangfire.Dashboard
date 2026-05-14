@@ -1,0 +1,21 @@
+a2n.Hangfire.Dashboard — An open-source alternative dashboard for Hangfire.
+
+Copyright (c) 2024-2026 Anwar Minarso
+
+This project is licensed under the MIT License.
+See the LICENSE file for the full license text.
+
+This software includes or is inspired by the following open-source projects:
+
+- Hangfire (LGPL-3.0) — https://github.com/HangfireIO/Hangfire
+- Hangfire.Console (MIT) — https://github.com/pieceofsummer/Hangfire.Console
+- Hangfire.Tags (MIT) — https://github.com/face-it/Hangfire.Tags
+- Hangfire.RecurringJobAdmin (MIT) — https://github.com/nickvdyck/Hangfire.RecurringJobAdmin
+
+Third-party libraries bundled in this project:
+
+- Bootstrap 5.3.6 (MIT) — https://getbootstrap.com/
+- Bootstrap Icons (MIT) — https://icons.getbootstrap.com/
+- Chart.js (MIT) — https://www.chartjs.org/
+- chartjs-plugin-streaming (MIT) — https://github.com/nagix/chartjs-plugin-streaming
+- Moment.js (MIT) — https://momentjs.com/

@@ -1,0 +1,85 @@
+THIRD-PARTY SOFTWARE NOTICES
+
+This project incorporates material from the projects listed below.
+
+================================================================================
+
+Bootstrap 5.3.6
+Copyright (c) 2011-2024 The Bootstrap Authors
+Licensed under the MIT License
+https://github.com/twbs/bootstrap/blob/main/LICENSE
+
+================================================================================
+
+Bootstrap Icons
+Copyright (c) 2019-2024 The Bootstrap Authors
+Licensed under the MIT License
+https://github.com/twbs/icons/blob/main/LICENSE
+
+================================================================================
+
+Chart.js
+Copyright (c) 2014-2024 Chart.js Contributors
+Licensed under the MIT License
+https://github.com/chartjs/Chart.js/blob/master/LICENSE.md
+
+================================================================================
+
+chartjs-plugin-streaming
+Copyright (c) 2017-2024 Akihiko Kusanagi
+Licensed under the MIT License
+https://github.com/nagix/chartjs-plugin-streaming/blob/master/LICENSE.md
+
+================================================================================
+
+chartjs-adapter-moment
+Copyright (c) 2019-2024 Chart.js Contributors
+Licensed under the MIT License
+https://github.com/chartjs/chartjs-adapter-moment/blob/master/LICENSE.md
+
+================================================================================
+
+Moment.js
+Copyright (c) JS Foundation and other contributors
+Licensed under the MIT License
+https://github.com/moment/moment/blob/develop/LICENSE
+
+================================================================================
+
+Hangfire
+Copyright (c) 2013-2024 Hangfire OÜ
+Licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0)
+https://github.com/HangfireIO/Hangfire/blob/main/LICENSE.md
+
+Note: This project uses Hangfire as a runtime dependency via NuGet package
+reference. It does not modify or redistribute Hangfire source code.
+
+================================================================================
+
+Hangfire.Console (inspiration)
+Copyright (c) 2016 pieceofsummer
+Licensed under the MIT License
+https://github.com/pieceofsummer/Hangfire.Console/blob/master/LICENSE
+
+Note: The a2n.Hangfire.Console package is a clean-room reimplementation that
+provides API compatibility. It does not copy source code from the original.
+
+================================================================================
+
+Hangfire.Tags (inspiration)
+Copyright (c) 2019 face-it
+Licensed under the MIT License
+https://github.com/face-it/Hangfire.Tags/blob/master/LICENSE
+
+Note: The a2n.Hangfire.Tags package is a clean-room reimplementation that
+provides API compatibility. It does not copy source code from the original.
+
+================================================================================
+
+Hangfire.RecurringJobAdmin (inspiration)
+Copyright (c) 2019 nickvdyck
+Licensed under the MIT License
+https://github.com/nickvdyck/Hangfire.RecurringJobAdmin/blob/master/LICENSE
+
+Note: The recurring job admin functionality is a clean-room reimplementation
+inspired by the original project's feature set.
