@@ -1,5 +1,6 @@
 @page "/"
 @inject HangfireMonitorService Monitor
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Dashboard</PageTitle>
@@ -57,12 +58,12 @@
 
     <div class="charts-section">
         <div class="chart-card">
-            <h3>Realtime</h3>
-            <div class="chart-placeholder">Realtime chart — coming soon</div>
+            <h3>Realtime <span class="chart-legend"><span class="legend-dot legend-dot--success"></span>Succeeded <span class="legend-dot legend-dot--danger"></span>Failed</span></h3>
+            <canvas id="realtimeChart" style="width:100%; height:180px;"></canvas>
         </div>
         <div class="chart-card">
-            <h3>History (24h)</h3>
-            <div class="chart-placeholder">History chart — coming soon</div>
+            <h3>History (24h) <span class="chart-legend"><span class="legend-dot legend-dot--success"></span>Succeeded <span class="legend-dot legend-dot--danger"></span>Failed</span></h3>
+            <canvas id="historyChart" style="width:100%; height:180px;"></canvas>
         </div>
     </div>
 
@@ -106,7 +107,10 @@
 @code {
     private StatisticsDto? _stats;
     private IList<ServerDto>? _servers;
-    private System.Threading.Timer? _refreshTimer;
+    private Timer? _refreshTimer;
+    private long _prevSucceeded;
+    private long _prevFailed;
+    private bool _chartsInitialized;
 
     protected override async Task OnInitializedAsync()
     {
@@ -116,23 +120,60 @@
             _servers = Monitor.GetServers();
         });
 
-        // Auto-refresh every 3 seconds (leveraging Blazor Server's persistent connection)
-        _refreshTimer = new System.Threading.Timer(async _ =>
+        if (_stats is not null)
+        {
+            _prevSucceeded = _stats.Succeeded;
+            _prevFailed = _stats.Failed;
+        }
+
+        _refreshTimer = new Timer(async _ =>
         {
             try
             {
                 var stats = Monitor.GetStatistics();
                 var servers = Monitor.GetServers();
 
-                await InvokeAsync(() =>
+                var deltaSucceeded = Math.Max(0, stats.Succeeded - _prevSucceeded);
+                var deltaFailed = Math.Max(0, stats.Failed - _prevFailed);
+                _prevSucceeded = stats.Succeeded;
+                _prevFailed = stats.Failed;
+
+                await InvokeAsync(async () =>
                 {
                     _stats = stats;
                     _servers = servers;
                     StateHasChanged();
+
+                    if (_chartsInitialized)
+                    {
+                        await JS.InvokeVoidAsync("dashboardCharts.updateRealtimeChart", deltaSucceeded, deltaFailed);
+                    }
                 });
             }
-            catch { /* ignore refresh errors */ }
+            catch { }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _chartsInitialized = true;
+            await JS.InvokeVoidAsync("dashboardCharts.initRealtimeChart", "realtimeChart");
+
+            // Load history data
+            try
+            {
+                var hourlySucceeded = Monitor.GetHourlySucceededJobs();
+                var hourlyFailed = Monitor.GetHourlyFailedJobs();
+
+                var succeededValues = hourlySucceeded.Values.ToArray();
+                var failedValues = hourlyFailed.Values.ToArray();
+
+                await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues);
+            }
+            catch { }
+        }
     }
 
     public void Dispose()

@@ -136,6 +136,37 @@ public class HangfireMonitorService
     }
 
     /// <summary>
+    /// Create or update a recurring job.
+    /// </summary>
+    public void CreateOrUpdateRecurringJob(string jobId, string typeName, string methodName, string cron, string? queue = null, string? timeZoneId = null)
+    {
+        var manager = new RecurringJobManager(_storage);
+        var timeZone = string.IsNullOrEmpty(timeZoneId)
+            ? TimeZoneInfo.Utc
+            : TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+
+        // Find the type and method via reflection
+        var type = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(a => { try { return a.GetTypes(); } catch { return []; } })
+            .FirstOrDefault(t => t.FullName == typeName || t.Name == typeName);
+
+        if (type is null)
+            throw new ArgumentException($"Type '{typeName}' not found in loaded assemblies.");
+
+        var method = type.GetMethod(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        if (method is null)
+            throw new ArgumentException($"Method '{methodName}' not found on type '{typeName}'.");
+
+        var job = new global::Hangfire.Common.Job(type, method);
+
+        manager.AddOrUpdate(jobId, job, cron, new RecurringJobOptions
+        {
+            TimeZone = timeZone,
+            QueueName = queue ?? "default"
+        });
+    }
+
+    /// <summary>
     /// Trigger a recurring job immediately.
     /// </summary>
     public void TriggerRecurringJob(string recurringJobId)

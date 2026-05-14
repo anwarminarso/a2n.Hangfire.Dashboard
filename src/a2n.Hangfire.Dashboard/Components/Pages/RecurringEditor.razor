@@ -1,0 +1,136 @@
+@page "/recurring/create"
+@page "/recurring/edit/{JobId}"
+@inject HangfireMonitorService Monitor
+@inject NavigationManager Nav
+
+<PageTitle>@(_isEdit ? "Edit" : "Create") Recurring Job</PageTitle>
+
+<div class="page-container" style="max-width: 600px;">
+    <h2 class="page-title">@(_isEdit ? "Edit" : "Create") Recurring Job</h2>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert--danger">@_error</div>
+    }
+
+    <div class="section-card" style="padding: 20px;">
+        <div class="form-group">
+            <label class="form-label">Job ID</label>
+            <input class="form-input" @bind="_model.Id" placeholder="my-recurring-job" disabled="@_isEdit" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Class (Full Name)</label>
+            <input class="form-input" @bind="_model.TypeName" placeholder="MyApp.Jobs.MyJob" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Method</label>
+            <input class="form-input" @bind="_model.MethodName" placeholder="Execute" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Cron Expression</label>
+            <input class="form-input font-mono" @bind="_model.Cron" placeholder="*/5 * * * *" />
+            <span class="form-hint">Examples: */5 * * * * (every 5 min), 0 * * * * (hourly), 0 0 * * * (daily)</span>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Queue</label>
+            <input class="form-input" @bind="_model.Queue" placeholder="default" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Time Zone</label>
+            <select class="form-input" @bind="_model.TimeZoneId">
+                <option value="">UTC</option>
+                @foreach (var tz in _timeZones)
+                {
+                    <option value="@tz.Id">@tz.DisplayName</option>
+                }
+            </select>
+        </div>
+
+        <div class="form-actions">
+            <button class="btn btn--primary" @onclick="Save" disabled="@_saving">
+                @(_saving ? "Saving..." : (_isEdit ? "Update" : "Create"))
+            </button>
+            <a class="btn" href="/recurring">Cancel</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? JobId { get; set; }
+
+    private bool _isEdit => !string.IsNullOrEmpty(JobId);
+    private bool _saving;
+    private string? _error;
+    private RecurringJobModel _model = new();
+    private IReadOnlyCollection<TimeZoneInfo> _timeZones = TimeZoneInfo.GetSystemTimeZones();
+
+    protected override void OnInitialized()
+    {
+        if (_isEdit)
+        {
+            // Load existing job data
+            var jobs = Monitor.GetRecurringJobs();
+            var existing = jobs.FirstOrDefault(j => j.Id == JobId);
+            if (existing is not null)
+            {
+                _model.Id = existing.Id;
+                _model.TypeName = existing.Job?.Type.FullName ?? "";
+                _model.MethodName = existing.Job?.Method.Name ?? "";
+                _model.Cron = existing.Cron;
+                _model.Queue = existing.Queue ?? "default";
+                _model.TimeZoneId = existing.TimeZoneId ?? "";
+            }
+        }
+    }
+
+    private async Task Save()
+    {
+        _error = null;
+        _saving = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_model.Id))
+                throw new ArgumentException("Job ID is required.");
+            if (string.IsNullOrWhiteSpace(_model.TypeName))
+                throw new ArgumentException("Class name is required.");
+            if (string.IsNullOrWhiteSpace(_model.MethodName))
+                throw new ArgumentException("Method name is required.");
+            if (string.IsNullOrWhiteSpace(_model.Cron))
+                throw new ArgumentException("Cron expression is required.");
+
+            await Task.Run(() => Monitor.CreateOrUpdateRecurringJob(
+                _model.Id,
+                _model.TypeName,
+                _model.MethodName,
+                _model.Cron,
+                string.IsNullOrWhiteSpace(_model.Queue) ? null : _model.Queue,
+                string.IsNullOrWhiteSpace(_model.TimeZoneId) ? null : _model.TimeZoneId));
+
+            Nav.NavigateTo("/recurring");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private class RecurringJobModel
+    {
+        public string Id { get; set; } = "";
+        public string TypeName { get; set; } = "";
+        public string MethodName { get; set; } = "";
+        public string Cron { get; set; } = "";
+        public string Queue { get; set; } = "default";
+        public string TimeZoneId { get; set; } = "";
+    }
+}

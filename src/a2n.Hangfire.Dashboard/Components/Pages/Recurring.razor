@@ -21,7 +21,8 @@
     else
     {
         <div class="toolbar">
-            <button class="btn btn--primary" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
+            <a class="btn btn--primary" href="/recurring/create">➕ Create Job</a>
+            <button class="btn" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
                 ▶️ Trigger Now
             </button>
             <button class="btn btn--danger" disabled="@(!_selectedJobs.Any())" @onclick="RemoveSelected">
