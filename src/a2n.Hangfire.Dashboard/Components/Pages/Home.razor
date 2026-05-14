@@ -132,11 +132,13 @@ else
     <div class="col-12 col-lg-6">
         <div class="card">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
                     <h6 class="card-title mb-0">History Graph</h6>
                     <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-outline-secondary active" disabled>Day</button>
-                        <button type="button" class="btn btn-outline-secondary" disabled>Week</button>
+                        <button type="button" class="btn @GetHistoryBtnClass("day")"
+                                @onclick="OnDayClick">Day</button>
+                        <button type="button" class="btn @GetHistoryBtnClass("week")"
+                                @onclick="OnWeekClick">Week</button>
                     </div>
                 </div>
                 <div style="position: relative; height:40vh; width:100%">
@@ -195,6 +197,13 @@ else
     private long _prevDeleted;
     private long _prevFailed;
     private bool _chartsInitialized;
+    private string _historyPeriod = "day";
+
+    private string GetHistoryBtnClass(string period) =>
+        _historyPeriod == period ? "btn-secondary" : "btn-outline-secondary";
+
+    private Task OnDayClick() => SwitchHistoryPeriod("day");
+    private Task OnWeekClick() => SwitchHistoryPeriod("week");
 
     protected override async Task OnInitializedAsync()
     {
@@ -265,6 +274,33 @@ else
     public void Dispose()
     {
         _refreshTimer?.Dispose();
+    }
+
+    private async Task SwitchHistoryPeriod(string period)
+    {
+        if (_historyPeriod == period) return;
+        _historyPeriod = period;
+
+        try
+        {
+            if (period == "week")
+            {
+                var dailySucceeded = Monitor.GetSucceededByDatesCount();
+                var dailyFailed = Monitor.GetFailedByDatesCount();
+                var succeededValues = dailySucceeded.Values.ToArray();
+                var failedValues = dailyFailed.Values.ToArray();
+                await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues, "week");
+            }
+            else
+            {
+                var hourlySucceeded = Monitor.GetHourlySucceededJobs();
+                var hourlyFailed = Monitor.GetHourlyFailedJobs();
+                var succeededValues = hourlySucceeded.Values.ToArray();
+                var failedValues = hourlyFailed.Values.ToArray();
+                await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues, "day");
+            }
+        }
+        catch { }
     }
 
     private static string FormatCount(long count)

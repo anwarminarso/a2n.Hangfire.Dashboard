@@ -139,7 +139,7 @@
             this._realtimeChart.update();
         },
 
-        initHistoryChart: function (canvasId, succeededData, failedData) {
+        initHistoryChart: function (canvasId, succeededData, failedData, period) {
             var canvas = document.getElementById(canvasId);
             if (!canvas) return;
 
@@ -151,15 +151,22 @@
             colorScheme = getColorScheme();
             var colors = COLORS[colorScheme];
 
+            period = period || 'day';
+            var isWeek = period === 'week';
+            var timeOptions = isWeek
+                ? { unit: 'day', tooltipFormat: 'LL', displayFormats: { day: 'll' } }
+                : { unit: 'hour', tooltipFormat: 'LLL', displayFormats: { hour: 'LT', day: 'll' } };
+
             // Convert array data to {x, y} format with timestamps
             var now = Date.now();
-            var hoursCount = succeededData ? succeededData.length : 24;
+            var count = succeededData ? succeededData.length : (isWeek ? 7 : 24);
+            var interval = isWeek ? 86400000 : 3600000;
             var succeededPoints = [];
             var failedPoints = [];
             var deletedPoints = [];
 
-            for (var i = 0; i < hoursCount; i++) {
-                var timestamp = now - (hoursCount - 1 - i) * 3600000;
+            for (var i = 0; i < count; i++) {
+                var timestamp = now - (count - 1 - i) * interval;
                 succeededPoints.push({ x: timestamp, y: succeededData ? succeededData[i] : 0 });
                 failedPoints.push({ x: timestamp, y: failedData ? failedData[i] : 0 });
                 deletedPoints.push({ x: timestamp, y: 0 });
@@ -199,11 +206,7 @@
                     scales: {
                         x: {
                             type: 'time',
-                            time: {
-                                unit: 'hour',
-                                tooltipFormat: 'LLL',
-                                displayFormats: { hour: 'LT', day: 'll' }
-                            },
+                            time: timeOptions,
                             grid: { color: colors.cartesianColor },
                             ticks: { maxRotation: 0 }
                         },
