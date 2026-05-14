@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
+    <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+    <PackageReference Include="Hangfire.Console" Version="1.4.*" />
+    <PackageReference Include="FaceIT.Hangfire.Tags" Version="1.9.*" />
+    <PackageReference Include="Hangfire.Tags.MemoryStorage" Version="0.2.0" />
+  </ItemGroup>
+
+</Project>
