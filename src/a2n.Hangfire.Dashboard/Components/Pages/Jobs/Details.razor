@@ -20,6 +20,9 @@
     {
         <h2 class="page-title">@GetJobTitle()</h2>
 
+        @* Tags *@
+        <TagsViewer JobId="@JobId" />
+
         @* Job Code Snippet *@
         @if (_job.Job is not null)
         {
@@ -55,6 +58,12 @@
             <button class="btn btn--primary" @onclick="Requeue">🔄 Requeue</button>
             <button class="btn btn--danger" @onclick="Delete">🗑️ Delete</button>
         </div>
+
+        @* Console Output *@
+        @if (_processingStartedAt.HasValue)
+        {
+            <ConsoleViewer JobId="@JobId" StartedAt="@_processingStartedAt" />
+        }
 
         @* State History *@
         <h3 class="section-title">State History</h3>
@@ -93,6 +102,7 @@
 
     private JobDetailsDto? _job;
     private bool _notFound;
+    private DateTime? _processingStartedAt;
 
     protected override async Task OnInitializedAsync()
     {
@@ -100,6 +110,18 @@
         {
             _job = Monitor.GetJobDetails(JobId);
             _notFound = _job is null;
+
+            // Find the most recent Processing state to get StartedAt for console
+            if (_job?.History is not null)
+            {
+                var processingState = _job.History
+                    .FirstOrDefault(h => h.StateName == "Processing" && h.Data.ContainsKey("StartedAt"));
+                if (processingState is not null)
+                {
+                    _processingStartedAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(
+                        processingState.Data["StartedAt"]);
+                }
+            }
         });
     }
 

@@ -33,7 +33,7 @@
                     @foreach (var job in _jobs)
                     {
                         <tr>
-                            <td class="font-mono">@ShortenId(job.Key)</td>
+                            <td class="font-mono"><a href="/jobs/details/@job.Key" class="job-id-link">@ShortenId(job.Key)</a></td>
                             <td class="font-mono">@(job.Value?.ServerId ?? "N/A")</td>
                             <td>@GetJobName(job.Value)</td>
                             <td>

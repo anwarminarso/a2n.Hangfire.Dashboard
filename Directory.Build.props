@@ -1,0 +1,6 @@
+<Project>
+  <ItemGroup>
+    <!-- Force Newtonsoft.Json to a non-vulnerable version (transitive from Hangfire.Core) -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>

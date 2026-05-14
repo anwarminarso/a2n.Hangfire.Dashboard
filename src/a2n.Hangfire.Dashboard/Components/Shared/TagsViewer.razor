@@ -1,0 +1,26 @@
+@using a2n.Hangfire.Dashboard.Services
+@inject TagsDataReader TagsReader
+
+@if (_tags is not null && _tags.Length > 0)
+{
+    <div class="tags-viewer">
+        @foreach (var tag in _tags)
+        {
+            <a class="tag-badge" href="/tags/@tag">@tag</a>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string? JobId { get; set; }
+
+    private string[]? _tags;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (JobId is not null)
+        {
+            await Task.Run(() => { _tags = TagsReader.GetJobTags(JobId); });
+        }
+    }
+}

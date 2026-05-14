@@ -40,6 +40,18 @@ public static class HangfireAlternateDashboardExtensions
             return new HangfireMonitorService(storage);
         });
 
+        services.AddScoped<ConsoleDataReader>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            return new ConsoleDataReader(storage);
+        });
+
+        services.AddScoped<TagsDataReader>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            return new TagsDataReader(storage);
+        });
+
         services.AddHostedService<MetricsBroadcastService>();
 
         return services;

@@ -1,3 +1,6 @@
+@inject HangfireMonitorService Monitor
+@implements IDisposable
+
 <nav class="nav-menu">
     <div class="nav-brand">
         <span class="brand-icon">@Icons.Flame</span>
@@ -17,14 +20,26 @@
         <NavLink class="nav-item" href="jobs/enqueued">
             <span class="nav-icon">@Icons.Inbox</span>
             <span class="nav-label">Enqueued</span>
+            @if (_stats?.Enqueued > 0)
+            {
+                <span class="nav-badge nav-badge--info">@_stats.Enqueued</span>
+            }
         </NavLink>
         <NavLink class="nav-item" href="jobs/processing">
             <span class="nav-icon">@Icons.Cog</span>
             <span class="nav-label">Processing</span>
+            @if (_stats?.Processing > 0)
+            {
+                <span class="nav-badge nav-badge--warning">@_stats.Processing</span>
+            }
         </NavLink>
         <NavLink class="nav-item" href="jobs/scheduled">
             <span class="nav-icon">@Icons.Clock</span>
             <span class="nav-label">Scheduled</span>
+            @if (_stats?.Scheduled > 0)
+            {
+                <span class="nav-badge">@_stats.Scheduled</span>
+            }
         </NavLink>
         <NavLink class="nav-item" href="jobs/succeeded">
             <span class="nav-icon">@Icons.CheckCircle</span>
@@ -33,6 +48,10 @@
         <NavLink class="nav-item" href="jobs/failed">
             <span class="nav-icon">@Icons.XCircle</span>
             <span class="nav-label">Failed</span>
+            @if (_stats?.Failed > 0)
+            {
+                <span class="nav-badge nav-badge--danger">@_stats.Failed</span>
+            }
         </NavLink>
         <NavLink class="nav-item" href="jobs/deleted">
             <span class="nav-icon">@Icons.Trash2</span>
@@ -49,10 +68,18 @@
         <NavLink class="nav-item" href="recurring">
             <span class="nav-icon">@Icons.Repeat</span>
             <span class="nav-label">Recurring</span>
+            @if (_stats?.Recurring > 0)
+            {
+                <span class="nav-badge">@_stats.Recurring</span>
+            }
         </NavLink>
         <NavLink class="nav-item" href="servers">
             <span class="nav-icon">@Icons.Server</span>
             <span class="nav-label">Servers</span>
+            @if (_stats?.Servers > 0)
+            {
+                <span class="nav-badge">@_stats.Servers</span>
+            }
         </NavLink>
         <NavLink class="nav-item" href="retries">
             <span class="nav-icon">@Icons.RotateCcw</span>
@@ -64,3 +91,37 @@
         </NavLink>
     </div>
 </nav>
+
+@code {
+    private StatisticsDto? _stats;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                var stats = Monitor.GetStatistics();
+                await InvokeAsync(() =>
+                {
+                    _stats = stats;
+                    StateHasChanged();
+                });
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task LoadStats()
+    {
+        await Task.Run(() => { _stats = Monitor.GetStatistics(); });
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

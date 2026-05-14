@@ -34,4 +34,9 @@ public class TagsOptions
     /// How to show tags in the dashboard.
     /// </summary>
     public TagsListStyle TagsListStyle { get; set; } = TagsListStyle.LinkButton;
+
+    /// <summary>
+    /// Specifies how tags should be cleaned before storing.
+    /// </summary>
+    public Clean Clean { get; set; } = Clean.Default;
 }

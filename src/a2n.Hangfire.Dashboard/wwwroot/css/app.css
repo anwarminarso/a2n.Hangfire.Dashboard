@@ -966,3 +966,179 @@ html, body {
     color: var(--color-primary);
     box-shadow: var(--shadow-sm);
 }
+
+
+/* ===== Console Viewer ===== */
+.console-viewer {
+    background-color: #1a1d2e;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin: 16px 0;
+    border: 1px solid var(--color-border);
+}
+
+.console-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background-color: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.console-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #a0a3b1;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.console-count {
+    font-size: 11px;
+    color: #6b7280;
+}
+
+.console-body {
+    padding: 12px 16px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.console-line {
+    display: flex;
+    gap: 12px;
+    color: #e5e7eb;
+    padding: 1px 0;
+}
+
+.console-time {
+    color: #00aad7;
+    min-width: 60px;
+    flex-shrink: 0;
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.console-text {
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.console-line--progress {
+    margin: 4px 0;
+}
+
+.console-progress {
+    flex: 1;
+    position: relative;
+    height: 18px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.console-progress-bar {
+    height: 100%;
+    background-color: #6366f1;
+    transition: width 0.3s ease;
+    border-radius: 3px;
+}
+
+.console-progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 10px;
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Console scrollbar */
+.console-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.console-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.console-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+}
+
+
+/* ===== Tags Viewer ===== */
+.tags-viewer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.tag-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 12px;
+    background-color: var(--color-primary);
+    color: white;
+    text-decoration: none;
+    transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.tag-badge:hover {
+    background-color: var(--color-primary-hover);
+    transform: translateY(-1px);
+}
+
+
+/* ===== Job ID Link ===== */
+.job-id-link {
+    color: var(--color-primary);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.job-id-link:hover {
+    text-decoration: underline;
+}
+
+
+/* ===== Nav Badge ===== */
+.nav-badge {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    padding: 0 5px;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--color-text-sidebar);
+}
+
+.nav-badge--info {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+}
+
+.nav-badge--warning {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #fcd34d;
+}
+
+.nav-badge--danger {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}

@@ -49,7 +49,7 @@
                                 <input type="checkbox" checked="@IsSelected(job.Key)"
                                        @onchange="() => ToggleJob(job.Key)" />
                             </td>
-                            <td class="font-mono">@ShortenId(job.Key)</td>
+                            <td class="font-mono"><a href="/jobs/details/@job.Key" class="job-id-link">@ShortenId(job.Key)</a></td>
                             <td>@GetJobName(job.Value)</td>
                             <td class="text-danger">@TruncateReason(job.Value?.Reason)</td>
                             <td>

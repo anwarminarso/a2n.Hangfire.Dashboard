@@ -1,0 +1,71 @@
+@using a2n.Hangfire.Dashboard.Services
+@inject ConsoleDataReader ConsoleReader
+
+@if (_lines is not null && _lines.Count > 0)
+{
+    <div class="console-viewer">
+        <div class="console-header">
+            <span class="console-title">Console Output</span>
+            <span class="console-count">@_lines.Count lines</span>
+        </div>
+        <div class="console-body">
+            @foreach (var line in _lines)
+            {
+                @if (line.IsProgressBar)
+                {
+                    <div class="console-line console-line--progress">
+                        <span class="console-time">@FormatTimeOffset(line.TimeOffset)</span>
+                        <div class="console-progress">
+                            <div class="console-progress-bar" style="width: @(line.ProgressValue ?? 0)%"></div>
+                            <span class="console-progress-text">
+                                @if (!string.IsNullOrEmpty(line.ProgressName))
+                                {
+                                    @line.ProgressName @(": ")
+                                }
+                                @($"{line.ProgressValue:F0}%")
+                            </span>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="console-line" style="@GetLineStyle(line)">
+                        <span class="console-time">@FormatTimeOffset(line.TimeOffset)</span>
+                        <span class="console-text">@line.Message</span>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string? JobId { get; set; }
+    [Parameter] public DateTime? StartedAt { get; set; }
+
+    private IReadOnlyList<ConsoleLineDto>? _lines;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (JobId is not null && StartedAt.HasValue)
+        {
+            await Task.Run(() =>
+            {
+                _lines = ConsoleReader.GetLines(JobId, StartedAt.Value);
+            });
+        }
+    }
+
+    private static string FormatTimeOffset(double seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.TotalMinutes >= 1
+            ? $"+{(int)ts.TotalMinutes}m{ts.Seconds:D2}s"
+            : $"+{ts.TotalSeconds:F1}s";
+    }
+
+    private static string? GetLineStyle(ConsoleLineDto line)
+    {
+        return line.TextColor is not null ? $"color: {line.TextColor}" : null;
+    }
+}
