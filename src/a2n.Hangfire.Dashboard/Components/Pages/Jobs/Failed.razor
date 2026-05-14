@@ -21,13 +21,16 @@ else if (_jobs.Count == 0)
 }
 else
 {
-    <div class="d-flex gap-2 mb-2">
-        <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
-            <i class="bi bi-arrow-clockwise"></i> Requeue Selected
-        </button>
-        <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
-            <i class="bi bi-trash"></i> Delete Selected
-        </button>
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
+                <i class="bi bi-arrow-repeat"></i> Requeue
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                <i class="bi bi-x-lg"></i> Delete
+            </button>
+        </div>
+        <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
     </div>
 
     <div class="card">
@@ -37,12 +40,11 @@ else
                     <thead>
                         <tr>
                             <th style="width: 40px;">
-                                <input type="checkbox" class="form-check-input" @onchange="ToggleAll" />
+                                <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" />
                             </th>
                             <th>Id</th>
                             <th>Job</th>
-                            <th>Reason</th>
-                            <th>Failed</th>
+                            <th class="text-end">Failed</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -54,9 +56,14 @@ else
                                            @onchange="() => ToggleJob(job.Key)" />
                                 </td>
                                 <td class="font-monospace"><a href="/jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                <td>@GetJobName(job.Value)</td>
-                                <td class="text-danger">@TruncateReason(job.Value?.Reason)</td>
                                 <td>
+                                    <div>@GetJobName(job.Value)</div>
+                                    @if (!string.IsNullOrEmpty(job.Value?.Reason))
+                                    {
+                                        <div class="text-muted small">@TruncateReason(job.Value.Reason)</div>
+                                    }
+                                </td>
+                                <td class="text-end">
                                     @if (job.Value?.FailedAt.HasValue == true)
                                     {
                                         <RelativeTime UtcTime="@job.Value.FailedAt.Value" />
@@ -67,7 +74,7 @@ else
                             {
                                 <tr>
                                     <td></td>
-                                    <td colspan="4">
+                                    <td colspan="3">
                                         <div class="alert alert-danger py-2 px-3 mb-0 small">
                                             <strong>@job.Value.ExceptionType</strong>
                                             <p class="mb-0 mt-1">@job.Value.ExceptionMessage</p>
@@ -92,6 +99,7 @@ else
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
+    private bool _selectAll;
     private Timer _refreshTimer;
 
     protected override async Task OnInitializedAsync()
@@ -132,6 +140,16 @@ else
         _from = args.From;
         _pageSize = args.PageSize;
         _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
+    }
+
+    private async Task HandlePageSizeChanged(int newSize)
+    {
+        _pageSize = newSize;
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
         await LoadData();
     }
 
@@ -139,23 +157,30 @@ else
 
     private void ToggleJob(string jobId)
     {
-        if (!_selectedJobs.Remove(jobId))
-            _selectedJobs.Add(jobId);
+        if (!_selectedJobs.Remove(jobId)) _selectedJobs.Add(jobId);
+        _selectAll = _jobs != null && _selectedJobs.Count == _jobs.Count;
     }
 
     private void ToggleAll(ChangeEventArgs e)
     {
         if (_jobs is null) return;
         if ((bool)(e.Value ?? false))
+        {
             _selectedJobs = new HashSet<string>(_jobs.Select(j => j.Key));
+            _selectAll = true;
+        }
         else
+        {
             _selectedJobs.Clear();
+            _selectAll = false;
+        }
     }
 
     private async Task RequeueSelected()
     {
         await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
         _selectedJobs.Clear();
+        _selectAll = false;
         await LoadData();
     }
 
@@ -163,6 +188,7 @@ else
     {
         await Task.Run(() => Monitor.DeleteJobs(_selectedJobs));
         _selectedJobs.Clear();
+        _selectAll = false;
         await LoadData();
     }
 

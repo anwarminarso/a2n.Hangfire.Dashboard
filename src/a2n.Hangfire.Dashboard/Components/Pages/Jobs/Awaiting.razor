@@ -21,13 +21,16 @@
     }
     else
     {
-        <div class="d-flex gap-2 mb-2">
-            <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
-                <i class="bi bi-play-fill"></i> Enqueue
-            </button>
-            <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
-                <i class="bi bi-trash"></i> Delete
-            </button>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
+                    <i class="bi bi-arrow-repeat"></i> Enqueue
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                    <i class="bi bi-x-lg"></i> Delete
+                </button>
+            </div>
+            <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
         </div>
 
         <div class="card">
@@ -36,11 +39,12 @@
                     <table class="table table-hover table-sm mb-0">
                         <thead>
                             <tr>
-                                <th style="width: 2rem;"><input type="checkbox" class="form-check-input" @onchange="ToggleAll" /></th>
+                                <th style="width: 40px;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" /></th>
                                 <th>Id</th>
                                 <th>Job</th>
+                                <th>Options</th>
                                 <th>Parent</th>
-                                <th>State</th>
+                                <th class="text-end">Since</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -55,17 +59,45 @@
                                         <a href="/jobs/details/@jobId">@ShortenId(jobId)</a>
                                     </td>
                                     <td>@(info.jobName ?? "Unknown")</td>
-                                    <td class="font-monospace">
-                                        @if (!string.IsNullOrEmpty(info.parentId))
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(info.options))
                                         {
-                                            <a href="/jobs/details/@info.parentId">@ShortenId(info.parentId)</a>
+                                            <code>@info.options</code>
                                         }
                                         else
                                         {
-                                            <span class="text-body-secondary">—</span>
+                                            <em class="text-body-secondary">N/A</em>
                                         }
                                     </td>
-                                    <td><span class="badge bg-secondary">@(info.state ?? "Awaiting")</span></td>
+                                    <td class="font-monospace">
+                                        @if (!string.IsNullOrEmpty(info.parentId))
+                                        {
+                                            <a href="/jobs/details/@info.parentId">
+                                                @if (!string.IsNullOrEmpty(info.parentState))
+                                                {
+                                                    <span class="badge @GetParentStateBadgeClass(info.parentState)">@ShortenId(info.parentId)</span>
+                                                }
+                                                else
+                                                {
+                                                    @ShortenId(info.parentId)
+                                                }
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <em class="text-body-secondary">N/A</em>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (info.createdAt.HasValue)
+                                        {
+                                            <RelativeTime UtcTime="@info.createdAt.Value" />
+                                        }
+                                        else
+                                        {
+                                            <em class="text-body-secondary">N/A</em>
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -74,14 +106,19 @@
             </div>
         </div>
 
-        <div class="text-body-secondary mt-2">@_jobIds.Count awaiting jobs</div>
+        <Pager TotalCount="@_totalCount" PageSize="@_pageSize" From="@_from"
+               OnPageChanged="HandlePageChanged" />
     }
 </div>
 
 @code {
     private IReadOnlyList<string> _jobIds;
-    private Dictionary<string, (string jobName, string state, string parentId)> _jobInfo = new();
+    private Dictionary<string, (string jobName, string options, string parentId, string parentState, DateTime? createdAt)> _jobInfo = new();
     private HashSet<string> _selectedJobs = new();
+    private bool _selectAll;
+    private long _totalCount;
+    private int _from = 0;
+    private int _pageSize = 20;
     private Timer _refreshTimer;
 
     protected override async Task OnInitializedAsync()
@@ -92,8 +129,8 @@
         {
             try
             {
-                var newIds = Monitor.GetSetJobIds("awaiting", 0, 50);
-                if (newIds.Count != (_jobIds?.Count ?? 0))
+                var count = Monitor.GetSetCount("awaiting");
+                if (count != _totalCount)
                 {
                     await LoadData();
                     await InvokeAsync(StateHasChanged);
@@ -107,7 +144,8 @@
     {
         await Task.Run(() =>
         {
-            _jobIds = Monitor.GetSetJobIds("awaiting", 0, 50);
+            _totalCount = Monitor.GetSetCount("awaiting");
+            _jobIds = Monitor.GetSetJobIds("awaiting", _from, _pageSize);
             _jobInfo.Clear();
             if (_jobIds is not null)
             {
@@ -115,28 +153,79 @@
                 {
                     var detail = Monitor.GetJobDetails(jobId);
                     var jobName = detail?.Job is not null ? $"{detail.Job.Type.Name}.{detail.Job.Method.Name}" : null;
-                    var state = detail?.History.FirstOrDefault()?.StateName;
                     string parentId = null;
-                    detail?.Properties?.TryGetValue("ParentId", out parentId);
-                    _jobInfo[jobId] = (jobName, state, parentId);
+                    string parentState = null;
+                    string options = null;
+                    DateTime? createdAt = detail?.CreatedAt;
+
+                    // Get state data for Options and ParentId
+                    var currentState = detail?.History?.FirstOrDefault();
+                    if (currentState?.Data != null)
+                    {
+                        currentState.Data.TryGetValue("Options", out options);
+                        if (currentState.Data.TryGetValue("ParentId", out parentId) && !string.IsNullOrEmpty(parentId))
+                        {
+                            var parentDetail = Monitor.GetJobDetails(parentId);
+                            parentState = parentDetail?.History?.FirstOrDefault()?.StateName;
+                        }
+                    }
+
+                    // Fallback: check Properties
+                    if (string.IsNullOrEmpty(parentId))
+                    {
+                        detail?.Properties?.TryGetValue("ParentId", out parentId);
+                    }
+
+                    _jobInfo[jobId] = (jobName, options, parentId, parentState, createdAt);
                 }
             }
         });
     }
 
+    private async Task HandlePageChanged((int From, int PageSize) args)
+    {
+        _from = args.From;
+        _pageSize = args.PageSize;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
+    }
+
+    private async Task HandlePageSizeChanged(int newSize)
+    {
+        _pageSize = newSize;
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
+    }
+
     private bool IsSelected(string id) => _selectedJobs.Contains(id);
-    private void ToggleJob(string id) { if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id); }
+    private void ToggleJob(string id)
+    {
+        if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id);
+        _selectAll = _jobIds != null && _selectedJobs.Count == _jobIds.Count;
+    }
     private void ToggleAll(ChangeEventArgs e)
     {
         if (_jobIds is null) return;
-        if ((bool)(e.Value ?? false)) _selectedJobs = new(_jobIds);
-        else _selectedJobs.Clear();
+        if ((bool)(e.Value ?? false))
+        {
+            _selectedJobs = new(_jobIds);
+            _selectAll = true;
+        }
+        else
+        {
+            _selectedJobs.Clear();
+            _selectAll = false;
+        }
     }
 
     private async Task EnqueueSelected()
     {
         await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
         _selectedJobs.Clear();
+        _selectAll = false;
         await LoadData();
     }
 
@@ -144,10 +233,21 @@
     {
         await Task.Run(() => Monitor.DeleteJobs(_selectedJobs));
         _selectedJobs.Clear();
+        _selectAll = false;
         await LoadData();
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+
+    private static string GetParentStateBadgeClass(string state) => state switch
+    {
+        "Succeeded" => "bg-success",
+        "Failed" => "bg-danger",
+        "Processing" => "bg-primary",
+        "Enqueued" => "bg-info",
+        "Scheduled" => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
 
     public void Dispose()
     {

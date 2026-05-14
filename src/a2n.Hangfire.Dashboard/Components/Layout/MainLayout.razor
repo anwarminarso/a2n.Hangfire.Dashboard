@@ -5,15 +5,15 @@
 
 <div class="d-flex vh-100 overflow-hidden">
     <!-- Sidebar: fixed di desktop, hidden di mobile -->
-    <aside class="d-none d-lg-flex flex-column flex-shrink-0 bg-dark"
+    <aside class="d-none d-lg-flex flex-column flex-shrink-0 hf-sidebar"
            style="width: 240px; overflow-y: auto;" id="sidebar">
         <NavMenu />
     </aside>
 
     <!-- Offcanvas sidebar untuk mobile -->
-    <div class="offcanvas offcanvas-start bg-dark" tabindex="-1" id="mobileSidebar">
+    <div class="offcanvas offcanvas-start hf-sidebar" tabindex="-1" id="mobileSidebar">
         <div class="offcanvas-header">
-            <h5 class="offcanvas-title text-white">Hangfire</h5>
+            <h5 class="offcanvas-title" style="color: var(--hf-nav-brand-color);">Hangfire</h5>
             <button type="button" class="btn-close btn-close-white"
                     data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>

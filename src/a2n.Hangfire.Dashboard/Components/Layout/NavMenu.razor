@@ -2,112 +2,102 @@
 @inject TagsDataReader TagsReader
 @implements IDisposable
 
-<nav class="nav flex-column p-2">
+<nav class="hf-nav">
     <!-- Brand -->
-    <div class="d-flex align-items-center gap-2 px-3 py-2 mb-3">
-        <i class="bi bi-fire text-warning fs-5"></i>
-        <span class="fw-bold text-white">Hangfire</span>
+    <div class="hf-nav-brand">
+        <div class="hf-nav-brand-icon">
+            <i class="bi bi-fire"></i>
+        </div>
+        <span class="hf-nav-brand-text">Hangfire</span>
     </div>
 
-    <!-- Section: Overview -->
-    <small class="text-uppercase text-secondary px-3 mb-1 fw-semibold"
-           style="font-size: 0.65rem; letter-spacing: 0.05em;">Overview</small>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="" Match="NavLinkMatch.All">
-        <i class="bi bi-grid"></i>
-        <span>Dashboard</span>
-    </NavLink>
+    <!-- Dashboard (standalone, no group label) -->
+    <div class="hf-nav-section">
+        <NavLink class="hf-nav-item" href="" Match="NavLinkMatch.All">
+            <i class="bi bi-grid hf-nav-icon"></i>
+            <span>Dashboard</span>
+        </NavLink>
+    </div>
 
-    <!-- Section: Jobs -->
-    <small class="text-uppercase text-secondary px-3 mt-3 mb-1 fw-semibold"
-           style="font-size: 0.65rem; letter-spacing: 0.05em;">Jobs</small>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="jobs/enqueued">
-        <i class="bi bi-inbox"></i>
-        <span>Enqueued</span>
-        @if (_stats?.Enqueued > 0)
-        {
-            <span class="badge bg-primary ms-auto">@_stats.Enqueued</span>
-        }
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="jobs/processing">
-        <i class="bi bi-gear"></i>
-        <span>Processing</span>
-        @if (_stats?.Processing > 0)
-        {
-            <span class="badge bg-primary ms-auto">@_stats.Processing</span>
-        }
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="jobs/scheduled">
-        <i class="bi bi-clock"></i>
-        <span>Scheduled</span>
-        @if (_stats?.Scheduled > 0)
-        {
-            <span class="badge bg-primary ms-auto">@_stats.Scheduled</span>
-        }
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="jobs/succeeded">
-        <i class="bi bi-check-circle"></i>
-        <span>Succeeded</span>
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="jobs/failed">
-        <i class="bi bi-x-circle"></i>
-        <span>Failed</span>
-        @if (_stats?.Failed > 0)
-        {
-            <span class="badge bg-primary ms-auto">@_stats.Failed</span>
-        }
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="jobs/deleted">
-        <i class="bi bi-trash"></i>
-        <span>Deleted</span>
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="jobs/awaiting">
-        <i class="bi bi-hourglass-split"></i>
-        <span>Awaiting</span>
-    </NavLink>
+    <!-- Jobs group (spacing-only separation) -->
+    <div class="hf-nav-section">
+        <NavLink class="hf-nav-item" href="jobs/enqueued">
+            <i class="bi bi-inbox hf-nav-icon"></i>
+            <span>Enqueued</span>
+            @if (_stats?.Enqueued > 0)
+            {
+                <span class="hf-nav-counter">@_stats.Enqueued</span>
+            }
+        </NavLink>
+        <NavLink class="hf-nav-item" href="jobs/processing">
+            <i class="bi bi-gear hf-nav-icon"></i>
+            <span>Processing</span>
+            @if (_stats?.Processing > 0)
+            {
+                <span class="hf-nav-counter">@_stats.Processing</span>
+            }
+        </NavLink>
+        <NavLink class="hf-nav-item" href="jobs/scheduled">
+            <i class="bi bi-clock hf-nav-icon"></i>
+            <span>Scheduled</span>
+            @if (_stats?.Scheduled > 0)
+            {
+                <span class="hf-nav-counter">@_stats.Scheduled</span>
+            }
+        </NavLink>
+        <NavLink class="hf-nav-item" href="jobs/succeeded">
+            <i class="bi bi-check-circle hf-nav-icon"></i>
+            <span>Succeeded</span>
+        </NavLink>
+        <NavLink class="hf-nav-item" href="jobs/failed">
+            <i class="bi bi-x-circle hf-nav-icon"></i>
+            <span>Failed</span>
+            @if (_stats?.Failed > 0)
+            {
+                <span class="hf-nav-counter hf-nav-counter--alert">@_stats.Failed</span>
+            }
+        </NavLink>
+        <NavLink class="hf-nav-item" href="jobs/deleted">
+            <i class="bi bi-trash hf-nav-icon"></i>
+            <span>Deleted</span>
+        </NavLink>
+        <NavLink class="hf-nav-item" href="jobs/awaiting">
+            <i class="bi bi-hourglass-split hf-nav-icon"></i>
+            <span>Awaiting</span>
+        </NavLink>
+    </div>
 
-    <!-- Section: Management -->
-    <small class="text-uppercase text-secondary px-3 mt-3 mb-1 fw-semibold"
-           style="font-size: 0.65rem; letter-spacing: 0.05em;">Management</small>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="recurring">
-        <i class="bi bi-arrow-repeat"></i>
-        <span>Recurring</span>
-        @if (_stats?.Recurring > 0)
-        {
-            <span class="badge bg-primary ms-auto">@_stats.Recurring</span>
-        }
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="servers">
-        <i class="bi bi-hdd-stack"></i>
-        <span>Servers</span>
-        @if (_stats?.Servers > 0)
-        {
-            <span class="badge bg-primary ms-auto">@_stats.Servers</span>
-        }
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="retries">
-        <i class="bi bi-arrow-counterclockwise"></i>
-        <span>Retries</span>
-    </NavLink>
-    <NavLink class="nav-link d-flex align-items-center gap-2 rounded px-3 py-2 text-secondary-emphasis"
-             href="tags">
-        <i class="bi bi-tag"></i>
-        <span>Tags</span>
-        @if (_tagsCount > 0)
-        {
-            <span class="badge bg-primary ms-auto">@_tagsCount</span>
-        }
-    </NavLink>
+    <!-- Management group (spacing-only separation) -->
+    <div class="hf-nav-section">
+        <NavLink class="hf-nav-item" href="recurring">
+            <i class="bi bi-arrow-repeat hf-nav-icon"></i>
+            <span>Recurring</span>
+            @if (_stats?.Recurring > 0)
+            {
+                <span class="hf-nav-counter">@_stats.Recurring</span>
+            }
+        </NavLink>
+        <NavLink class="hf-nav-item" href="servers">
+            <i class="bi bi-hdd-stack hf-nav-icon"></i>
+            <span>Servers</span>
+            @if (_stats?.Servers > 0)
+            {
+                <span class="hf-nav-counter">@_stats.Servers</span>
+            }
+        </NavLink>
+        <NavLink class="hf-nav-item" href="retries">
+            <i class="bi bi-arrow-counterclockwise hf-nav-icon"></i>
+            <span>Retries</span>
+        </NavLink>
+        <NavLink class="hf-nav-item" href="tags">
+            <i class="bi bi-tag hf-nav-icon"></i>
+            <span>Tags</span>
+            @if (_tagsCount > 0)
+            {
+                <span class="hf-nav-counter">@_tagsCount</span>
+            }
+        </NavLink>
+    </div>
 </nav>
 
 @code {

@@ -1,0 +1,44 @@
+@* 
+    Renders a server name in short uppercase format with tooltip showing full name.
+    Format: "hostname:port:workerGuid" → display "HOSTNAME:PORT", tooltip full value.
+*@
+
+<span class="font-monospace" title="@FullId">@ShortName</span>
+
+@code {
+    /// <summary>
+    /// The full server ID (e.g. "myrog2:16116:872be6bc-2644-49f4-a726-4b533f2cca30")
+    /// </summary>
+    [Parameter] public string FullId { get; set; }
+
+    private string ShortName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(FullId)) return "N/A";
+
+            // Server ID format: "hostname:port:workerGuid"
+            // We want "HOSTNAME:PORT" (everything before the last colon-separated GUID)
+            var parts = FullId.Split(':');
+            if (parts.Length >= 3)
+            {
+                // Check if last part looks like a GUID (worker id)
+                var lastPart = parts[^1];
+                if (Guid.TryParse(lastPart, out _) || (lastPart.Length > 8 && lastPart.Contains('-')))
+                {
+                    // Join everything except the last part
+                    return string.Join(":", parts[..^1]).ToUpperInvariant();
+                }
+            }
+
+            // If only 2 parts (hostname:port), show both uppercase
+            if (parts.Length == 2)
+            {
+                return FullId.ToUpperInvariant();
+            }
+
+            // Fallback: just uppercase the whole thing
+            return FullId.ToUpperInvariant();
+        }
+    }
+}

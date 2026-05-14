@@ -1,53 +1,46 @@
-@if (TotalCount > PageSize)
+@* 
+    Pager component — matches original Hangfire dashboard layout:
+    - "Items per page" selector at top-right (rendered separately via TopToolbar fragment)
+    - Pagination at bottom
+*@
+
+@if (TotalCount > 0)
 {
     <nav class="d-flex align-items-center justify-content-between flex-wrap gap-2 py-2">
         <small class="text-body-secondary">
             Showing @(From + 1)–@Math.Min(From + PageSize, TotalCount) of @TotalCount
         </small>
-        <ul class="pagination pagination-sm mb-0">
-            <li class="@GetPageItemClass(CurrentPage <= 1)">
-                <button class="page-link" @onclick="GoFirst">&laquo;</button>
-            </li>
-            <li class="@GetPageItemClass(CurrentPage <= 1)">
-                <button class="page-link" @onclick="GoPrev">&lsaquo;</button>
-            </li>
-            @foreach (var page in GetVisiblePages())
-            {
-                @if (page == -1)
+        @if (TotalCount > PageSize)
+        {
+            <ul class="pagination pagination-sm mb-0">
+                <li class="@GetPageItemClass(CurrentPage <= 1)">
+                    <button class="page-link" @onclick="GoFirst">&laquo;</button>
+                </li>
+                <li class="@GetPageItemClass(CurrentPage <= 1)">
+                    <button class="page-link" @onclick="GoPrev">&lsaquo;</button>
+                </li>
+                @foreach (var page in GetVisiblePages())
                 {
-                    <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                    @if (page == -1)
+                    {
+                        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                    }
+                    else
+                    {
+                        <li class="@GetPageItemActiveClass(page)">
+                            <button class="page-link" @onclick="() => GoToPage(page)">@(page)</button>
+                        </li>
+                    }
                 }
-                else
-                {
-                    <li class="@GetPageItemActiveClass(page)">
-                        <button class="page-link" @onclick="() => GoToPage(page)">@(page)</button>
-                    </li>
-                }
-            }
-            <li class="@GetPageItemClass(CurrentPage >= TotalPages)">
-                <button class="page-link" @onclick="GoNext">&rsaquo;</button>
-            </li>
-            <li class="@GetPageItemClass(CurrentPage >= TotalPages)">
-                <button class="page-link" @onclick="GoLast">&raquo;</button>
-            </li>
-        </ul>
-        <div class="d-flex align-items-center gap-1">
-            <select class="form-select form-select-sm" style="width: auto;"
-                    value="@PageSize" @onchange="OnPageSizeChanged">
-                <option value="10">10</option>
-                <option value="20">20</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-            </select>
-            <small class="text-body-secondary">per page</small>
-        </div>
+                <li class="@GetPageItemClass(CurrentPage >= TotalPages)">
+                    <button class="page-link" @onclick="GoNext">&rsaquo;</button>
+                </li>
+                <li class="@GetPageItemClass(CurrentPage >= TotalPages)">
+                    <button class="page-link" @onclick="GoLast">&raquo;</button>
+                </li>
+            </ul>
+        }
     </nav>
-}
-else if (TotalCount > 0)
-{
-    <div class="py-2">
-        <small class="text-body-secondary">Showing all @TotalCount items</small>
-    </div>
 }
 
 @code {
@@ -97,9 +90,9 @@ else if (TotalCount > 0)
             var start = Math.Max(2, CurrentPage - 2);
             var end = Math.Min(TotalPages - 1, CurrentPage + 2);
 
-            if (start > 2) pages.Add(-1); // ellipsis
+            if (start > 2) pages.Add(-1);
             for (var i = start; i <= end; i++) pages.Add(i);
-            if (end < TotalPages - 1) pages.Add(-1); // ellipsis
+            if (end < TotalPages - 1) pages.Add(-1);
             pages.Add(TotalPages);
         }
 

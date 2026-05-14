@@ -20,26 +20,45 @@
     }
     else
     {
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
+                    <i class="bi bi-arrow-repeat"></i> Requeue
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                    <i class="bi bi-x-lg"></i> Delete
+                </button>
+            </div>
+            <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
+        </div>
+
         <div class="card">
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover table-sm mb-0">
                         <thead>
                             <tr>
+                                <th style="width: 40px;">
+                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" />
+                                </th>
                                 <th>Id</th>
                                 <th>Server</th>
                                 <th>Job</th>
-                                <th>Started</th>
+                                <th class="text-end">Started</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var job in _jobs)
                             {
                                 <tr>
-                                    <td class="font-monospace"><a href="/jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                    <td class="font-monospace">@(job.Value?.ServerId ?? "N/A")</td>
-                                    <td>@GetJobName(job.Value)</td>
                                     <td>
+                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
+                                               @onchange="() => ToggleJob(job.Key)" />
+                                    </td>
+                                    <td class="font-monospace"><a href="/jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                    <td><ServerLabel FullId="@(job.Value?.ServerId)" /></td>
+                                    <td>@GetJobName(job.Value)</td>
+                                    <td class="text-end">
                                         @if (job.Value?.StartedAt.HasValue == true)
                                         {
                                             <RelativeTime UtcTime="@job.Value.StartedAt.Value" />
@@ -63,6 +82,8 @@
     private long _totalCount;
     private int _from = 0;
     private int _pageSize = 20;
+    private HashSet<string> _selectedJobs = new();
+    private bool _selectAll;
     private Timer _refreshTimer;
 
     protected override async Task OnInitializedAsync()
@@ -102,6 +123,54 @@
     {
         _from = args.From;
         _pageSize = args.PageSize;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
+    }
+
+    private async Task HandlePageSizeChanged(int newSize)
+    {
+        _pageSize = newSize;
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
+    }
+
+    private bool IsSelected(string id) => _selectedJobs.Contains(id);
+    private void ToggleJob(string id)
+    {
+        if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id);
+        _selectAll = _jobs != null && _selectedJobs.Count == _jobs.Count;
+    }
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        if (_jobs is null) return;
+        if ((bool)(e.Value ?? false))
+        {
+            _selectedJobs = new(_jobs.Select(j => j.Key));
+            _selectAll = true;
+        }
+        else
+        {
+            _selectedJobs.Clear();
+            _selectAll = false;
+        }
+    }
+
+    private async Task RequeueSelected()
+    {
+        await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
+    }
+
+    private async Task DeleteSelected()
+    {
+        await Task.Run(() => Monitor.DeleteJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        _selectAll = false;
         await LoadData();
     }
 

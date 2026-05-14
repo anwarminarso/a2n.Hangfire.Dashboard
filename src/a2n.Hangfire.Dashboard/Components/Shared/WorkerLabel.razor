@@ -1,0 +1,37 @@
+@* 
+    Renders a worker ID in short format with tooltip showing full ID.
+    Format: "872be6bc-2644-49f4-a726-4b533f2cca30" → display "872be6bc", tooltip full value.
+    If the worker ID is extracted from a server ID, it shows the GUID portion shortened.
+*@
+
+<span class="font-monospace" title="@FullId">@ShortName</span>
+
+@code {
+    /// <summary>
+    /// The full worker ID (e.g. "872be6bc-2644-49f4-a726-4b533f2cca30" or "#16")
+    /// </summary>
+    [Parameter] public string FullId { get; set; }
+
+    private string ShortName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(FullId)) return "N/A";
+
+            // If it's a GUID, show first 8 chars
+            if (Guid.TryParse(FullId, out _))
+            {
+                return FullId[..8];
+            }
+
+            // If it contains a dash and is long enough, likely a GUID-like format
+            if (FullId.Length > 8 && FullId.Contains('-'))
+            {
+                return FullId[..8];
+            }
+
+            // Short worker IDs (like "#16") — show as-is
+            return FullId;
+        }
+    }
+}

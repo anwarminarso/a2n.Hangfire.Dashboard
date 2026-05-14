@@ -152,14 +152,14 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
                                         {
                                             <div class="col-auto">
                                                 <span class="text-body-secondary small">Server:</span>
-                                                <span class="small fw-semibold">@serverId</span>
+                                                <span class="small fw-semibold"><ServerLabel FullId="@serverId" /></span>
                                             </div>
                                         }
                                         @if (state.Data.TryGetValue("WorkerId", out var workerId))
                                         {
                                             <div class="col-auto">
                                                 <span class="text-body-secondary small">Worker:</span>
-                                                <span class="small fw-semibold">@workerId</span>
+                                                <span class="small fw-semibold"><WorkerLabel FullId="@workerId" /></span>
                                             </div>
                                         }
                                     </div>

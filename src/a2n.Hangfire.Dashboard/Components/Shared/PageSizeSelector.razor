@@ -1,0 +1,24 @@
+@* Items per page selector — positioned at top-right of toolbar, matching original Hangfire *@
+
+<div class="d-flex align-items-center gap-1">
+    <small class="text-body-secondary">Items per page:</small>
+    <select class="form-select form-select-sm" style="width: auto;"
+            value="@PageSize" @onchange="OnChanged">
+        <option value="10">10</option>
+        <option value="20">20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+        <option value="500">500</option>
+    </select>
+</div>
+
+@code {
+    [Parameter] public int PageSize { get; set; } = 20;
+    [Parameter] public EventCallback<int> OnPageSizeChanged { get; set; }
+
+    private async Task OnChanged(ChangeEventArgs e)
+    {
+        var newSize = int.Parse(e.Value?.ToString() ?? "20");
+        await OnPageSizeChanged.InvokeAsync(newSize);
+    }
+}

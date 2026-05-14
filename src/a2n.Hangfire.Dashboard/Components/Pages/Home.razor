@@ -169,7 +169,7 @@ else
                         @foreach (var server in _servers)
                         {
                             <tr>
-                                <td class="font-monospace">@ShortenServerId(server.Name)</td>
+                                <td><ServerLabel FullId="@server.Name" /></td>
                                 <td>@server.WorkersCount</td>
                                 <td>@string.Join(", ", server.Queues)</td>
                                 <td>@FormatRelativeTime(server.StartedAt)</td>
@@ -311,14 +311,6 @@ else
             >= 1_000 => $"{count / 1_000.0:F1}K",
             _ => count.ToString("N0")
         };
-    }
-
-    private static string ShortenServerId(string serverId)
-    {
-        var parts = serverId.Split(':');
-        return parts.Length > 1
-            ? string.Join(":", parts.Take(parts.Length - 1))
-            : serverId;
     }
 
     private static string FormatRelativeTime(DateTime utcTime)
