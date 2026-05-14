@@ -11,10 +11,10 @@
     }
     else if (_notFound)
     {
-        <div class="empty-state">
-            <span class="empty-icon">🔍</span>
-            <p>Job not found or expired.</p>
-            <p class="text-muted">Job ID: @JobId</p>
+        <div class="card text-center py-5">
+            <span class="fs-1">🔍</span>
+            <p class="mt-2 mb-0">Job not found or expired.</p>
+            <p class="text-body-secondary">Job ID: @JobId</p>
         </div>
     }
     else if (_job is not null)
@@ -26,8 +26,8 @@
         var expiryInfo = GetExpiryInfo();
         if (!string.IsNullOrEmpty(expiryInfo))
         {
-            <div class="job-status-banner job-status-banner--@(topState?.ToLowerInvariant())">
-                <strong>The job is @(topState?.ToLowerInvariant()).</strong> @expiryInfo
+            <div class="alert @GetBannerAlertClass(topState) d-flex align-items-center" role="alert">
+                <strong>The job is @(topState?.ToLowerInvariant()).</strong>&nbsp;@expiryInfo
             </div>
         }
 
@@ -37,9 +37,9 @@
         @* Job Code Snippet *@
         if (_job.Job is not null)
         {
-            <div class="section-card code-card">
-                <div class="code-snippet">
-                    <pre><code><span class="code-comment">// Id: #@JobId</span>
+            <div class="card mb-3">
+                <div class="card-body p-0">
+                    <pre class="hf-code-block mb-0 p-3"><code><span class="code-comment">// Id: #@JobId</span>
 <span class="code-keyword">using</span> <span class="code-namespace">@(_job.Job.Type.Namespace)</span>;
 
 <span class="code-keyword">var</span> sampleJobs = Activate&lt;<span class="code-type">@(_job.Job.Type.Name)</span>&gt;();
@@ -51,182 +51,194 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
         @* Parameters *@
         if (_job.Properties.Any(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
         {
-            <h3 class="section-title">Parameters</h3>
-            <table class="data-table data-table--borderless">
-                <tbody>
-                    @foreach (var prop in _job.Properties.Where(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
-                    {
-                        <tr>
-                            <td class="param-key">@prop.Key</td>
-                            <td><span class="param-value">@prop.Value</span></td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Parameters</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            @foreach (var prop in _job.Properties.Where(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
+                            {
+                                <tr>
+                                    <td class="fw-semibold text-body-secondary" style="width: 200px;">@prop.Key</td>
+                                    <td><code class="text-break">@prop.Value</code></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         }
 
-        
         @* Actions — aligned right *@
-        <div class="toolbar toolbar--right">
-            <button class="btn btn--outline" @onclick="Requeue" disabled="@_actionInProgress">
-                <span class="btn-icon">@Icons.RotateCcw</span> Requeue
+        <div class="d-flex gap-2 mb-3 justify-content-end">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Requeue" disabled="@_actionInProgress">
+                <i class="bi bi-arrow-counterclockwise"></i> Requeue
             </button>
-            <button class="btn btn--danger-fill" @onclick="Delete" disabled="@_actionInProgress">
-                <span class="btn-icon">@Icons.Trash2</span> Delete
+            <button class="btn btn-danger btn-sm" @onclick="Delete" disabled="@_actionInProgress">
+                <i class="bi bi-trash"></i> Delete
             </button>
         </div>
 
-        @* State Section — like original *@
-        <h3 class="section-title">State</h3>
-
-        @* State cards — chronological (newest first), console embedded in Processing *@
-        <div class="state-timeline">
-            @foreach (var state in _job.History)
-            {
-                <div class="state-card @GetStateCardClass(state.StateName)">
-                    <div class="state-card-header">
-                        <span class="state-name">@state.StateName</span>
-                        <span class="state-time"><RelativeTime UtcTime="@state.CreatedAt" /></span>
-                    </div>
-
-                    @* State metadata *@
-                    @if (!string.IsNullOrWhiteSpace(state.Reason))
+        @* State Section *@
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">State History</h6>
+            </div>
+            <div class="card-body">
+                @* State cards — chronological (newest first), console embedded in Processing *@
+                <div class="d-flex flex-column gap-3">
+                    @foreach (var state in _job.History)
                     {
-                        <p class="state-reason">@state.Reason</p>
-                    }
+                        <div class="card @GetStateCardBorderClass(state.StateName)">
+                            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                                <span class="badge @GetStateBadgeClass(state.StateName)">@state.StateName</span>
+                                <small class="text-body-secondary"><RelativeTime UtcTime="@state.CreatedAt" /></small>
+                            </div>
 
-                    @* Show relevant data for each state type *@
-                    @if (state.StateName == "Succeeded" && state.Data.Count > 0)
-                    {
-                        <div class="state-data">
-                            @if (state.Data.TryGetValue("Latency", out var latency))
-                            {
-                                <div class="state-data-item">
-                                    <span class="state-data-key">Latency:</span>
-                                    <span class="state-data-value">@FormatDuration(latency)</span>
-                                </div>
-                            }
-                            @if (state.Data.TryGetValue("PerformanceDuration", out var perfDuration))
-                            {
-                                <div class="state-data-item">
-                                    <span class="state-data-key">Duration:</span>
-                                    <span class="state-data-value">@FormatDuration(perfDuration)</span>
-                                </div>
-                            }
-                        </div>
-                    }
-                    else if (state.StateName == "Failed" && state.Data.Count > 0)
-                    {
-                        <div class="state-exception">
-                            @if (state.Data.TryGetValue("ExceptionType", out var exType))
-                            {
-                                <div class="exception-type">@exType</div>
-                            }
-                            @if (state.Data.TryGetValue("ExceptionMessage", out var exMsg))
-                            {
-                                <div class="exception-message">@exMsg</div>
-                            }
-                            @if (state.Data.TryGetValue("ExceptionDetails", out var exDetails))
-                            {
-                                <details class="exception-stack">
-                                    <summary>Stack Trace</summary>
-                                    <pre class="exception-stack-content">@exDetails</pre>
-                                </details>
-                            }
-                        </div>
-                    }
-                    else if (state.StateName == "Processing")
-                    {
-                        @* Show Server/Worker info *@
-                        <div class="state-data">
-                            @if (state.Data.TryGetValue("ServerId", out var serverId))
-                            {
-                                <div class="state-data-item">
-                                    <span class="state-data-key">Server:</span>
-                                    <span class="state-data-value">@serverId</span>
-                                </div>
-                            }
-                            @if (state.Data.TryGetValue("WorkerId", out var workerId))
-                            {
-                                <div class="state-data-item">
-                                    <span class="state-data-key">Worker:</span>
-                                    <span class="state-data-value">@workerId</span>
-                                </div>
-                            }
-                        </div>
+                            <div class="card-body py-2">
+                                @* State metadata *@
+                                @if (!string.IsNullOrWhiteSpace(state.Reason))
+                                {
+                                    <p class="text-body-secondary small mb-2">@state.Reason</p>
+                                }
 
-                        @* Console output embedded in Processing card *@
-                        @if (state.Data.TryGetValue("StartedAt", out var startedAtStr))
-                        {
-                            var startedAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(startedAtStr);
-                            var isLatestProcessing = _job.History.First(h => h.StateName == "Processing") == state;
-                            var isCurrentlyProcessing = _isProcessing && isLatestProcessing;
+                                @* Show relevant data for each state type *@
+                                @if (state.StateName == "Succeeded" && state.Data.Count > 0)
+                                {
+                                    <div class="row g-2">
+                                        @if (state.Data.TryGetValue("Latency", out var latency))
+                                        {
+                                            <div class="col-auto">
+                                                <span class="text-body-secondary small">Latency:</span>
+                                                <span class="small fw-semibold">@FormatDuration(latency)</span>
+                                            </div>
+                                        }
+                                        @if (state.Data.TryGetValue("PerformanceDuration", out var perfDuration))
+                                        {
+                                            <div class="col-auto">
+                                                <span class="text-body-secondary small">Duration:</span>
+                                                <span class="small fw-semibold">@FormatDuration(perfDuration)</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else if (state.StateName == "Failed" && state.Data.Count > 0)
+                                {
+                                    <div class="alert alert-danger mb-0 p-2">
+                                        @if (state.Data.TryGetValue("ExceptionType", out var exType))
+                                        {
+                                            <div class="fw-bold small">@exType</div>
+                                        }
+                                        @if (state.Data.TryGetValue("ExceptionMessage", out var exMsg))
+                                        {
+                                            <div class="small">@exMsg</div>
+                                        }
+                                        @if (state.Data.TryGetValue("ExceptionDetails", out var exDetails))
+                                        {
+                                            <details class="mt-1">
+                                                <summary class="small text-danger">Stack Trace</summary>
+                                                <pre class="small mt-1 mb-0 text-wrap">@exDetails</pre>
+                                            </details>
+                                        }
+                                    </div>
+                                }
+                                else if (state.StateName == "Processing")
+                                {
+                                    @* Show Server/Worker info *@
+                                    <div class="row g-2 mb-2">
+                                        @if (state.Data.TryGetValue("ServerId", out var serverId))
+                                        {
+                                            <div class="col-auto">
+                                                <span class="text-body-secondary small">Server:</span>
+                                                <span class="small fw-semibold">@serverId</span>
+                                            </div>
+                                        }
+                                        @if (state.Data.TryGetValue("WorkerId", out var workerId))
+                                        {
+                                            <div class="col-auto">
+                                                <span class="text-body-secondary small">Worker:</span>
+                                                <span class="small fw-semibold">@workerId</span>
+                                            </div>
+                                        }
+                                    </div>
 
-                            @* Calculate duration for this session *@
-                            var stateIndex = _job.History.IndexOf(state);
-                            var sessionDuration = stateIndex > 0
-                                ? (double?)(_job.History[stateIndex - 1].CreatedAt - state.CreatedAt).TotalSeconds
-                                : null;
-
-                            @if (isLatestProcessing)
-                            {
-                                <ConsoleViewer JobId="@JobId"
-                                               StartedAt="@startedAt"
-                                               IsLive="@isCurrentlyProcessing"
-                                               ServerName="@(state.Data.TryGetValue("ServerId", out var sn2) ? sn2 : null)"
-                                               WorkerId="@(state.Data.TryGetValue("WorkerId", out var wi2) ? wi2 : null)"
-                                               DurationSeconds="@sessionDuration" />
-                            }
-                            else
-                            {
-                                @* Older sessions: collapsed by default, load on demand *@
-                                var sessionKey = $"session-{startedAt.Ticks}";
-                                var isExpanded = _expandedSessions.Contains(sessionKey);
-
-                                <div class="console-collapsible-inline">
-                                    <button class="console-collapsible-header" @onclick="() => ToggleSessionByKey(sessionKey)">
-                                        <span class="console-collapsible-icon">@(isExpanded ? "▼" : "▶")</span>
-                                        <span class="console-collapsible-title">Show console output</span>
-                                    </button>
-                                    @if (isExpanded)
+                                    @* Console output embedded in Processing card *@
+                                    @if (state.Data.TryGetValue("StartedAt", out var startedAtStr))
                                     {
-                                        <ConsoleViewer JobId="@JobId"
-                                                       StartedAt="@startedAt"
-                                                       IsLive="false"
-                                                       ServerName="@(state.Data.TryGetValue("ServerId", out var sn3) ? sn3 : null)"
-                                                       WorkerId="@(state.Data.TryGetValue("WorkerId", out var wi3) ? wi3 : null)"
-                                                       DurationSeconds="@sessionDuration" />
+                                        var startedAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(startedAtStr);
+                                        var isLatestProcessing = _job.History.First(h => h.StateName == "Processing") == state;
+                                        var isCurrentlyProcessing = _isProcessing && isLatestProcessing;
+
+                                        @* Calculate duration for this session *@
+                                        var stateIndex = _job.History.IndexOf(state);
+                                        var sessionDuration = stateIndex > 0
+                                            ? (double?)(_job.History[stateIndex - 1].CreatedAt - state.CreatedAt).TotalSeconds
+                                            : null;
+
+                                        @if (isLatestProcessing)
+                                        {
+                                            <ConsoleViewer JobId="@JobId"
+                                                           StartedAt="@startedAt"
+                                                           IsLive="@isCurrentlyProcessing"
+                                                           ServerName="@(state.Data.TryGetValue("ServerId", out var sn2) ? sn2 : null)"
+                                                           WorkerId="@(state.Data.TryGetValue("WorkerId", out var wi2) ? wi2 : null)"
+                                                           DurationSeconds="@sessionDuration" />
+                                        }
+                                        else
+                                        {
+                                            @* Older sessions: collapsed by default, load on demand *@
+                                            var sessionKey = $"session-{startedAt.Ticks}";
+                                            var isExpanded = _expandedSessions.Contains(sessionKey);
+
+                                            <div class="hf-console-collapsible-inline">
+                                                <button class="hf-console-collapsible-header" @onclick="() => ToggleSessionByKey(sessionKey)">
+                                                    <span class="hf-console-collapsible-icon">@(isExpanded ? "▼" : "▶")</span>
+                                                    <span class="hf-console-collapsible-title">Show console output</span>
+                                                </button>
+                                                @if (isExpanded)
+                                                {
+                                                    <ConsoleViewer JobId="@JobId"
+                                                                   StartedAt="@startedAt"
+                                                                   IsLive="false"
+                                                                   ServerName="@(state.Data.TryGetValue("ServerId", out var sn3) ? sn3 : null)"
+                                                                   WorkerId="@(state.Data.TryGetValue("WorkerId", out var wi3) ? wi3 : null)"
+                                                                   DurationSeconds="@sessionDuration" />
+                                                }
+                                            </div>
+                                        }
                                     }
-                                </div>
-                            }
-                        }
-                    }
-                    else if (state.StateName == "Scheduled" && state.Data.Count > 0)
-                    {
-                        <div class="state-data">
-                            @if (state.Data.TryGetValue("EnqueueAt", out var enqueueAt))
-                            {
-                                <div class="state-data-item">
-                                    <span class="state-data-key">Enqueue at:</span>
-                                    <span class="state-data-value">@enqueueAt</span>
-                                </div>
-                            }
-                        </div>
-                    }
-                    else if (state.Data.Count > 0 && state.StateName != "Enqueued" && state.StateName != "Created")
-                    {
-                        <div class="state-data">
-                            @foreach (var kv in state.Data.Take(5))
-                            {
-                                <div class="state-data-item">
-                                    <span class="state-data-key">@kv.Key:</span>
-                                    <span class="state-data-value">@TruncateValue(kv.Value)</span>
-                                </div>
-                            }
+                                }
+                                else if (state.StateName == "Scheduled" && state.Data.Count > 0)
+                                {
+                                    <div class="row g-2">
+                                        @if (state.Data.TryGetValue("EnqueueAt", out var enqueueAt))
+                                        {
+                                            <div class="col-auto">
+                                                <span class="text-body-secondary small">Enqueue at:</span>
+                                                <span class="small fw-semibold">@enqueueAt</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else if (state.Data.Count > 0 && state.StateName != "Enqueued" && state.StateName != "Created")
+                                {
+                                    <div class="row g-2">
+                                        @foreach (var kv in state.Data.Take(5))
+                                        {
+                                            <div class="col-auto">
+                                                <span class="text-body-secondary small">@kv.Key:</span>
+                                                <span class="small fw-semibold">@TruncateValue(kv.Value)</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
                         </div>
                     }
                 </div>
-            }
+            </div>
         </div>
     }
 </div>
@@ -347,6 +359,38 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
         };
     }
 
+    private static string GetBannerAlertClass(string stateName) => stateName switch
+    {
+        "Succeeded" => "alert-success",
+        "Failed" => "alert-danger",
+        "Processing" => "alert-warning",
+        "Deleted" => "alert-secondary",
+        _ => "alert-info"
+    };
+
+    private static string GetStateCardBorderClass(string stateName) => stateName switch
+    {
+        "Succeeded" => "border-success",
+        "Failed" => "border-danger",
+        "Processing" => "border-warning",
+        "Enqueued" => "border-info",
+        "Scheduled" => "border-info",
+        "Deleted" => "border-secondary",
+        _ => ""
+    };
+
+    private static string GetStateBadgeClass(string stateName) => stateName switch
+    {
+        "Succeeded" => "bg-success",
+        "Failed" => "bg-danger",
+        "Processing" => "bg-warning text-dark",
+        "Enqueued" => "bg-info text-dark",
+        "Scheduled" => "bg-info text-dark",
+        "Deleted" => "bg-secondary",
+        "Created" => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
     private static string FormatDuration(string millisOrValue)
     {
         if (string.IsNullOrEmpty(millisOrValue)) return "";
@@ -386,18 +430,6 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
         _actionInProgress = false;
         StateHasChanged();
     }
-
-    private static string GetStateCardClass(string stateName) => stateName switch
-    {
-        "Succeeded" => "state-card--success",
-        "Failed" => "state-card--danger",
-        "Processing" => "state-card--warning",
-        "Enqueued" => "state-card--info",
-        "Scheduled" => "state-card--info",
-        "Deleted" => "state-card--muted",
-        "Created" => "state-card--created",
-        _ => ""
-    };
 
     private static string TruncateValue(string value) =>
         value.Length > 100 ? value[..100] + "…" : value;

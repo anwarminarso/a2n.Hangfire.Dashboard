@@ -5,137 +5,194 @@
 
 <PageTitle>Dashboard</PageTitle>
 
-<div class="dashboard-home">
-    @if (_stats is not null)
-    {
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">@Icons.Server</div>
-                <div class="stat-info">
-                    <div class="stat-value">@_stats.Servers</div>
-                    <div class="stat-label">Servers</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">@Icons.Repeat</div>
-                <div class="stat-info">
-                    <div class="stat-value">@_stats.Recurring</div>
-                    <div class="stat-label">Recurring</div>
-                </div>
-            </div>
-            <div class="stat-card stat-card--info">
-                <div class="stat-icon">@Icons.Inbox</div>
-                <div class="stat-info">
-                    <div class="stat-value">@_stats.Enqueued</div>
-                    <div class="stat-label">Enqueued</div>
-                </div>
-            </div>
-            <div class="stat-card stat-card--warning">
-                <div class="stat-icon">@Icons.Cog</div>
-                <div class="stat-info">
-                    <div class="stat-value">@_stats.Processing</div>
-                    <div class="stat-label">Processing</div>
-                </div>
-            </div>
-            <div class="stat-card stat-card--success">
-                <div class="stat-icon">@Icons.CheckCircle</div>
-                <div class="stat-info">
-                    <div class="stat-value">@FormatCount(_stats.Succeeded)</div>
-                    <div class="stat-label">Succeeded</div>
-                </div>
-            </div>
-            <div class="stat-card stat-card--danger">
-                <div class="stat-icon">@Icons.XCircle</div>
-                <div class="stat-info">
-                    <div class="stat-value">@_stats.Failed</div>
-                    <div class="stat-label">Failed</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">@Icons.Clock</div>
-                <div class="stat-info">
-                    <div class="stat-value">@_stats.Scheduled</div>
-                    <div class="stat-label">Scheduled</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">@Icons.Trash2</div>
-                <div class="stat-info">
-                    <div class="stat-value">@_stats.Deleted</div>
-                    <div class="stat-label">Deleted</div>
-                </div>
-            </div>
-        </div>
-    }
-    else
-    {
-        <div class="stats-grid">
-            @for (var i = 0; i < 8; i++)
-            {
-                <div class="stat-card stat-card--loading">
-                    <div class="stat-icon skeleton">&nbsp;</div>
-                    <div class="stat-info">
-                        <div class="stat-value skeleton">&nbsp;</div>
-                        <div class="stat-label skeleton">&nbsp;</div>
+@if (_stats is not null)
+{
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-hdd-stack fs-4 text-secondary"></i>
+                    <div>
+                        <div class="fs-5 fw-semibold">@_stats.Servers</div>
+                        <small class="text-body-secondary">Servers</small>
                     </div>
                 </div>
-            }
+            </div>
         </div>
-    }
-
-    <div class="charts-section">
-        <div class="chart-card">
-            <h3>Realtime <span class="chart-legend"><span class="legend-dot legend-dot--success"></span>Succeeded <span class="legend-dot legend-dot--danger"></span>Failed</span></h3>
-            <canvas id="realtimeChart" style="width:100%; height:180px;"></canvas>
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-arrow-repeat fs-4 text-secondary"></i>
+                    <div>
+                        <div class="fs-5 fw-semibold">@_stats.Recurring</div>
+                        <small class="text-body-secondary">Recurring</small>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="chart-card">
-            <h3>History (24h) <span class="chart-legend"><span class="legend-dot legend-dot--success"></span>Succeeded <span class="legend-dot legend-dot--danger"></span>Failed</span></h3>
-            <canvas id="historyChart" style="width:100%; height:180px;"></canvas>
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card border-info">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-inbox fs-4 text-info"></i>
+                    <div>
+                        <div class="fs-5 fw-semibold">@_stats.Enqueued</div>
+                        <small class="text-body-secondary">Enqueued</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card border-warning">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-gear fs-4 text-warning"></i>
+                    <div>
+                        <div class="fs-5 fw-semibold">@_stats.Processing</div>
+                        <small class="text-body-secondary">Processing</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card border-success">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-check-circle fs-4 text-success"></i>
+                    <div>
+                        <div class="fs-5 fw-semibold">@FormatCount(_stats.Succeeded)</div>
+                        <small class="text-body-secondary">Succeeded</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card border-danger">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-x-circle fs-4 text-danger"></i>
+                    <div>
+                        <div class="fs-5 fw-semibold">@_stats.Failed</div>
+                        <small class="text-body-secondary">Failed</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-clock fs-4 text-secondary"></i>
+                    <div>
+                        <div class="fs-5 fw-semibold">@_stats.Scheduled</div>
+                        <small class="text-body-secondary">Scheduled</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-3">
+            <div class="card">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <i class="bi bi-trash fs-4 text-secondary"></i>
+                    <div>
+                        <div class="fs-5 fw-semibold">@_stats.Deleted</div>
+                        <small class="text-body-secondary">Deleted</small>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        @for (var i = 0; i < 8; i++)
+        {
+            <div class="col-6 col-md-4 col-xl-3">
+                <div class="card">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <span class="placeholder col-2"></span>
+                        <div class="flex-grow-1">
+                            <span class="placeholder col-4 placeholder-lg"></span>
+                            <span class="placeholder col-6 placeholder-sm"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
 
-    @if (_servers is not null && _servers.Count > 0)
-    {
-        <div class="section-card">
-            <h3>Servers</h3>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Workers</th>
-                        <th>Queues</th>
-                        <th>Started</th>
-                        <th>Heartbeat</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var server in _servers)
-                    {
-                        <tr>
-                            <td class="font-mono">@ShortenServerId(server.Name)</td>
-                            <td>@server.WorkersCount</td>
-                            <td>@string.Join(", ", server.Queues)</td>
-                            <td>@FormatRelativeTime(server.StartedAt)</td>
-                            <td>
-                                @if (server.Heartbeat.HasValue)
-                                {
-                                    <span class="status-dot status-dot--active"></span>
-                                    @FormatRelativeTime(server.Heartbeat.Value)
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title mb-3">Realtime Graph</h6>
+                <div style="position: relative; height:40vh; width:100%">
+                    <canvas id="realtimeChart"></canvas>
+                </div>
+            </div>
         </div>
-    }
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="card-title mb-0">History Graph</h6>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-secondary active" disabled>Day</button>
+                        <button type="button" class="btn btn-outline-secondary" disabled>Week</button>
+                    </div>
+                </div>
+                <div style="position: relative; height:40vh; width:100%">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+@if (_servers is not null && _servers.Count > 0)
+{
+    <div class="card">
+        <div class="card-body">
+            <h6 class="card-title">Servers</h6>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Workers</th>
+                            <th>Queues</th>
+                            <th>Started</th>
+                            <th>Heartbeat</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var server in _servers)
+                        {
+                            <tr>
+                                <td class="font-monospace">@ShortenServerId(server.Name)</td>
+                                <td>@server.WorkersCount</td>
+                                <td>@string.Join(", ", server.Queues)</td>
+                                <td>@FormatRelativeTime(server.StartedAt)</td>
+                                <td>
+                                    @if (server.Heartbeat.HasValue)
+                                    {
+                                        <span class="d-inline-block rounded-circle bg-success me-1" style="width:8px;height:8px;"></span>
+                                        @FormatRelativeTime(server.Heartbeat.Value)
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     private StatisticsDto _stats;
     private IList<ServerDto> _servers;
     private Timer _refreshTimer;
     private long _prevSucceeded;
+    private long _prevDeleted;
     private long _prevFailed;
     private bool _chartsInitialized;
 
@@ -162,8 +219,10 @@
 
                 var deltaSucceeded = Math.Max(0, stats.Succeeded - _prevSucceeded);
                 var deltaFailed = Math.Max(0, stats.Failed - _prevFailed);
+                var deltaDeleted = Math.Max(0, stats.Deleted - _prevDeleted);
                 _prevSucceeded = stats.Succeeded;
                 _prevFailed = stats.Failed;
+                _prevDeleted = stats.Deleted;
 
                 await InvokeAsync(async () =>
                 {
@@ -173,7 +232,7 @@
 
                     if (_chartsInitialized)
                     {
-                        await JS.InvokeVoidAsync("dashboardCharts.updateRealtimeChart", deltaSucceeded, deltaFailed);
+                        await JS.InvokeVoidAsync("dashboardCharts.updateRealtimeChart", deltaSucceeded, deltaFailed, deltaDeleted);
                     }
                 });
             }

@@ -7,6 +7,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="@GetBaseHref()" />
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="lib/bootstrap/css/bootstrap.min.css" />
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="lib/bootstrap-icons/bootstrap-icons.min.css" />
+    <!-- Custom overrides (console viewer, charts) -->
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <HeadOutlet @rendermode="InteractiveServer" />
@@ -14,8 +19,13 @@
 
 <body>
     <script src="js/theme.js"></script>
+    <script src="js/moment.min.js"></script>
+    <script src="js/chart.umd.min.js"></script>
+    <script src="js/chartjs-adapter-moment.min.js"></script>
+    <script src="js/chartjs-plugin-streaming.min.js"></script>
     <script src="js/charts.js"></script>
     <Routes @rendermode="InteractiveServer" />
+    <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
 

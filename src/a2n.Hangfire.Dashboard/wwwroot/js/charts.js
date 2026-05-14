@@ -1,145 +1,253 @@
-// Chart.js integration for Hangfire Dashboard
-// Uses lightweight canvas-based rendering
+// Hangfire Dashboard Charts — uses Chart.js 3.9.1 + chartjs-plugin-streaming 2.0.0 + Moment.js
+// Mirrors the original Hangfire dashboard chart rendering exactly.
 
-window.dashboardCharts = {
-    _realtimeChart: null,
-    _historyChart: null,
-    _realtimeData: { succeeded: [], failed: [] },
+(function () {
+    'use strict';
 
-    initRealtimeChart: function (canvasId) {
-        var canvas = document.getElementById(canvasId);
-        if (!canvas) return;
-
-        var ctx = canvas.getContext('2d');
-        this._realtimeCtx = ctx;
-        this._realtimeCanvas = canvas;
-        this._drawRealtime();
-    },
-
-    updateRealtimeChart: function (succeeded, failed) {
-        var now = Date.now();
-        this._realtimeData.succeeded.push({ x: now, y: succeeded });
-        this._realtimeData.failed.push({ x: now, y: failed });
-
-        // Keep last 60 seconds
-        var cutoff = now - 60000;
-        this._realtimeData.succeeded = this._realtimeData.succeeded.filter(p => p.x > cutoff);
-        this._realtimeData.failed = this._realtimeData.failed.filter(p => p.x > cutoff);
-
-        this._drawRealtime();
-    },
-
-    _drawRealtime: function () {
-        var canvas = this._realtimeCanvas;
-        var ctx = this._realtimeCtx;
-        if (!canvas || !ctx) return;
-
-        var w = canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
-        var h = canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
-        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
-
-        var dw = canvas.offsetWidth;
-        var dh = canvas.offsetHeight;
-
-        ctx.clearRect(0, 0, dw, dh);
-
-        var data = this._realtimeData;
-        if (data.succeeded.length < 2) return;
-
-        var now = Date.now();
-        var maxVal = Math.max(
-            Math.max(...data.succeeded.map(p => p.y), 1),
-            Math.max(...data.failed.map(p => p.y), 1)
-        );
-
-        // Draw succeeded (green)
-        this._drawLine(ctx, data.succeeded, now, dw, dh, maxVal, 'rgba(16, 185, 129, 0.6)', 'rgba(16, 185, 129, 0.1)');
-        // Draw failed (red)
-        this._drawLine(ctx, data.failed, now, dw, dh, maxVal, 'rgba(239, 68, 68, 0.8)', 'rgba(239, 68, 68, 0.1)');
-    },
-
-    _drawLine: function (ctx, points, now, w, h, maxVal, strokeColor, fillColor) {
-        if (points.length < 2) return;
-
-        ctx.beginPath();
-        var padding = 4;
-        var plotH = h - padding * 2;
-        var plotW = w - padding * 2;
-
-        for (var i = 0; i < points.length; i++) {
-            var x = padding + ((points[i].x - (now - 60000)) / 60000) * plotW;
-            var y = padding + plotH - (points[i].y / maxVal) * plotH;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+    var COLORS = {
+        light: {
+            cartesianColor: '#e5e5e5',
+            failed: { backgroundColor: '#D55251', borderColor: null },
+            deleted: { backgroundColor: '#919191', borderColor: null },
+            succeeded: { backgroundColor: '#6FCD6D', borderColor: '#62B35F' }
+        },
+        dark: {
+            cartesianColor: '#5f5f5f',
+            failed: { backgroundColor: 'rgba(215, 58, 74, 0.4)', borderColor: null },
+            deleted: { backgroundColor: 'rgba(204, 204, 204, 0.4)', borderColor: null },
+            succeeded: { backgroundColor: 'rgba(87, 171, 90, 0.4)', borderColor: 'rgba(87, 171, 90, 1)' }
         }
+    };
 
-        ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Fill area
-        var lastPoint = points[points.length - 1];
-        var lastX = padding + ((lastPoint.x - (now - 60000)) / 60000) * plotW;
-        ctx.lineTo(lastX, padding + plotH);
-        ctx.lineTo(padding + ((points[0].x - (now - 60000)) / 60000) * plotW, padding + plotH);
-        ctx.closePath();
-        ctx.fillStyle = fillColor;
-        ctx.fill();
-    },
-
-    initHistoryChart: function (canvasId, succeededData, failedData) {
-        var canvas = document.getElementById(canvasId);
-        if (!canvas) return;
-
-        var ctx = canvas.getContext('2d');
-        var w = canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
-        var h = canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
-        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
-
-        var dw = canvas.offsetWidth;
-        var dh = canvas.offsetHeight;
-        var padding = 4;
-        var plotH = dh - padding * 2;
-        var plotW = dw - padding * 2;
-
-        if (!succeededData || succeededData.length === 0) return;
-
-        var maxVal = Math.max(
-            Math.max(...succeededData, 1),
-            Math.max(...failedData, 1)
-        );
-
-        // Draw succeeded
-        ctx.beginPath();
-        for (var i = 0; i < succeededData.length; i++) {
-            var x = padding + (i / (succeededData.length - 1)) * plotW;
-            var y = padding + plotH - (succeededData[i] / maxVal) * plotH;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.7)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Fill
-        ctx.lineTo(padding + plotW, padding + plotH);
-        ctx.lineTo(padding, padding + plotH);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
-        ctx.fill();
-
-        // Draw failed
-        if (failedData.some(v => v > 0)) {
-            ctx.beginPath();
-            for (var i = 0; i < failedData.length; i++) {
-                var x = padding + (i / (failedData.length - 1)) * plotW;
-                var y = padding + plotH - (failedData[i] / maxVal) * plotH;
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            }
-            ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
+    function getColorScheme() {
+        return document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light';
     }
-};
+
+    function changeDatasetColorScheme(newScheme) {
+        var colors = COLORS[newScheme];
+        this._chart.data.datasets[0].backgroundColor = colors.succeeded.backgroundColor;
+        this._chart.data.datasets[0].borderColor = colors.succeeded.borderColor;
+        this._chart.data.datasets[1].backgroundColor = colors.deleted.backgroundColor;
+        this._chart.data.datasets[1].borderColor = colors.deleted.borderColor;
+        this._chart.data.datasets[2].backgroundColor = colors.failed.backgroundColor;
+        this._chart.data.datasets[2].borderColor = colors.failed.borderColor;
+        this._chart.options.scales.x.grid.color = colors.cartesianColor;
+        this._chart.options.scales.y.grid.color = colors.cartesianColor;
+        this._chart.update();
+    }
+
+    var colorScheme = getColorScheme();
+
+    window.dashboardCharts = {
+        _realtimeChart: null,
+        _historyChart: null,
+        _succeeded: null,
+        _failed: null,
+        _deleted: null,
+        _pollInterval: 3000,
+
+        initRealtimeChart: function (canvasId) {
+            var canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+
+            if (this._realtimeChart) {
+                this._realtimeChart.destroy();
+                this._realtimeChart = null;
+            }
+
+            colorScheme = getColorScheme();
+            var colors = COLORS[colorScheme];
+
+            this._realtimeChart = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Succeeded',
+                            borderColor: colors.succeeded.borderColor,
+                            backgroundColor: colors.succeeded.backgroundColor,
+                            borderWidth: 2,
+                            data: []
+                        },
+                        {
+                            label: 'Deleted',
+                            borderColor: colors.deleted.borderColor,
+                            backgroundColor: colors.deleted.backgroundColor,
+                            borderWidth: 2,
+                            data: []
+                        },
+                        {
+                            label: 'Failed',
+                            borderColor: colors.failed.borderColor,
+                            backgroundColor: colors.failed.backgroundColor,
+                            borderWidth: 2,
+                            data: []
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'realtime',
+                            realtime: {
+                                duration: 60000,
+                                delay: this._pollInterval
+                            },
+                            time: {
+                                unit: 'second',
+                                tooltipFormat: 'LL LTS',
+                                displayFormats: { second: 'LTS', minute: 'LTS' }
+                            },
+                            grid: { color: colors.cartesianColor },
+                            ticks: { maxRotation: 0 }
+                        },
+                        y: {
+                            grid: { color: colors.cartesianColor },
+                            ticks: { beginAtZero: true, precision: 0, min: 0, maxTicksLimit: 6, suggestedMax: 10 },
+                            stacked: true,
+                            min: 0,
+                            suggestedMax: 10
+                        }
+                    },
+                    reponsive: true,
+                    elements: { line: { tension: 0 }, point: { radius: 0 } },
+                    animation: { duration: 0 },
+                    hover: { animationDuration: 0 },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { mode: 'index', intersect: false }
+                    }
+                }
+            });
+
+            this._realtimeChart.changeDatasetColorScheme = changeDatasetColorScheme.bind({ _chart: this._realtimeChart });
+        },
+
+        updateRealtimeChart: function (succeeded, failed, deleted) {
+            if (!this._realtimeChart) return;
+
+            var now = Date.now();
+
+            this._realtimeChart.data.datasets[0].data.push({ x: now, y: succeeded });
+            this._realtimeChart.data.datasets[1].data.push({ x: now, y: deleted });
+            this._realtimeChart.data.datasets[2].data.push({ x: now, y: failed });
+
+            this._realtimeChart.update();
+        },
+
+        initHistoryChart: function (canvasId, succeededData, failedData) {
+            var canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+
+            if (this._historyChart) {
+                this._historyChart.destroy();
+                this._historyChart = null;
+            }
+
+            colorScheme = getColorScheme();
+            var colors = COLORS[colorScheme];
+
+            // Convert array data to {x, y} format with timestamps
+            var now = Date.now();
+            var hoursCount = succeededData ? succeededData.length : 24;
+            var succeededPoints = [];
+            var failedPoints = [];
+            var deletedPoints = [];
+
+            for (var i = 0; i < hoursCount; i++) {
+                var timestamp = now - (hoursCount - 1 - i) * 3600000;
+                succeededPoints.push({ x: timestamp, y: succeededData ? succeededData[i] : 0 });
+                failedPoints.push({ x: timestamp, y: failedData ? failedData[i] : 0 });
+                deletedPoints.push({ x: timestamp, y: 0 });
+            }
+
+            this._historyChart = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Succeeded',
+                            borderColor: colors.succeeded.borderColor,
+                            backgroundColor: colors.succeeded.backgroundColor,
+                            borderWidth: 2,
+                            data: succeededPoints
+                        },
+                        {
+                            label: 'Deleted',
+                            borderColor: colors.deleted.borderColor,
+                            backgroundColor: colors.deleted.backgroundColor,
+                            borderWidth: 2,
+                            data: deletedPoints
+                        },
+                        {
+                            label: 'Failed',
+                            borderColor: colors.failed.borderColor,
+                            backgroundColor: colors.failed.backgroundColor,
+                            borderWidth: 2,
+                            data: failedPoints
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                tooltipFormat: 'LLL',
+                                displayFormats: { hour: 'LT', day: 'll' }
+                            },
+                            grid: { color: colors.cartesianColor },
+                            ticks: { maxRotation: 0 }
+                        },
+                        y: {
+                            grid: { color: colors.cartesianColor },
+                            ticks: { beginAtZero: true, precision: 0, maxTicksLimit: 6 },
+                            stacked: true,
+                            min: 0,
+                            suggestedMax: 10
+                        }
+                    },
+                    elements: { line: { tension: 0 }, point: { radius: 0 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { mode: 'index', intersect: false },
+                        streaming: false
+                    }
+                }
+            });
+
+            this._historyChart.changeDatasetColorScheme = changeDatasetColorScheme.bind({ _chart: this._historyChart });
+        },
+
+        destroyCharts: function () {
+            if (this._realtimeChart) {
+                this._realtimeChart.destroy();
+                this._realtimeChart = null;
+            }
+            if (this._historyChart) {
+                this._historyChart.destroy();
+                this._historyChart = null;
+            }
+        }
+    };
+
+    // Listen for theme changes
+    var observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+            if (mutation.attributeName === 'data-bs-theme') {
+                var newScheme = getColorScheme();
+                if (newScheme !== colorScheme) {
+                    colorScheme = newScheme;
+                    if (window.dashboardCharts._realtimeChart) {
+                        window.dashboardCharts._realtimeChart.changeDatasetColorScheme(newScheme);
+                    }
+                    if (window.dashboardCharts._historyChart) {
+                        window.dashboardCharts._historyChart.changeDatasetColorScheme(newScheme);
+                    }
+                }
+            }
+        });
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme'] });
+})();

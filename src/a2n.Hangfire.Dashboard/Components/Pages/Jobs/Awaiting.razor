@@ -13,59 +13,74 @@
     }
     else if (_jobIds.Count == 0)
     {
-        <div class="empty-state">
-            <span class="empty-icon">⏳</span>
-            <p>No awaiting jobs.</p>
-            <p class="text-muted">Jobs waiting for parent continuations to complete.</p>
+        <div class="card text-center py-5">
+            <span class="fs-1">⏳</span>
+            <p class="mt-2 mb-0">No awaiting jobs.</p>
+            <p class="text-body-secondary">Jobs waiting for parent continuations to complete.</p>
         </div>
     }
     else
     {
-        <div class="toolbar">
-            <button class="btn btn--primary" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
-                ▶️ Enqueue
+        <div class="d-flex gap-2 mb-2">
+            <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
+                <i class="bi bi-play-fill"></i> Enqueue
             </button>
-            <button class="btn btn--danger" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
-                🗑️ Delete
+            <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                <i class="bi bi-trash"></i> Delete
             </button>
         </div>
 
-        <div class="section-card">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
-                        <th>Id</th>
-                        <th>Job</th>
-                        <th>State</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var jobId in _jobIds)
-                    {
-                        _jobInfo.TryGetValue(jobId, out var info);
-                        <tr>
-                            <td class="col-check">
-                                <input type="checkbox" checked="@IsSelected(jobId)" @onchange="() => ToggleJob(jobId)" />
-                            </td>
-                            <td class="font-mono">
-                                <a href="/jobs/details/@jobId" class="job-id-link">@ShortenId(jobId)</a>
-                            </td>
-                            <td>@(info.jobName ?? "Unknown")</td>
-                            <td><span class="badge">@(info.state ?? "Awaiting")</span></td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 2rem;"><input type="checkbox" class="form-check-input" @onchange="ToggleAll" /></th>
+                                <th>Id</th>
+                                <th>Job</th>
+                                <th>Parent</th>
+                                <th>State</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var jobId in _jobIds)
+                            {
+                                _jobInfo.TryGetValue(jobId, out var info);
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(jobId)" @onchange="() => ToggleJob(jobId)" />
+                                    </td>
+                                    <td class="font-monospace">
+                                        <a href="/jobs/details/@jobId">@ShortenId(jobId)</a>
+                                    </td>
+                                    <td>@(info.jobName ?? "Unknown")</td>
+                                    <td class="font-monospace">
+                                        @if (!string.IsNullOrEmpty(info.parentId))
+                                        {
+                                            <a href="/jobs/details/@info.parentId">@ShortenId(info.parentId)</a>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                    </td>
+                                    <td><span class="badge bg-secondary">@(info.state ?? "Awaiting")</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
-        <div class="pagination-info">@_jobIds.Count awaiting jobs</div>
+        <div class="text-body-secondary mt-2">@_jobIds.Count awaiting jobs</div>
     }
 </div>
 
 @code {
     private IReadOnlyList<string> _jobIds;
-    private Dictionary<string, (string jobName, string state)> _jobInfo = new();
+    private Dictionary<string, (string jobName, string state, string parentId)> _jobInfo = new();
     private HashSet<string> _selectedJobs = new();
     private Timer _refreshTimer;
 
@@ -101,7 +116,9 @@
                     var detail = Monitor.GetJobDetails(jobId);
                     var jobName = detail?.Job is not null ? $"{detail.Job.Type.Name}.{detail.Job.Method.Name}" : null;
                     var state = detail?.History.FirstOrDefault()?.StateName;
-                    _jobInfo[jobId] = (jobName, state);
+                    string parentId = null;
+                    detail?.Properties?.TryGetValue("ParentId", out parentId);
+                    _jobInfo[jobId] = (jobName, state, parentId);
                 }
             }
         });

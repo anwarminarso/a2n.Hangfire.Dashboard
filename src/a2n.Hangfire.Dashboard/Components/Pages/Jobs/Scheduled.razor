@@ -13,54 +13,58 @@
     }
     else if (_jobs.Count == 0)
     {
-        <div class="empty-state">
-            <span class="empty-icon">🕐</span>
-            <p>No scheduled jobs.</p>
+        <div class="card text-center py-5">
+            <span class="fs-1">🕐</span>
+            <p class="mt-2 mb-0 text-body-secondary">No scheduled jobs.</p>
         </div>
     }
     else
     {
-        <div class="toolbar">
-            <button class="btn btn--primary" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
-                ▶️ Enqueue Now
+        <div class="d-flex gap-2 mb-2">
+            <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
+                <i class="bi bi-play-fill"></i> Enqueue Now
             </button>
-            <button class="btn btn--danger" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
-                🗑️ Delete
+            <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                <i class="bi bi-trash"></i> Delete
             </button>
         </div>
 
-        <div class="section-card">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
-                        <th>Id</th>
-                        <th>Job</th>
-                        <th>Enqueue At</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var job in _jobs)
-                    {
-                        <tr>
-                            <td class="col-check">
-                                <input type="checkbox" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" />
-                            </td>
-                            <td class="font-mono"><a href="/jobs/details/@job.Key" class="job-id-link">@ShortenId(job.Key)</a></td>
-                            <td>@GetJobName(job.Value)</td>
-                            <td>
-                                @if (job.Value is not null)
-                                {
-                                    <RelativeTime UtcTime="@job.Value.EnqueueAt" IsFuture="true" />
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">
+                                    <input type="checkbox" class="form-check-input" @onchange="ToggleAll" />
+                                </th>
+                                <th>Id</th>
+                                <th>Job</th>
+                                <th>Enqueue At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var job in _jobs)
+                            {
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" />
+                                    </td>
+                                    <td class="font-monospace"><a href="/jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                    <td>@GetJobName(job.Value)</td>
+                                    <td>
+                                        @if (job.Value is not null)
+                                        {
+                                            <RelativeTime UtcTime="@job.Value.EnqueueAt" IsFuture="true" />
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-
-        <div class="pagination-info">Showing @_jobs.Count of @_totalCount scheduled jobs</div>
 
         <Pager TotalCount="@_totalCount" PageSize="@_pageSize" From="@_from"
                OnPageChanged="HandlePageChanged" />

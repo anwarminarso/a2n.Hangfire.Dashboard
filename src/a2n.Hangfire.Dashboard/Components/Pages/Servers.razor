@@ -3,74 +3,76 @@
 
 <PageTitle>Servers</PageTitle>
 
-<div class="page-container">
-    <h2 class="page-title">Servers</h2>
-
-    @if (_servers is null)
-    {
-        <p class="text-muted">Loading...</p>
-    }
-    else if (_servers.Count == 0)
-    {
-        <div class="empty-state">
-            <span class="empty-icon">🖥️</span>
-            <p>No active servers found.</p>
-            <p class="text-muted">Jobs will not be processed until a server is started.</p>
+@if (_servers is null)
+{
+    <p class="text-body-secondary">Loading...</p>
+}
+else if (_servers.Count == 0)
+{
+    <div class="card text-center py-5">
+        <div class="card-body">
+            <i class="bi bi-hdd-stack fs-1 text-body-secondary"></i>
+            <p class="mt-3 mb-1">No active servers found.</p>
+            <p class="text-body-secondary">Jobs will not be processed until a server is started.</p>
         </div>
-    }
-    else
-    {
-        <div class="section-card">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Workers</th>
-                        <th>Queues</th>
-                        <th>Started</th>
-                        <th>Heartbeat</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var server in _servers)
-                    {
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead>
                         <tr>
-                            <td>
-                                @if (IsServerHealthy(server))
-                                {
-                                    <span class="status-dot status-dot--active"></span>
-                                }
-                                else
-                                {
-                                    <span class="status-dot status-dot--danger"></span>
-                                }
-                                <span class="font-mono">@server.Name</span>
-                            </td>
-                            <td>@server.WorkersCount</td>
-                            <td>
-                                @foreach (var queue in server.Queues)
-                                {
-                                    <span class="badge">@queue</span>
-                                }
-                            </td>
-                            <td>@FormatRelativeTime(server.StartedAt)</td>
-                            <td>
-                                @if (server.Heartbeat.HasValue)
-                                {
-                                    @FormatRelativeTime(server.Heartbeat.Value)
-                                }
-                                else
-                                {
-                                    <span class="text-muted">N/A</span>
-                                }
-                            </td>
+                            <th>Name</th>
+                            <th>Workers</th>
+                            <th>Queues</th>
+                            <th>Started</th>
+                            <th>Heartbeat</th>
                         </tr>
-                    }
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach (var server in _servers)
+                        {
+                            <tr>
+                                <td>
+                                    @if (IsServerHealthy(server))
+                                    {
+                                        <span class="d-inline-block rounded-circle bg-success me-2" style="width: 8px; height: 8px;"></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="d-inline-block rounded-circle bg-danger me-2" style="width: 8px; height: 8px;"></span>
+                                    }
+                                    <span class="font-monospace">@server.Name</span>
+                                </td>
+                                <td>@server.WorkersCount</td>
+                                <td>
+                                    @foreach (var queue in server.Queues)
+                                    {
+                                        <span class="badge bg-secondary me-1">@queue</span>
+                                    }
+                                </td>
+                                <td>@FormatRelativeTime(server.StartedAt)</td>
+                                <td>
+                                    @if (server.Heartbeat.HasValue)
+                                    {
+                                        @FormatRelativeTime(server.Heartbeat.Value)
+                                    }
+                                    else
+                                    {
+                                        <span class="text-body-secondary">N/A</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         </div>
-    }
-</div>
+    </div>
+}
 
 @code {
     private IList<ServerDto> _servers;

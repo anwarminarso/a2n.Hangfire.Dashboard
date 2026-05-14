@@ -5,154 +5,166 @@
 
 <PageTitle>Recurring Jobs</PageTitle>
 
-<div class="page-container">
-    <h2 class="page-title">Recurring Jobs</h2>
+<h2 class="mb-3">Recurring Jobs</h2>
 
-    @if (_jobs is null)
+@if (_jobs is null)
+{
+    <p class="text-body-secondary">Loading...</p>
+}
+else
+{
+    <div class="d-flex gap-2 mb-2">
+        <a class="btn btn-primary btn-sm" href="/recurring/create">
+            <i class="bi bi-plus-lg"></i> Create Job
+        </a>
+        <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
+            <i class="bi bi-play-fill"></i> Trigger Now
+        </button>
+        <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RemoveSelected">
+            <i class="bi bi-trash"></i> Remove
+        </button>
+    </div>
+
+    @* Stopped Jobs Section *@
+    @if (_stoppedJobs.Count > 0)
     {
-        <p class="text-muted">Loading...</p>
-    }
-    else
-    {
-        <div class="toolbar">
-            <a class="btn btn--primary" href="/recurring/create">➕ Create Job</a>
-            <button class="btn" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
-                ▶️ Trigger Now
-            </button>
-            <button class="btn btn--danger" disabled="@(!_selectedJobs.Any())" @onclick="RemoveSelected">
-                🗑️ Remove
-            </button>
-        </div>
-
-        @* Stopped Jobs Section *@
-        @if (_stoppedJobs.Count > 0)
-        {
-            <div class="section-card section-card--muted">
-                <h3>Stopped Jobs</h3>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Id</th>
-                            <th>Cron</th>
-                            <th>Job</th>
-                            <th>Queue</th>
-                            <th>Stopped At</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var stopped in _stoppedJobs)
-                        {
-                            <tr class="row-muted">
-                                <td class="font-mono">@stopped.Id</td>
-                                <td><code class="cron-badge">@stopped.Cron</code></td>
-                                <td>@stopped.TypeName.@stopped.MethodName</td>
-                                <td><span class="badge">@stopped.Queue</span></td>
-                                <td>
-                                    @if (stopped.StoppedAt.HasValue)
-                                    {
-                                        <RelativeTime UtcTime="@stopped.StoppedAt.Value" />
-                                    }
-                                </td>
-                                <td>
-                                    <button class="btn btn--sm btn--primary" @onclick="() => StartJob(stopped.Id)">
-                                        ▶️ Start
-                                    </button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">Stopped Jobs</h6>
             </div>
-        }
-
-        @if (_jobs.Count == 0 && _stoppedJobs.Count == 0)
-        {
-            <div class="empty-state">
-                <span class="empty-icon">🔄</span>
-                <p>No recurring jobs configured.</p>
-            </div>
-        }
-        else if (_jobs.Count > 0)
-        {
-            <div class="section-card">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
-                            <th>Id</th>
-                            <th>Cron</th>
-                            <th>Job</th>
-                            <th>Queue</th>
-                            <th>Next Execution</th>
-                            <th>Last Execution</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var job in _jobs)
-                        {
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
                             <tr>
-                                <td class="col-check">
-                                    <input type="checkbox" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" />
-                                </td>
-                                <td class="font-mono">@job.Id</td>
-                                <td><code class="cron-badge">@job.Cron</code></td>
-                                <td>@GetJobName(job)</td>
-                                <td><span class="badge">@(job.Queue ?? "default")</span></td>
-                                <td>
-                                    @if (job.NextExecution.HasValue)
-                                    {
-                                        <RelativeTime UtcTime="@job.NextExecution.Value" IsFuture="true" />
-                                    }
-                                    else if (job.Error is not null)
-                                    {
-                                        <span class="badge badge--danger">Error</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge badge--muted">Disabled</span>
-                                    }
-                                </td>
-                                <td>
-                                    @if (job.LastExecution.HasValue)
-                                    {
-                                        <span class="@GetLastStateClass(job.LastJobState)">
-                                            <RelativeTime UtcTime="@job.LastExecution.Value" />
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">Never</span>
-                                    }
-                                </td>
-                                <td>
-                                    <a class="btn btn--sm" href="/recurring/edit/@job.Id" title="Edit this recurring job">
-                                        ✏️ Edit
-                                    </a>
-                                    <button class="btn btn--sm btn--warning" @onclick="() => StopJob(job.Id)" title="Stop this recurring job">
-                                        ⏹️ Stop
-                                    </button>
-                                </td>
+                                <th>Id</th>
+                                <th>Cron</th>
+                                <th>Job</th>
+                                <th>Queue</th>
+                                <th>Stopped At</th>
+                                <th>Actions</th>
                             </tr>
-                            @if (job.Error is not null)
+                        </thead>
+                        <tbody>
+                            @foreach (var stopped in _stoppedJobs)
                             {
-                                <tr class="detail-row">
-                                    <td></td>
-                                    <td colspan="7">
-                                        <div class="exception-detail">
-                                            <p>@job.Error</p>
-                                        </div>
+                                <tr class="table-secondary">
+                                    <td class="font-monospace">@stopped.Id</td>
+                                    <td><code class="font-monospace">@stopped.Cron</code></td>
+                                    <td>@stopped.TypeName.@stopped.MethodName</td>
+                                    <td><span class="badge bg-secondary">@stopped.Queue</span></td>
+                                    <td>
+                                        @if (stopped.StoppedAt.HasValue)
+                                        {
+                                            <RelativeTime UtcTime="@stopped.StoppedAt.Value" />
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-primary btn-sm" @onclick="() => StartJob(stopped.Id)">
+                                            <i class="bi bi-play-fill"></i> Start
+                                        </button>
                                     </td>
                                 </tr>
                             }
-                        }
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        }
+        </div>
     }
-</div>
+
+    @if (_jobs.Count == 0 && _stoppedJobs.Count == 0)
+    {
+        <div class="card text-center py-5">
+            <div class="card-body">
+                <i class="bi bi-arrow-repeat fs-1 text-body-secondary"></i>
+                <p class="mt-2 text-body-secondary">No recurring jobs configured.</p>
+            </div>
+        </div>
+    }
+    else if (_jobs.Count > 0)
+    {
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 2rem;"><input type="checkbox" class="form-check-input" @onchange="ToggleAll" /></th>
+                                <th>Id</th>
+                                <th>Cron</th>
+                                <th>Job</th>
+                                <th>Queue</th>
+                                <th>Next Execution</th>
+                                <th>Last Execution</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var job in _jobs)
+                            {
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" />
+                                    </td>
+                                    <td class="font-monospace">@job.Id</td>
+                                    <td><code class="font-monospace">@job.Cron</code></td>
+                                    <td>@GetJobName(job)</td>
+                                    <td><span class="badge bg-secondary">@(job.Queue ?? "default")</span></td>
+                                    <td>
+                                        @if (job.NextExecution.HasValue)
+                                        {
+                                            <RelativeTime UtcTime="@job.NextExecution.Value" IsFuture="true" />
+                                        }
+                                        else if (job.Error is not null)
+                                        {
+                                            <span class="badge bg-danger">Error</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Disabled</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (job.LastExecution.HasValue)
+                                        {
+                                            <span class="@GetLastStateClass(job.LastJobState)">
+                                                <RelativeTime UtcTime="@job.LastExecution.Value" />
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-body-secondary">Never</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <a class="btn btn-outline-secondary btn-sm" href="/recurring/edit/@job.Id" title="Edit this recurring job">
+                                            <i class="bi bi-pencil"></i> Edit
+                                        </a>
+                                        <button class="btn btn-outline-secondary btn-sm" @onclick="() => StopJob(job.Id)" title="Stop this recurring job">
+                                            <i class="bi bi-stop-fill"></i> Stop
+                                        </button>
+                                    </td>
+                                </tr>
+                                @if (job.Error is not null)
+                                {
+                                    <tr>
+                                        <td></td>
+                                        <td colspan="7">
+                                            <div class="alert alert-danger py-2 mb-0">
+                                                <small>@job.Error</small>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
 
 @code {
     private IReadOnlyList<RecurringJobDto> _jobs;

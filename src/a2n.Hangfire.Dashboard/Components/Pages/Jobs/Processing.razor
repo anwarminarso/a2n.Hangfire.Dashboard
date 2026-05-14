@@ -13,44 +13,44 @@
     }
     else if (_jobs.Count == 0)
     {
-        <div class="empty-state">
-            <span class="empty-icon">⚙️</span>
-            <p>No jobs are being processed right now.</p>
+        <div class="card text-center py-5">
+            <span class="fs-1">⚙️</span>
+            <p class="mt-2 mb-0">No jobs are being processed right now.</p>
         </div>
     }
     else
     {
-        <div class="section-card">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Id</th>
-                        <th>Server</th>
-                        <th>Job</th>
-                        <th>Started</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var job in _jobs)
-                    {
-                        <tr>
-                            <td class="font-mono"><a href="/jobs/details/@job.Key" class="job-id-link">@ShortenId(job.Key)</a></td>
-                            <td class="font-mono">@(job.Value?.ServerId ?? "N/A")</td>
-                            <td>@GetJobName(job.Value)</td>
-                            <td>
-                                @if (job.Value?.StartedAt.HasValue == true)
-                                {
-                                    <RelativeTime UtcTime="@job.Value.StartedAt.Value" />
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-
-        <div class="pagination-info">
-            Showing @_jobs.Count of @_totalCount jobs
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Id</th>
+                                <th>Server</th>
+                                <th>Job</th>
+                                <th>Started</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var job in _jobs)
+                            {
+                                <tr>
+                                    <td class="font-monospace"><a href="/jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                    <td class="font-monospace">@(job.Value?.ServerId ?? "N/A")</td>
+                                    <td>@GetJobName(job.Value)</td>
+                                    <td>
+                                        @if (job.Value?.StartedAt.HasValue == true)
+                                        {
+                                            <RelativeTime UtcTime="@job.Value.StartedAt.Value" />
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <Pager TotalCount="@_totalCount" PageSize="@_pageSize" From="@_from"

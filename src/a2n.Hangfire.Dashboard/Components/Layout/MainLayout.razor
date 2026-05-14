@@ -2,47 +2,54 @@
 @inject NavigationManager Navigation
 @implements IDisposable
 
-<div class="layout @(_sidebarCollapsed ? "layout--collapsed" : "")">
-    <aside class="sidebar">
+<div class="d-flex vh-100 overflow-hidden">
+    <!-- Sidebar: fixed di desktop, hidden di mobile -->
+    <aside class="d-none d-lg-flex flex-column flex-shrink-0 bg-dark"
+           style="width: 240px; overflow-y: auto;" id="sidebar">
         <NavMenu />
     </aside>
 
-    <div class="main-content">
-        <header class="top-header">
-            <div class="header-left">
-                <button class="sidebar-toggle" @onclick="ToggleSidebar" title="Toggle sidebar">
-                    @Icons.Menu
+    <!-- Offcanvas sidebar untuk mobile -->
+    <div class="offcanvas offcanvas-start bg-dark" tabindex="-1" id="mobileSidebar">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title text-white">Hangfire</h5>
+            <button type="button" class="btn-close btn-close-white"
+                    data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body p-0">
+            <NavMenu />
+        </div>
+    </div>
+
+    <!-- Main content area -->
+    <div class="flex-grow-1 d-flex flex-column overflow-hidden">
+        <header class="navbar bg-body border-bottom px-3 flex-shrink-0">
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-link d-lg-none p-1"
+                        data-bs-toggle="offcanvas" data-bs-target="#mobileSidebar"
+                        aria-label="Toggle navigation">
+                    <i class="bi bi-list fs-4"></i>
                 </button>
-                <h1 class="dashboard-title">@_pageTitle</h1>
+                <h1 class="navbar-text fw-semibold fs-6 mb-0">@_pageTitle</h1>
             </div>
-            <div class="header-right">
-                <div class="search-box search-box--disabled" title="Search coming in v1.1">
-                    <span class="search-icon">@Icons.Search</span>
-                    <input type="text" placeholder="Search (coming soon)" disabled />
-                </div>
+            <div class="d-flex align-items-center gap-2">
                 <ThemeToggle />
             </div>
         </header>
 
-        <main class="page-content">
+        <main class="flex-grow-1 overflow-auto p-3 p-lg-4">
             @Body
         </main>
     </div>
 </div>
 
 @code {
-    private bool _sidebarCollapsed = false;
     private string _pageTitle = "Dashboard";
 
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += OnLocationChanged;
         UpdatePageTitle(Navigation.Uri);
-    }
-
-    private void ToggleSidebar()
-    {
-        _sidebarCollapsed = !_sidebarCollapsed;
     }
 
     private void OnLocationChanged(object sender, LocationChangedEventArgs e)

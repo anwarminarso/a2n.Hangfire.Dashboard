@@ -1,44 +1,52 @@
 @if (TotalCount > PageSize)
 {
-    <div class="pager">
-        <div class="pager-info">
+    <nav class="d-flex align-items-center justify-content-between flex-wrap gap-2 py-2">
+        <small class="text-body-secondary">
             Showing @(From + 1)–@Math.Min(From + PageSize, TotalCount) of @TotalCount
-        </div>
-        <div class="pager-controls">
-            <button class="pager-btn" disabled="@(CurrentPage <= 1)" @onclick="GoFirst">«</button>
-            <button class="pager-btn" disabled="@(CurrentPage <= 1)" @onclick="GoPrev">‹</button>
-
+        </small>
+        <ul class="pagination pagination-sm mb-0">
+            <li class="@GetPageItemClass(CurrentPage <= 1)">
+                <button class="page-link" @onclick="GoFirst">&laquo;</button>
+            </li>
+            <li class="@GetPageItemClass(CurrentPage <= 1)">
+                <button class="page-link" @onclick="GoPrev">&lsaquo;</button>
+            </li>
             @foreach (var page in GetVisiblePages())
             {
                 @if (page == -1)
                 {
-                    <span class="pager-ellipsis">…</span>
+                    <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
                 }
                 else
                 {
-                    <button class="pager-btn @(page == CurrentPage ? "pager-btn--active" : "")"
-                            @onclick="() => GoToPage(page)">@(page)</button>
+                    <li class="@GetPageItemActiveClass(page)">
+                        <button class="page-link" @onclick="() => GoToPage(page)">@(page)</button>
+                    </li>
                 }
             }
-
-            <button class="pager-btn" disabled="@(CurrentPage >= TotalPages)" @onclick="GoNext">›</button>
-            <button class="pager-btn" disabled="@(CurrentPage >= TotalPages)" @onclick="GoLast">»</button>
-        </div>
-        <div class="pager-size">
-            <select value="@PageSize" @onchange="OnPageSizeChanged">
+            <li class="@GetPageItemClass(CurrentPage >= TotalPages)">
+                <button class="page-link" @onclick="GoNext">&rsaquo;</button>
+            </li>
+            <li class="@GetPageItemClass(CurrentPage >= TotalPages)">
+                <button class="page-link" @onclick="GoLast">&raquo;</button>
+            </li>
+        </ul>
+        <div class="d-flex align-items-center gap-1">
+            <select class="form-select form-select-sm" style="width: auto;"
+                    value="@PageSize" @onchange="OnPageSizeChanged">
                 <option value="10">10</option>
                 <option value="20">20</option>
                 <option value="50">50</option>
                 <option value="100">100</option>
             </select>
-            per page
+            <small class="text-body-secondary">per page</small>
         </div>
-    </div>
+    </nav>
 }
 else if (TotalCount > 0)
 {
-    <div class="pager">
-        <div class="pager-info">Showing all @TotalCount items</div>
+    <div class="py-2">
+        <small class="text-body-secondary">Showing all @TotalCount items</small>
     </div>
 }
 
@@ -50,6 +58,12 @@ else if (TotalCount > 0)
 
     private int CurrentPage => (From / PageSize) + 1;
     private int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+
+    private string GetPageItemClass(bool isDisabled) =>
+        isDisabled ? "page-item disabled" : "page-item";
+
+    private string GetPageItemActiveClass(int page) =>
+        page == CurrentPage ? "page-item active" : "page-item";
 
     private async Task GoToPage(int page)
     {

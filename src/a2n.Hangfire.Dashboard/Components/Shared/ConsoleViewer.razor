@@ -4,30 +4,30 @@
 
 @if (_displayLines is not null && _displayLines.Count > 0)
 {
-    <div class="console-viewer">
-        <div class="console-header">
-            <span class="console-title">Console Output</span>
-            <div class="console-meta">
-                <span class="console-duration">@FormatDuration()</span>
-                <span class="console-count">@_displayLines.Count lines</span>
+    <div class="hf-console-viewer">
+        <div class="hf-console-header">
+            <span class="hf-console-title">Console Output</span>
+            <div class="hf-console-meta">
+                <span class="hf-console-duration">@FormatDuration()</span>
+                <span class="hf-console-count">@_displayLines.Count lines</span>
                 @if (_isLiveActive)
                 {
-                    <span class="console-live-indicator">
-                        <span class="console-live-dot"></span> Live
+                    <span class="hf-console-live-indicator">
+                        <span class="hf-console-live-dot"></span> Live
                     </span>
                 }
             </div>
         </div>
-        <div class="console-body">
+        <div class="hf-console-body">
             @foreach (var line in _displayLines)
             {
                 @if (line.IsProgressBar)
                 {
-                    <div class="console-line console-line--progress">
-                        <span class="console-time">@FormatTimeOffset(line.TimeOffset)</span>
-                        <div class="console-progress" style="@GetProgressBarStyle(line)">
-                            <div class="console-progress-bar" style="width: @(line.ProgressValue ?? 0)%; @GetProgressBarFillStyle(line)">
-                                <span class="console-progress-text">
+                    <div class="hf-console-line hf-console-line--progress">
+                        <span class="hf-console-time">@FormatTimeOffset(line.TimeOffset)</span>
+                        <div class="hf-console-progress" style="@GetProgressBarStyle(line)">
+                            <div class="hf-console-progress-bar" style="width: @(line.ProgressValue ?? 0)%; @GetProgressBarFillStyle(line)">
+                                <span class="hf-console-progress-text">
                                     @if (!string.IsNullOrEmpty(line.ProgressName))
                                     {
                                         @line.ProgressName @(": ")
@@ -40,9 +40,9 @@
                 }
                 else
                 {
-                    <div class="console-line" style="@GetLineStyle(line)">
-                        <span class="console-time">@FormatTimeOffset(line.TimeOffset)</span>
-                        <span class="console-text">@((MarkupString)LinkifyText(line.Message))</span>
+                    <div class="hf-console-line" style="@GetLineStyle(line)">
+                        <span class="hf-console-time">@FormatTimeOffset(line.TimeOffset)</span>
+                        <span class="hf-console-text">@((MarkupString)LinkifyText(line.Message))</span>
                     </div>
                 }
             }
@@ -256,7 +256,7 @@
                 sb.Append(System.Net.WebUtility.HtmlEncode(text[lastIndex..match.Index]));
 
             var url = match.Value;
-            sb.Append($"<a href=\"{System.Net.WebUtility.HtmlEncode(url)}\" target=\"_blank\" rel=\"nofollow\" class=\"console-link\">{System.Net.WebUtility.HtmlEncode(url)}</a>");
+            sb.Append($"<a href=\"{System.Net.WebUtility.HtmlEncode(url)}\" target=\"_blank\" rel=\"nofollow\" class=\"hf-console-link\">{System.Net.WebUtility.HtmlEncode(url)}</a>");
             lastIndex = match.Index + match.Length;
         }
 

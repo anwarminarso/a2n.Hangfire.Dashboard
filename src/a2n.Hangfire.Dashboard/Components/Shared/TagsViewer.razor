@@ -4,10 +4,10 @@
 
 @if (_tags is not null && _tags.Length > 0)
 {
-    <div class="tags-viewer">
+    <div class="d-flex flex-wrap gap-1 mb-3">
         @foreach (var tag in _tags)
         {
-            <a class="tag-badge" href="@GetTagUrl(tag)">@tag</a>
+            <a href="@GetTagUrl(tag)" class="badge bg-primary text-decoration-none">@tag</a>
         }
     </div>
 }
