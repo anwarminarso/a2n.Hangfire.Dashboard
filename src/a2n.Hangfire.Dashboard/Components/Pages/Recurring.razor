@@ -155,10 +155,10 @@
 </div>
 
 @code {
-    private IReadOnlyList<RecurringJobDto>? _jobs;
+    private IReadOnlyList<RecurringJobDto> _jobs;
     private List<StoppedJobInfo> _stoppedJobs = new();
     private HashSet<string> _selectedJobs = new();
-    private Timer? _refreshTimer;
+    private Timer _refreshTimer;
 
     private class StoppedJobInfo
     {
@@ -263,7 +263,7 @@
     private static string GetJobName(RecurringJobDto dto) =>
         dto.Job is null ? "Unknown" : $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
 
-    private static string GetLastStateClass(string? state) => state switch
+    private static string GetLastStateClass(string state) => state switch
     {
         "Succeeded" => "text-success",
         "Failed" => "text-danger",

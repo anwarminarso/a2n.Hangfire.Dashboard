@@ -16,7 +16,7 @@ internal class TagsStorage : IDisposable
     private readonly JobStorageConnection _connection;
     private readonly TagsOptions _options;
 
-    public TagsStorage(JobStorage jobStorage, TagsOptions? options = null)
+    public TagsStorage(JobStorage jobStorage, TagsOptions options = null)
     {
         _options = options ?? new TagsOptions();
         var connection = jobStorage.GetConnection();

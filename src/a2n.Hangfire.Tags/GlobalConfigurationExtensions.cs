@@ -17,7 +17,7 @@ public static class TagsGlobalConfigurationExtensions
     /// <param name="options">Options for tags</param>
     public static IGlobalConfiguration UseTags(
         this IGlobalConfiguration configuration,
-        TagsOptions? options = null)
+        TagsOptions options = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 

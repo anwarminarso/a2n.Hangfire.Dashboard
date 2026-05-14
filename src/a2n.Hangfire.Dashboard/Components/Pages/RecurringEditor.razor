@@ -61,11 +61,11 @@
 </div>
 
 @code {
-    [Parameter] public string? JobId { get; set; }
+    [Parameter] public string JobId { get; set; }
 
     private bool _isEdit => !string.IsNullOrEmpty(JobId);
     private bool _saving;
-    private string? _error;
+    private string _error;
     private RecurringJobModel _model = new();
     private IReadOnlyCollection<TimeZoneInfo> _timeZones = TimeZoneInfo.GetSystemTimeZones();
 

@@ -13,9 +13,9 @@
 }
 
 @code {
-    [Parameter] public string? JobId { get; set; }
+    [Parameter] public string JobId { get; set; }
 
-    private string[]? _tags;
+    private string[] _tags;
 
     protected override async Task OnParametersSetAsync()
     {

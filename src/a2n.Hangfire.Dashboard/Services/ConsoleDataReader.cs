@@ -82,7 +82,8 @@ public class ConsoleDataReader
                 TextColor = line.TextColor,
                 ProgressValue = line.ProgressValue,
                 ProgressName = line.ProgressName,
-                IsProgressBar = line.ProgressValue.HasValue
+                IsProgressBar = line.ProgressValue.HasValue,
+                ProgressId = line.ProgressValue.HasValue ? line.Message : null
             });
         }
 
@@ -116,10 +117,16 @@ public class ConsoleLineDto
 {
     public double TimeOffset { get; set; }
     public string Message { get; set; } = "";
-    public string? TextColor { get; set; }
+    public string TextColor { get; set; }
     public double? ProgressValue { get; set; }
-    public string? ProgressName { get; set; }
+    public string ProgressName { get; set; }
     public bool IsProgressBar { get; set; }
+
+    /// <summary>
+    /// Unique identifier for progress bars (from Message field in storage).
+    /// Used to group multiple progress updates into a single rendered bar.
+    /// </summary>
+    public string ProgressId { get; set; }
 }
 
 /// <summary>
@@ -138,11 +145,11 @@ internal class RawConsoleLine
 
     [Newtonsoft.Json.JsonProperty("s")]
     [System.Text.Json.Serialization.JsonPropertyName("s")]
-    public string? Message { get; set; }
+    public string Message { get; set; }
 
     [Newtonsoft.Json.JsonProperty("c")]
     [System.Text.Json.Serialization.JsonPropertyName("c")]
-    public string? TextColor { get; set; }
+    public string TextColor { get; set; }
 
     [Newtonsoft.Json.JsonProperty("p")]
     [System.Text.Json.Serialization.JsonPropertyName("p")]
@@ -150,5 +157,5 @@ internal class RawConsoleLine
 
     [Newtonsoft.Json.JsonProperty("n")]
     [System.Text.Json.Serialization.JsonPropertyName("n")]
-    public string? ProgressName { get; set; }
+    public string ProgressName { get; set; }
 }

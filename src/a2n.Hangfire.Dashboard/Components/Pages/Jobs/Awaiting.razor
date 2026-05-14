@@ -64,10 +64,10 @@
 </div>
 
 @code {
-    private IReadOnlyList<string>? _jobIds;
-    private Dictionary<string, (string? jobName, string? state)> _jobInfo = new();
+    private IReadOnlyList<string> _jobIds;
+    private Dictionary<string, (string jobName, string state)> _jobInfo = new();
     private HashSet<string> _selectedJobs = new();
-    private Timer? _refreshTimer;
+    private Timer _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {

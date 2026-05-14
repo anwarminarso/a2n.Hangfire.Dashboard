@@ -65,8 +65,8 @@
 </div>
 
 @code {
-    private IReadOnlyList<string>? _jobIds;
-    private Dictionary<string, (string? jobName, string? state, string? reason)> _jobInfo = new();
+    private IReadOnlyList<string> _jobIds;
+    private Dictionary<string, (string jobName, string state, string reason)> _jobInfo = new();
     private HashSet<string> _selectedJobs = new();
 
     protected override async Task OnInitializedAsync()

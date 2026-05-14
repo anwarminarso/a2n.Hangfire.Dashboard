@@ -11,7 +11,7 @@ public class AlternateDashboardOptions
     /// <summary>
     /// The path for the Back To Site link. Set to null to hide it.
     /// </summary>
-    public string? AppPath { get; set; } = "/";
+    public string AppPath { get; set; } = "/";
 
     /// <summary>
     /// The title displayed on the dashboard.

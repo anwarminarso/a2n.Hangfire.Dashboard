@@ -68,12 +68,12 @@
 </div>
 
 @code {
-    private JobList<ScheduledJobDto>? _jobs;
+    private JobList<ScheduledJobDto> _jobs;
     private long _totalCount;
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
-    private Timer? _refreshTimer;
+    private Timer _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -139,7 +139,7 @@
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
-    private static string GetJobName(ScheduledJobDto? dto) =>
+    private static string GetJobName(ScheduledJobDto dto) =>
         dto?.Job is null ? "Unknown" : $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
 
     public void Dispose()

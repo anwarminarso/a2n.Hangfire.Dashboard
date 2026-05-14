@@ -43,7 +43,7 @@ public class HangfireMonitorService
     public JobList<EnqueuedJobDto> GetEnqueuedJobs(string queue, int from, int count)
         => GetMonitoringApi().EnqueuedJobs(queue, from, count);
 
-    public JobDetailsDto? GetJobDetails(string jobId)
+    public JobDetailsDto GetJobDetails(string jobId)
         => GetMonitoringApi().JobDetails(jobId);
 
     public long GetProcessingCount() => GetMonitoringApi().ProcessingCount();
@@ -164,7 +164,7 @@ public class HangfireMonitorService
     /// <summary>
     /// Create or update a recurring job.
     /// </summary>
-    public void CreateOrUpdateRecurringJob(string jobId, string typeName, string methodName, string cron, string? queue = null, string? timeZoneId = null)
+    public void CreateOrUpdateRecurringJob(string jobId, string typeName, string methodName, string cron, string queue = null, string timeZoneId = null)
     {
         var manager = new RecurringJobManager(_storage);
         var timeZone = string.IsNullOrEmpty(timeZoneId)
@@ -314,7 +314,7 @@ public class HangfireMonitorService
     /// <summary>
     /// Gets the stored config for a stopped recurring job.
     /// </summary>
-    public Dictionary<string, string>? GetStoppedJobConfig(string recurringJobId)
+    public Dictionary<string, string> GetStoppedJobConfig(string recurringJobId)
     {
         using var connection = _storage.GetReadOnlyConnection();
         if (connection is not JobStorageConnection storageConnection) return null;

@@ -59,11 +59,11 @@
 </div>
 
 @code {
-    private JobList<ProcessingJobDto>? _jobs;
+    private JobList<ProcessingJobDto> _jobs;
     private long _totalCount;
     private int _from = 0;
     private int _pageSize = 20;
-    private Timer? _refreshTimer;
+    private Timer _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -112,7 +112,7 @@
         return $"#{id}";
     }
 
-    private static string GetJobName(ProcessingJobDto? dto)
+    private static string GetJobName(ProcessingJobDto dto)
     {
         if (dto?.Job is null) return "Unknown";
         return $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";

@@ -45,7 +45,7 @@
         _sidebarCollapsed = !_sidebarCollapsed;
     }
 
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    private void OnLocationChanged(object sender, LocationChangedEventArgs e)
     {
         UpdatePageTitle(e.Location);
         InvokeAsync(StateHasChanged);

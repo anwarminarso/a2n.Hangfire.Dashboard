@@ -88,14 +88,14 @@
 </div>
 
 @code {
-    [Parameter] public string? SearchTag { get; set; }
+    [Parameter] public string SearchTag { get; set; }
 
-    private string[]? _allTags;
-    private IReadOnlyList<string>? _taggedJobs;
+    private string[] _allTags;
+    private IReadOnlyList<string> _taggedJobs;
     private long _totalTaggedJobs;
     private int _from = 0;
     private int _pageSize = 20;
-    private Dictionary<string, (string? jobName, string? state)> _jobDetails = new();
+    private Dictionary<string, (string jobName, string state)> _jobDetails = new();
 
     protected override async Task OnParametersSetAsync()
     {

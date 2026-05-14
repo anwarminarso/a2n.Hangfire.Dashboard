@@ -124,7 +124,7 @@
 @code {
     [Parameter] public string JobId { get; set; } = "";
 
-    private JobDetailsDto? _job;
+    private JobDetailsDto _job;
     private bool _notFound;
     private bool _isProcessing;
     private List<ConsoleSession> _consoleSessions = new();

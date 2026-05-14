@@ -22,7 +22,7 @@ public static class HangfireAlternateDashboardExtensions
     /// <returns>The service collection for chaining</returns>
     public static IServiceCollection AddHangfireAlternateDashboard(
         this IServiceCollection services,
-        AlternateDashboardOptions? options = null)
+        AlternateDashboardOptions options = null)
     {
         options ??= new AlternateDashboardOptions();
 

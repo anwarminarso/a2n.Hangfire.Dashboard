@@ -132,9 +132,9 @@
 </div>
 
 @code {
-    private StatisticsDto? _stats;
-    private IList<ServerDto>? _servers;
-    private Timer? _refreshTimer;
+    private StatisticsDto _stats;
+    private IList<ServerDto> _servers;
+    private Timer _refreshTimer;
     private long _prevSucceeded;
     private long _prevFailed;
     private bool _chartsInitialized;

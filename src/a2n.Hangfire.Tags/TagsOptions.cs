@@ -13,22 +13,22 @@ public class TagsOptions
     /// <summary>
     /// The background color of the tags in the dashboard (light mode).
     /// </summary>
-    public string? TagColor { get; set; }
+    public string TagColor { get; set; }
 
     /// <summary>
     /// The text color of the tags in the dashboard (light mode).
     /// </summary>
-    public string? TextColor { get; set; }
+    public string TextColor { get; set; }
 
     /// <summary>
     /// The background color of the tags in the dashboard (dark mode).
     /// </summary>
-    public string? DarkTagColor { get; set; }
+    public string DarkTagColor { get; set; }
 
     /// <summary>
     /// The text color of the tags in the dashboard (dark mode).
     /// </summary>
-    public string? DarkTextColor { get; set; }
+    public string DarkTextColor { get; set; }
 
     /// <summary>
     /// How to show tags in the dashboard.

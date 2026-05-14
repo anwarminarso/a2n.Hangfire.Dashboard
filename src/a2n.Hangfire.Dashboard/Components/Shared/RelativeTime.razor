@@ -14,7 +14,7 @@
     [Parameter] public bool IsFuture { get; set; }
 
     private string _displayText = "";
-    private static Timer? _sharedTimer;
+    private static Timer _sharedTimer;
     private static readonly List<RelativeTime> _instances = new();
     private static readonly object _lock = new();
 
@@ -34,7 +34,7 @@
         _displayText = FormatTime();
     }
 
-    private static void OnTimerTick(object? state)
+    private static void OnTimerTick(object state)
     {
         List<RelativeTime> snapshot;
         lock (_lock)
