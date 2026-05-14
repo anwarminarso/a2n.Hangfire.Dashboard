@@ -1072,6 +1072,93 @@ html, body {
     border-radius: 3px;
 }
 
+/* Console Live Indicator */
+.console-live-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-success);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.console-live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--color-success);
+    animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* Collapsible Console Sessions */
+.console-collapsible {
+    margin-top: 8px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.console-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 16px;
+    background-color: #151827;
+    border: none;
+    color: var(--color-text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.console-collapsible-header:hover {
+    background-color: #1a1d2e;
+    color: var(--color-text);
+}
+
+.console-collapsible-icon {
+    font-size: 10px;
+    color: var(--color-text-muted);
+}
+
+.console-collapsible-title {
+    font-style: italic;
+}
+
+/* Section card muted variant */
+.section-card--muted {
+    opacity: 0.85;
+    border-left: 3px solid var(--color-text-muted);
+}
+
+/* Row muted */
+.row-muted {
+    opacity: 0.7;
+}
+
+/* Button variants */
+.btn--sm {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.btn--warning {
+    background-color: var(--color-warning);
+    color: #1f2937;
+}
+
+.btn--warning:hover {
+    background-color: #d97706;
+}
+
 
 /* ===== Tags Viewer ===== */
 .tags-viewer {

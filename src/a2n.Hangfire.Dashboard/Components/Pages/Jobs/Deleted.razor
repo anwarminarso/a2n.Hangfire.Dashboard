@@ -1,5 +1,6 @@
 @page "/jobs/deleted"
 @inject HangfireMonitorService Monitor
+@implements IDisposable
 
 <PageTitle>Deleted Jobs</PageTitle>
 
@@ -47,7 +48,7 @@
                             <td>
                                 @if (job.Value?.DeletedAt.HasValue == true)
                                 {
-                                    @FormatRelativeTime(job.Value.DeletedAt.Value)
+                                    <RelativeTime UtcTime="@job.Value.DeletedAt.Value" />
                                 }
                             </td>
                         </tr>
@@ -64,8 +65,33 @@
     private JobList<DeletedJobDto>? _jobs;
     private long _totalCount;
     private HashSet<string> _selectedJobs = new();
+    private Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                var newCount = Monitor.GetDeletedListCount();
+                if (newCount != _totalCount)
+                {
+                    var jobs = Monitor.GetDeletedJobs(0, 20);
+                    await InvokeAsync(() =>
+                    {
+                        _totalCount = newCount;
+                        _jobs = jobs;
+                        StateHasChanged();
+                    });
+                }
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task LoadData()
     {
         await Task.Run(() =>
         {
@@ -86,28 +112,15 @@
     {
         await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
         _selectedJobs.Clear();
-        await Reload();
-    }
-
-    private async Task Reload()
-    {
-        _totalCount = Monitor.GetDeletedListCount();
-        _jobs = Monitor.GetDeletedJobs(0, 20);
-        await InvokeAsync(StateHasChanged);
+        await LoadData();
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
     private static string GetJobName(DeletedJobDto? dto) =>
         dto?.Job is null ? "Unknown" : $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
-    private static string FormatRelativeTime(DateTime utcTime)
+
+    public void Dispose()
     {
-        var diff = DateTime.UtcNow - utcTime;
-        return diff.TotalSeconds switch
-        {
-            < 60 => $"{(int)diff.TotalSeconds}s ago",
-            < 3600 => $"{(int)diff.TotalMinutes}m ago",
-            < 86400 => $"{(int)diff.TotalHours}h ago",
-            _ => $"{(int)diff.TotalDays}d ago"
-        };
+        _refreshTimer?.Dispose();
     }
 }

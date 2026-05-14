@@ -1,4 +1,5 @@
 @inject HangfireMonitorService Monitor
+@inject TagsDataReader TagsReader
 @implements IDisposable
 
 <nav class="nav-menu">
@@ -88,12 +89,17 @@
         <NavLink class="nav-item" href="tags">
             <span class="nav-icon">@Icons.Tag</span>
             <span class="nav-label">Tags</span>
+            @if (_tagsCount > 0)
+            {
+                <span class="nav-badge">@_tagsCount</span>
+            }
         </NavLink>
     </div>
 </nav>
 
 @code {
     private StatisticsDto? _stats;
+    private long _tagsCount;
     private Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
@@ -105,9 +111,11 @@
             try
             {
                 var stats = Monitor.GetStatistics();
+                var tagsCount = TagsReader.GetTagsCount();
                 await InvokeAsync(() =>
                 {
                     _stats = stats;
+                    _tagsCount = tagsCount;
                     StateHasChanged();
                 });
             }
@@ -117,7 +125,11 @@
 
     private async Task LoadStats()
     {
-        await Task.Run(() => { _stats = Monitor.GetStatistics(); });
+        await Task.Run(() =>
+        {
+            _stats = Monitor.GetStatistics();
+            _tagsCount = TagsReader.GetTagsCount();
+        });
     }
 
     public void Dispose()

@@ -229,4 +229,95 @@ public class HangfireMonitorService
         foreach (var id in recurringJobIds)
             manager.RemoveIfExists(id);
     }
+
+    // ===== Recurring Job Start/Stop =====
+
+    private const string StoppedJobsSet = "recurring:stopped";
+
+    /// <summary>
+    /// Stops a recurring job by removing it from the scheduler and storing its config.
+    /// </summary>
+    public void StopRecurringJob(string recurringJobId)
+    {
+        // Read the recurring job config before removing
+        using var connection = _storage.GetConnection();
+        if (connection is not JobStorageConnection storageConnection) return;
+
+        var recurringJobs = storageConnection.GetRecurringJobs();
+        var job = recurringJobs.FirstOrDefault(j => j.Id == recurringJobId);
+        if (job is null) return;
+
+        // Store the config in a hash so we can restore it later
+        var hashKey = $"recurring:stopped:{recurringJobId}";
+        var data = new Dictionary<string, string>
+        {
+            ["Cron"] = job.Cron ?? "",
+            ["Queue"] = job.Queue ?? "default",
+            ["TimeZoneId"] = job.TimeZoneId ?? "UTC",
+            ["TypeName"] = job.Job?.Type.FullName ?? "",
+            ["MethodName"] = job.Job?.Method.Name ?? "",
+            ["StoppedAt"] = DateTime.UtcNow.ToString("O")
+        };
+
+        using var transaction = connection.CreateWriteTransaction();
+        transaction.SetRangeInHash(hashKey, data.Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value)));
+        transaction.AddToSet(StoppedJobsSet, recurringJobId);
+        transaction.Commit();
+
+        // Remove the recurring job from the scheduler
+        var manager = new RecurringJobManager(_storage);
+        manager.RemoveIfExists(recurringJobId);
+    }
+
+    /// <summary>
+    /// Starts (restores) a previously stopped recurring job.
+    /// </summary>
+    public void StartRecurringJob(string recurringJobId)
+    {
+        using var connection = _storage.GetConnection();
+        if (connection is not JobStorageConnection storageConnection) return;
+
+        var hashKey = $"recurring:stopped:{recurringJobId}";
+        var data = storageConnection.GetAllEntriesFromHash(hashKey);
+        if (data is null || data.Count == 0) return;
+
+        var typeName = data.GetValueOrDefault("TypeName") ?? "";
+        var methodName = data.GetValueOrDefault("MethodName") ?? "";
+        var cron = data.GetValueOrDefault("Cron") ?? "* * * * *";
+        var queue = data.GetValueOrDefault("Queue") ?? "default";
+        var timeZoneId = data.GetValueOrDefault("TimeZoneId") ?? "UTC";
+
+        // Re-create the recurring job
+        CreateOrUpdateRecurringJob(recurringJobId, typeName, methodName, cron, queue, timeZoneId);
+
+        // Clean up the stopped state
+        using var transaction = connection.CreateWriteTransaction();
+        transaction.RemoveFromSet(StoppedJobsSet, recurringJobId);
+        // Mark the hash as deleted by overwriting with a flag
+        transaction.SetRangeInHash(hashKey, [new KeyValuePair<string, string>("_deleted", "true")]);
+        transaction.Commit();
+    }
+
+    /// <summary>
+    /// Gets all stopped recurring job IDs.
+    /// </summary>
+    public IReadOnlyList<string> GetStoppedRecurringJobIds()
+    {
+        using var connection = _storage.GetReadOnlyConnection();
+        if (connection is not JobStorageConnection storageConnection) return [];
+
+        return storageConnection.GetAllItemsFromSet(StoppedJobsSet).ToList();
+    }
+
+    /// <summary>
+    /// Gets the stored config for a stopped recurring job.
+    /// </summary>
+    public Dictionary<string, string>? GetStoppedJobConfig(string recurringJobId)
+    {
+        using var connection = _storage.GetReadOnlyConnection();
+        if (connection is not JobStorageConnection storageConnection) return null;
+
+        var hashKey = $"recurring:stopped:{recurringJobId}";
+        return storageConnection.GetAllEntriesFromHash(hashKey);
+    }
 }

@@ -1,5 +1,6 @@
 @using a2n.Hangfire.Dashboard.Services
 @inject ConsoleDataReader ConsoleReader
+@implements IDisposable
 
 @if (_lines is not null && _lines.Count > 0)
 {
@@ -7,6 +8,12 @@
         <div class="console-header">
             <span class="console-title">Console Output</span>
             <span class="console-count">@_lines.Count lines</span>
+            @if (IsLive)
+            {
+                <span class="console-live-indicator">
+                    <span class="console-live-dot"></span> Live
+                </span>
+            }
         </div>
         <div class="console-body">
             @foreach (var line in _lines)
@@ -43,7 +50,13 @@
     [Parameter] public string? JobId { get; set; }
     [Parameter] public DateTime? StartedAt { get; set; }
 
+    /// <summary>
+    /// When true, polls for new console lines every 2 seconds (for Processing jobs).
+    /// </summary>
+    [Parameter] public bool IsLive { get; set; }
+
     private IReadOnlyList<ConsoleLineDto>? _lines;
+    private Timer? _liveTimer;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -54,6 +67,33 @@
                 _lines = ConsoleReader.GetLines(JobId, StartedAt.Value);
             });
         }
+
+        // Start or stop live polling based on IsLive parameter
+        if (IsLive && _liveTimer is null)
+        {
+            _liveTimer = new Timer(OnLiveTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        }
+        else if (!IsLive && _liveTimer is not null)
+        {
+            _liveTimer.Dispose();
+            _liveTimer = null;
+        }
+    }
+
+    private async void OnLiveTick(object? state)
+    {
+        if (JobId is null || !StartedAt.HasValue) return;
+
+        try
+        {
+            var newLines = ConsoleReader.GetLines(JobId, StartedAt.Value);
+            if (newLines is not null && (_lines is null || newLines.Count != _lines.Count))
+            {
+                _lines = newLines;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch { /* ignore errors during polling */ }
     }
 
     private static string FormatTimeOffset(double seconds)
@@ -77,5 +117,10 @@
     {
         var encoded = System.Net.WebUtility.HtmlEncode(text);
         return UrlRegex.Replace(encoded, "<a href=\"$1\" target=\"_blank\" rel=\"nofollow\" class=\"console-link\">$1</a>");
+    }
+
+    public void Dispose()
+    {
+        _liveTimer?.Dispose();
     }
 }

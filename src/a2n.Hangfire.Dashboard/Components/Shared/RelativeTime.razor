@@ -1,0 +1,100 @@
+@implements IDisposable
+
+<span title="@UtcTime.ToString("yyyy-MM-dd HH:mm:ss") UTC">@_displayText</span>
+
+@code {
+    /// <summary>
+    /// The UTC DateTime to display as relative time.
+    /// </summary>
+    [Parameter, EditorRequired] public DateTime UtcTime { get; set; }
+
+    /// <summary>
+    /// If true, shows future time (e.g., "in 5m"). Otherwise shows past time (e.g., "5m ago").
+    /// </summary>
+    [Parameter] public bool IsFuture { get; set; }
+
+    private string _displayText = "";
+    private static Timer? _sharedTimer;
+    private static readonly List<RelativeTime> _instances = new();
+    private static readonly object _lock = new();
+
+    protected override void OnInitialized()
+    {
+        _displayText = FormatTime();
+
+        lock (_lock)
+        {
+            _instances.Add(this);
+            _sharedTimer ??= new Timer(OnTimerTick, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        _displayText = FormatTime();
+    }
+
+    private static void OnTimerTick(object? state)
+    {
+        List<RelativeTime> snapshot;
+        lock (_lock)
+        {
+            snapshot = new List<RelativeTime>(_instances);
+        }
+
+        foreach (var instance in snapshot)
+        {
+            try
+            {
+                var newText = instance.FormatTime();
+                if (newText != instance._displayText)
+                {
+                    instance._displayText = newText;
+                    instance.InvokeAsync(instance.StateHasChanged);
+                }
+            }
+            catch { /* component may be disposed */ }
+        }
+    }
+
+    private string FormatTime()
+    {
+        if (IsFuture)
+        {
+            var diff = UtcTime - DateTime.UtcNow;
+            if (diff.TotalSeconds <= 0) return "now";
+            return diff.TotalSeconds switch
+            {
+                < 60 => $"in {(int)diff.TotalSeconds}s",
+                < 3600 => $"in {(int)diff.TotalMinutes}m",
+                < 86400 => $"in {(int)diff.TotalHours}h",
+                _ => $"in {(int)diff.TotalDays}d"
+            };
+        }
+        else
+        {
+            var diff = DateTime.UtcNow - UtcTime;
+            if (diff.TotalSeconds < 0) return "just now";
+            return diff.TotalSeconds switch
+            {
+                < 60 => $"{(int)diff.TotalSeconds}s ago",
+                < 3600 => $"{(int)diff.TotalMinutes}m ago",
+                < 86400 => $"{(int)diff.TotalHours}h ago",
+                _ => $"{(int)diff.TotalDays}d ago"
+            };
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            _instances.Remove(this);
+            if (_instances.Count == 0 && _sharedTimer is not null)
+            {
+                _sharedTimer.Dispose();
+                _sharedTimer = null;
+            }
+        }
+    }
+}

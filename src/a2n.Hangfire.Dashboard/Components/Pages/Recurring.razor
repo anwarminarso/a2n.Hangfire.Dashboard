@@ -1,6 +1,7 @@
 @page "/recurring"
 @using global::Hangfire.Storage
 @inject HangfireMonitorService Monitor
+@implements IDisposable
 
 <PageTitle>Recurring Jobs</PageTitle>
 
@@ -10,13 +11,6 @@
     @if (_jobs is null)
     {
         <p class="text-muted">Loading...</p>
-    }
-    else if (_jobs.Count == 0)
-    {
-        <div class="empty-state">
-            <span class="empty-icon">🔄</span>
-            <p>No recurring jobs configured.</p>
-        </div>
     }
     else
     {
@@ -30,82 +24,213 @@
             </button>
         </div>
 
-        <div class="section-card">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
-                        <th>Id</th>
-                        <th>Cron</th>
-                        <th>Job</th>
-                        <th>Queue</th>
-                        <th>Next Execution</th>
-                        <th>Last Execution</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var job in _jobs)
-                    {
+        @* Stopped Jobs Section *@
+        @if (_stoppedJobs.Count > 0)
+        {
+            <div class="section-card section-card--muted">
+                <h3>Stopped Jobs</h3>
+                <table class="data-table">
+                    <thead>
                         <tr>
-                            <td class="col-check">
-                                <input type="checkbox" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" />
-                            </td>
-                            <td class="font-mono">@job.Id</td>
-                            <td><code class="cron-badge">@job.Cron</code></td>
-                            <td>@GetJobName(job)</td>
-                            <td><span class="badge">@(job.Queue ?? "default")</span></td>
-                            <td>
-                                @if (job.NextExecution.HasValue)
-                                {
-                                    @FormatFutureTime(job.NextExecution.Value)
-                                }
-                                else if (job.Error is not null)
-                                {
-                                    <span class="badge badge--danger">Error</span>
-                                }
-                                else
-                                {
-                                    <span class="badge badge--muted">Disabled</span>
-                                }
-                            </td>
-                            <td>
-                                @if (job.LastExecution.HasValue)
-                                {
-                                    <span class="@GetLastStateClass(job.LastJobState)">
-                                        @FormatRelativeTime(job.LastExecution.Value)
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">Never</span>
-                                }
-                            </td>
+                            <th>Id</th>
+                            <th>Cron</th>
+                            <th>Job</th>
+                            <th>Queue</th>
+                            <th>Stopped At</th>
+                            <th>Actions</th>
                         </tr>
-                        @if (job.Error is not null)
+                    </thead>
+                    <tbody>
+                        @foreach (var stopped in _stoppedJobs)
                         {
-                            <tr class="detail-row">
-                                <td></td>
-                                <td colspan="6">
-                                    <div class="exception-detail">
-                                        <p>@job.Error</p>
-                                    </div>
+                            <tr class="row-muted">
+                                <td class="font-mono">@stopped.Id</td>
+                                <td><code class="cron-badge">@stopped.Cron</code></td>
+                                <td>@stopped.TypeName.@stopped.MethodName</td>
+                                <td><span class="badge">@stopped.Queue</span></td>
+                                <td>
+                                    @if (stopped.StoppedAt.HasValue)
+                                    {
+                                        <RelativeTime UtcTime="@stopped.StoppedAt.Value" />
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn--sm btn--primary" @onclick="() => StartJob(stopped.Id)">
+                                        ▶️ Start
+                                    </button>
                                 </td>
                             </tr>
                         }
-                    }
-                </tbody>
-            </table>
-        </div>
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @if (_jobs.Count == 0 && _stoppedJobs.Count == 0)
+        {
+            <div class="empty-state">
+                <span class="empty-icon">🔄</span>
+                <p>No recurring jobs configured.</p>
+            </div>
+        }
+        else if (_jobs.Count > 0)
+        {
+            <div class="section-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
+                            <th>Id</th>
+                            <th>Cron</th>
+                            <th>Job</th>
+                            <th>Queue</th>
+                            <th>Next Execution</th>
+                            <th>Last Execution</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var job in _jobs)
+                        {
+                            <tr>
+                                <td class="col-check">
+                                    <input type="checkbox" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" />
+                                </td>
+                                <td class="font-mono">@job.Id</td>
+                                <td><code class="cron-badge">@job.Cron</code></td>
+                                <td>@GetJobName(job)</td>
+                                <td><span class="badge">@(job.Queue ?? "default")</span></td>
+                                <td>
+                                    @if (job.NextExecution.HasValue)
+                                    {
+                                        <RelativeTime UtcTime="@job.NextExecution.Value" IsFuture="true" />
+                                    }
+                                    else if (job.Error is not null)
+                                    {
+                                        <span class="badge badge--danger">Error</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge--muted">Disabled</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (job.LastExecution.HasValue)
+                                    {
+                                        <span class="@GetLastStateClass(job.LastJobState)">
+                                            <RelativeTime UtcTime="@job.LastExecution.Value" />
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Never</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn--sm btn--warning" @onclick="() => StopJob(job.Id)" title="Stop this recurring job">
+                                        ⏹️ Stop
+                                    </button>
+                                </td>
+                            </tr>
+                            @if (job.Error is not null)
+                            {
+                                <tr class="detail-row">
+                                    <td></td>
+                                    <td colspan="7">
+                                        <div class="exception-detail">
+                                            <p>@job.Error</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     }
 </div>
 
 @code {
     private IReadOnlyList<RecurringJobDto>? _jobs;
+    private List<StoppedJobInfo> _stoppedJobs = new();
     private HashSet<string> _selectedJobs = new();
+    private Timer? _refreshTimer;
+
+    private class StoppedJobInfo
+    {
+        public string Id { get; set; } = "";
+        public string Cron { get; set; } = "";
+        public string Queue { get; set; } = "default";
+        public string TypeName { get; set; } = "";
+        public string MethodName { get; set; } = "";
+        public DateTime? StoppedAt { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        await Task.Run(() => { _jobs = Monitor.GetRecurringJobs(); });
+        await LoadData();
+
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await LoadData();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private async Task LoadData()
+    {
+        await Task.Run(() =>
+        {
+            _jobs = Monitor.GetRecurringJobs();
+            LoadStoppedJobs();
+        });
+    }
+
+    private void LoadStoppedJobs()
+    {
+        _stoppedJobs.Clear();
+        var stoppedIds = Monitor.GetStoppedRecurringJobIds();
+        foreach (var id in stoppedIds)
+        {
+            var config = Monitor.GetStoppedJobConfig(id);
+            if (config is null || config.ContainsKey("_deleted")) continue;
+
+            DateTime? stoppedAt = null;
+            if (config.TryGetValue("StoppedAt", out var stoppedAtStr) &&
+                DateTime.TryParse(stoppedAtStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+            {
+                stoppedAt = parsed;
+            }
+
+            _stoppedJobs.Add(new StoppedJobInfo
+            {
+                Id = id,
+                Cron = config.GetValueOrDefault("Cron") ?? "",
+                Queue = config.GetValueOrDefault("Queue") ?? "default",
+                TypeName = config.GetValueOrDefault("TypeName") ?? "Unknown",
+                MethodName = config.GetValueOrDefault("MethodName") ?? "Unknown",
+                StoppedAt = stoppedAt
+            });
+        }
+    }
+
+    private async Task StopJob(string jobId)
+    {
+        await Task.Run(() => Monitor.StopRecurringJob(jobId));
+        await LoadData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task StartJob(string jobId)
+    {
+        await Task.Run(() => Monitor.StartRecurringJob(jobId));
+        await LoadData();
+        await InvokeAsync(StateHasChanged);
     }
 
     private bool IsSelected(string id) => _selectedJobs.Contains(id);
@@ -120,19 +245,15 @@
     {
         await Task.Run(() => Monitor.TriggerRecurringJobs(_selectedJobs));
         _selectedJobs.Clear();
-        await Reload();
+        await LoadData();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task RemoveSelected()
     {
         await Task.Run(() => Monitor.RemoveRecurringJobs(_selectedJobs));
         _selectedJobs.Clear();
-        await Reload();
-    }
-
-    private async Task Reload()
-    {
-        _jobs = Monitor.GetRecurringJobs();
+        await LoadData();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -146,28 +267,8 @@
         _ => ""
     };
 
-    private static string FormatRelativeTime(DateTime utcTime)
+    public void Dispose()
     {
-        var diff = DateTime.UtcNow - utcTime;
-        return diff.TotalSeconds switch
-        {
-            < 60 => $"{(int)diff.TotalSeconds}s ago",
-            < 3600 => $"{(int)diff.TotalMinutes}m ago",
-            < 86400 => $"{(int)diff.TotalHours}h ago",
-            _ => $"{(int)diff.TotalDays}d ago"
-        };
-    }
-
-    private static string FormatFutureTime(DateTime utcTime)
-    {
-        var diff = utcTime - DateTime.UtcNow;
-        if (diff.TotalSeconds <= 0) return "now";
-        return diff.TotalSeconds switch
-        {
-            < 60 => $"in {(int)diff.TotalSeconds}s",
-            < 3600 => $"in {(int)diff.TotalMinutes}m",
-            < 86400 => $"in {(int)diff.TotalHours}h",
-            _ => $"in {(int)diff.TotalDays}d"
-        };
+        _refreshTimer?.Dispose();
     }
 }

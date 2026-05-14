@@ -1,5 +1,6 @@
 @page "/jobs/processing"
 @inject HangfireMonitorService Monitor
+@implements IDisposable
 
 <PageTitle>Processing Jobs</PageTitle>
 
@@ -39,7 +40,7 @@
                             <td>
                                 @if (job.Value?.StartedAt.HasValue == true)
                                 {
-                                    @FormatRelativeTime(job.Value.StartedAt.Value)
+                                    <RelativeTime UtcTime="@job.Value.StartedAt.Value" />
                                 }
                             </td>
                         </tr>
@@ -57,8 +58,33 @@
 @code {
     private JobList<ProcessingJobDto>? _jobs;
     private long _totalCount;
+    private Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                var newCount = Monitor.GetProcessingCount();
+                if (newCount != _totalCount || newCount > 0)
+                {
+                    var jobs = Monitor.GetProcessingJobs(0, 20);
+                    await InvokeAsync(() =>
+                    {
+                        _totalCount = newCount;
+                        _jobs = jobs;
+                        StateHasChanged();
+                    });
+                }
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task LoadData()
     {
         await Task.Run(() =>
         {
@@ -80,15 +106,8 @@
         return $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
     }
 
-    private static string FormatRelativeTime(DateTime utcTime)
+    public void Dispose()
     {
-        var diff = DateTime.UtcNow - utcTime;
-        return diff.TotalSeconds switch
-        {
-            < 60 => $"{(int)diff.TotalSeconds}s ago",
-            < 3600 => $"{(int)diff.TotalMinutes}m ago",
-            < 86400 => $"{(int)diff.TotalHours}h ago",
-            _ => $"{(int)diff.TotalDays}d ago"
-        };
+        _refreshTimer?.Dispose();
     }
 }

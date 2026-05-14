@@ -1,5 +1,6 @@
 @page "/jobs/succeeded"
 @inject HangfireMonitorService Monitor
+@implements IDisposable
 
 <PageTitle>Succeeded Jobs</PageTitle>
 
@@ -39,7 +40,7 @@
                             <td>
                                 @if (job.Value?.SucceededAt.HasValue == true)
                                 {
-                                    @FormatRelativeTime(job.Value.SucceededAt.Value)
+                                    <RelativeTime UtcTime="@job.Value.SucceededAt.Value" />
                                 }
                             </td>
                         </tr>
@@ -62,10 +63,30 @@
     private long _totalCount;
     private int _from = 0;
     private int _pageSize = 20;
+    private Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                var newCount = Monitor.GetSucceededListCount();
+                if (newCount != _totalCount)
+                {
+                    var jobs = Monitor.GetSucceededJobs(_from, _pageSize);
+                    await InvokeAsync(() =>
+                    {
+                        _totalCount = newCount;
+                        _jobs = jobs;
+                        StateHasChanged();
+                    });
+                }
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
     private async Task LoadData()
@@ -105,15 +126,8 @@
         return $"{(int)ts.TotalMinutes}m {ts.Seconds}s";
     }
 
-    private static string FormatRelativeTime(DateTime utcTime)
+    public void Dispose()
     {
-        var diff = DateTime.UtcNow - utcTime;
-        return diff.TotalSeconds switch
-        {
-            < 60 => $"{(int)diff.TotalSeconds}s ago",
-            < 3600 => $"{(int)diff.TotalMinutes}m ago",
-            < 86400 => $"{(int)diff.TotalHours}h ago",
-            _ => $"{(int)diff.TotalDays}d ago"
-        };
+        _refreshTimer?.Dispose();
     }
 }

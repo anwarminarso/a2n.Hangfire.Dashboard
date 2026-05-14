@@ -59,10 +59,34 @@
             <button class="btn btn--danger" @onclick="Delete">🗑️ Delete</button>
         </div>
 
-        @* Console Output *@
-        @if (_processingStartedAt.HasValue)
+        @* Console Output — Multiple Sessions *@
+        @if (_consoleSessions.Count > 0)
         {
-            <ConsoleViewer JobId="@JobId" StartedAt="@_processingStartedAt" />
+            <h3 class="section-title">Console Output</h3>
+            @for (var i = 0; i < _consoleSessions.Count; i++)
+            {
+                var session = _consoleSessions[i];
+                var isLatest = i == 0;
+                var sessionIndex = i;
+
+                @if (isLatest)
+                {
+                    <ConsoleViewer JobId="@JobId" StartedAt="@session.StartedAt" IsLive="@_isProcessing" />
+                }
+                else
+                {
+                    <div class="console-collapsible">
+                        <button class="console-collapsible-header" @onclick="() => ToggleSession(sessionIndex)">
+                            <span class="console-collapsible-icon">@(session.IsExpanded ? "▼" : "▶")</span>
+                            <span class="console-collapsible-title">Previous execution — @FormatRelativeTime(session.StartedAt)</span>
+                        </button>
+                        @if (session.IsExpanded)
+                        {
+                            <ConsoleViewer JobId="@JobId" StartedAt="@session.StartedAt" IsLive="false" />
+                        }
+                    </div>
+                }
+            }
         }
 
         @* State History *@
@@ -73,7 +97,7 @@
                 <div class="state-card @GetStateCardClass(state.StateName)">
                     <div class="state-card-header">
                         <span class="state-name">@state.StateName</span>
-                        <span class="state-time">@FormatRelativeTime(state.CreatedAt)</span>
+                        <span class="state-time"><RelativeTime UtcTime="@state.CreatedAt" /></span>
                     </div>
                     @if (!string.IsNullOrWhiteSpace(state.Reason))
                     {
@@ -102,7 +126,14 @@
 
     private JobDetailsDto? _job;
     private bool _notFound;
-    private DateTime? _processingStartedAt;
+    private bool _isProcessing;
+    private List<ConsoleSession> _consoleSessions = new();
+
+    private class ConsoleSession
+    {
+        public DateTime StartedAt { get; set; }
+        public bool IsExpanded { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -110,19 +141,40 @@
         {
             _job = Monitor.GetJobDetails(JobId);
             _notFound = _job is null;
-
-            // Find the most recent Processing state to get StartedAt for console
-            if (_job?.History is not null)
-            {
-                var processingState = _job.History
-                    .FirstOrDefault(h => h.StateName == "Processing" && h.Data.ContainsKey("StartedAt"));
-                if (processingState is not null)
-                {
-                    _processingStartedAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(
-                        processingState.Data["StartedAt"]);
-                }
-            }
+            BuildConsoleSessions();
         });
+    }
+
+    private void BuildConsoleSessions()
+    {
+        _consoleSessions.Clear();
+        _isProcessing = false;
+
+        if (_job?.History is null) return;
+
+        // Check if job is currently processing
+        var currentState = _job.History.FirstOrDefault()?.StateName;
+        _isProcessing = currentState == "Processing";
+
+        // Find all Processing states with StartedAt (each represents a console session)
+        var processingSessions = _job.History
+            .Where(h => h.StateName == "Processing" && h.Data.ContainsKey("StartedAt"))
+            .Select(h =>
+            {
+                var startedAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(h.Data["StartedAt"]);
+                return new ConsoleSession { StartedAt = startedAt, IsExpanded = false };
+            })
+            .ToList();
+
+        _consoleSessions = processingSessions;
+    }
+
+    private void ToggleSession(int index)
+    {
+        if (index >= 0 && index < _consoleSessions.Count)
+        {
+            _consoleSessions[index].IsExpanded = !_consoleSessions[index].IsExpanded;
+        }
     }
 
     private string GetJobTitle()
@@ -153,6 +205,7 @@
     {
         _job = Monitor.GetJobDetails(JobId);
         _notFound = _job is null;
+        BuildConsoleSessions();
         await InvokeAsync(StateHasChanged);
     }
 

@@ -1,5 +1,6 @@
 @page "/jobs/awaiting"
 @inject HangfireMonitorService Monitor
+@implements IDisposable
 
 <PageTitle>Awaiting Jobs</PageTitle>
 
@@ -66,10 +67,25 @@
     private IReadOnlyList<string>? _jobIds;
     private Dictionary<string, (string? jobName, string? state)> _jobInfo = new();
     private HashSet<string> _selectedJobs = new();
+    private Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                var newIds = Monitor.GetSetJobIds("awaiting", 0, 50);
+                if (newIds.Count != (_jobIds?.Count ?? 0))
+                {
+                    await LoadData();
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
     private async Task LoadData()
@@ -115,4 +131,9 @@
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
 }
