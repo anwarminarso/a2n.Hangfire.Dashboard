@@ -1,0 +1,162 @@
+@page "/jobs/details/{JobId}"
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Job @JobId</PageTitle>
+
+<div class="page-container">
+    @if (_job is null && !_notFound)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (_notFound)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">🔍</span>
+            <p>Job not found or expired.</p>
+            <p class="text-muted">Job ID: @JobId</p>
+        </div>
+    }
+    else if (_job is not null)
+    {
+        <h2 class="page-title">@GetJobTitle()</h2>
+
+        @* Job Code Snippet *@
+        @if (_job.Job is not null)
+        {
+            <div class="section-card">
+                <div class="code-snippet">
+                    <pre><code>// Job ID: @JobId
+@(_job.Job.Type.FullName).@(_job.Job.Method.Name)(@GetArguments())</code></pre>
+                </div>
+            </div>
+        }
+
+        @* Properties *@
+        @if (_job.Properties.Any(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
+        {
+            <div class="section-card">
+                <h3>Parameters</h3>
+                <table class="data-table">
+                    <tbody>
+                        @foreach (var prop in _job.Properties.Where(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
+                        {
+                            <tr>
+                                <td class="font-mono" style="width:200px">@prop.Key</td>
+                                <td><code>@prop.Value</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @* Actions *@
+        <div class="toolbar">
+            <button class="btn btn--primary" @onclick="Requeue">🔄 Requeue</button>
+            <button class="btn btn--danger" @onclick="Delete">🗑️ Delete</button>
+        </div>
+
+        @* State History *@
+        <h3 class="section-title">State History</h3>
+        <div class="state-timeline">
+            @foreach (var state in _job.History)
+            {
+                <div class="state-card @GetStateCardClass(state.StateName)">
+                    <div class="state-card-header">
+                        <span class="state-name">@state.StateName</span>
+                        <span class="state-time">@FormatRelativeTime(state.CreatedAt)</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(state.Reason))
+                    {
+                        <p class="state-reason">@state.Reason</p>
+                    }
+                    @if (state.Data.Count > 0)
+                    {
+                        <div class="state-data">
+                            @foreach (var kv in state.Data.Take(5))
+                            {
+                                <div class="state-data-item">
+                                    <span class="state-data-key">@kv.Key:</span>
+                                    <span class="state-data-value">@TruncateValue(kv.Value)</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string JobId { get; set; } = "";
+
+    private JobDetailsDto? _job;
+    private bool _notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Run(() =>
+        {
+            _job = Monitor.GetJobDetails(JobId);
+            _notFound = _job is null;
+        });
+    }
+
+    private string GetJobTitle()
+    {
+        if (_job?.Job is null) return $"Job #{JobId}";
+        return $"{_job.Job.Type.Name}.{_job.Job.Method.Name}";
+    }
+
+    private string GetArguments()
+    {
+        if (_job?.Job?.Args is null || _job.Job.Args.Count == 0) return "";
+        return string.Join(", ", _job.Job.Args.Select(a => a?.ToString() ?? "null"));
+    }
+
+    private async Task Requeue()
+    {
+        await Task.Run(() => Monitor.RequeueJob(JobId));
+        await Reload();
+    }
+
+    private async Task Delete()
+    {
+        await Task.Run(() => Monitor.DeleteJob(JobId));
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _job = Monitor.GetJobDetails(JobId);
+        _notFound = _job is null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string GetStateCardClass(string stateName) => stateName switch
+    {
+        "Succeeded" => "state-card--success",
+        "Failed" => "state-card--danger",
+        "Processing" => "state-card--warning",
+        "Enqueued" => "state-card--info",
+        "Scheduled" => "state-card--info",
+        "Deleted" => "state-card--muted",
+        _ => ""
+    };
+
+    private static string TruncateValue(string value) =>
+        value.Length > 100 ? value[..100] + "…" : value;
+
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+}

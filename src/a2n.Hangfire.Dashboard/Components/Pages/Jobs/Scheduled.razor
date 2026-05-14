@@ -1,0 +1,131 @@
+@page "/jobs/scheduled"
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Scheduled Jobs</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Scheduled Jobs</h2>
+
+    @if (_jobs is null)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (_jobs.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">🕐</span>
+            <p>No scheduled jobs.</p>
+        </div>
+    }
+    else
+    {
+        <div class="toolbar">
+            <button class="btn btn--primary" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
+                ▶️ Enqueue Now
+            </button>
+            <button class="btn btn--danger" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                🗑️ Delete
+            </button>
+        </div>
+
+        <div class="section-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
+                        <th>Id</th>
+                        <th>Job</th>
+                        <th>Enqueue At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var job in _jobs)
+                    {
+                        <tr>
+                            <td class="col-check">
+                                <input type="checkbox" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" />
+                            </td>
+                            <td class="font-mono">@ShortenId(job.Key)</td>
+                            <td>@GetJobName(job.Value)</td>
+                            <td>
+                                @if (job.Value is not null)
+                                {
+                                    @FormatRelativeTime(job.Value.EnqueueAt)
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-info">Showing @_jobs.Count of @_totalCount scheduled jobs</div>
+    }
+</div>
+
+@code {
+    private JobList<ScheduledJobDto>? _jobs;
+    private long _totalCount;
+    private HashSet<string> _selectedJobs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Run(() =>
+        {
+            _totalCount = Monitor.GetScheduledCount();
+            _jobs = Monitor.GetScheduledJobs(0, 20);
+        });
+    }
+
+    private bool IsSelected(string id) => _selectedJobs.Contains(id);
+    private void ToggleJob(string id) { if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id); }
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        if (_jobs is null) return;
+        if ((bool)(e.Value ?? false)) _selectedJobs = new(_jobs.Select(j => j.Key));
+        else _selectedJobs.Clear();
+    }
+    private async Task EnqueueSelected()
+    {
+        await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await Reload();
+    }
+
+    private async Task DeleteSelected()
+    {
+        await Task.Run(() => Monitor.DeleteJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _totalCount = Monitor.GetScheduledCount();
+        _jobs = Monitor.GetScheduledJobs(0, 20);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+    private static string GetJobName(ScheduledJobDto? dto) =>
+        dto?.Job is null ? "Unknown" : $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = utcTime - DateTime.UtcNow;
+        if (diff.TotalSeconds > 0)
+            return diff.TotalSeconds switch
+            {
+                < 60 => $"in {(int)diff.TotalSeconds}s",
+                < 3600 => $"in {(int)diff.TotalMinutes}m",
+                < 86400 => $"in {(int)diff.TotalHours}h",
+                _ => $"in {(int)diff.TotalDays}d"
+            };
+        var past = DateTime.UtcNow - utcTime;
+        return past.TotalSeconds switch
+        {
+            < 60 => $"{(int)past.TotalSeconds}s ago",
+            < 3600 => $"{(int)past.TotalMinutes}m ago",
+            _ => $"{(int)past.TotalHours}h ago"
+        };
+    }
+}

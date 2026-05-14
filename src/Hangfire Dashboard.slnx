@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="a2n.Hangfire.Dashboard/a2n.Hangfire.Dashboard.csproj" />
+    <Project Path="a2n.Hangfire.Console/a2n.Hangfire.Console.csproj" />
+    <Project Path="a2n.Hangfire.Tags/a2n.Hangfire.Tags.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="../tests/a2n.Hangfire.Dashboard.Tests/a2n.Hangfire.Dashboard.Tests.csproj" />
+    <Project Path="../tests/a2n.Hangfire.Console.Tests/a2n.Hangfire.Console.Tests.csproj" />
+    <Project Path="../tests/a2n.Hangfire.Tags.Tests/a2n.Hangfire.Tags.Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="../samples/SampleApp/SampleApp.csproj" />
+  </Folder>
+</Solution>

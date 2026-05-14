@@ -1,0 +1,94 @@
+@page "/jobs/processing"
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Processing Jobs</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Processing Jobs</h2>
+
+    @if (_jobs is null)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (_jobs.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">⚙️</span>
+            <p>No jobs are being processed right now.</p>
+        </div>
+    }
+    else
+    {
+        <div class="section-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Id</th>
+                        <th>Server</th>
+                        <th>Job</th>
+                        <th>Started</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var job in _jobs)
+                    {
+                        <tr>
+                            <td class="font-mono">@ShortenId(job.Key)</td>
+                            <td class="font-mono">@(job.Value?.ServerId ?? "N/A")</td>
+                            <td>@GetJobName(job.Value)</td>
+                            <td>
+                                @if (job.Value?.StartedAt.HasValue == true)
+                                {
+                                    @FormatRelativeTime(job.Value.StartedAt.Value)
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-info">
+            Showing @_jobs.Count of @_totalCount jobs
+        </div>
+    }
+</div>
+
+@code {
+    private JobList<ProcessingJobDto>? _jobs;
+    private long _totalCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Run(() =>
+        {
+            _totalCount = Monitor.GetProcessingCount();
+            _jobs = Monitor.GetProcessingJobs(0, 20);
+        });
+    }
+
+    private static string ShortenId(string id)
+    {
+        if (Guid.TryParse(id, out _))
+            return id[..8] + "…";
+        return $"#{id}";
+    }
+
+    private static string GetJobName(ProcessingJobDto? dto)
+    {
+        if (dto?.Job is null) return "Unknown";
+        return $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
+    }
+
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+}

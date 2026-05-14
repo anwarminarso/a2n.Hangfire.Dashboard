@@ -1,0 +1,38 @@
+@inherits LayoutComponentBase
+
+<div class="layout @(_sidebarCollapsed ? "layout--collapsed" : "")">
+    <aside class="sidebar">
+        <NavMenu />
+    </aside>
+
+    <div class="main-content">
+        <header class="top-header">
+            <div class="header-left">
+                <button class="sidebar-toggle" @onclick="ToggleSidebar" title="Toggle sidebar">
+                    @Icons.Menu
+                </button>
+                <h1 class="dashboard-title">Hangfire Dashboard</h1>
+            </div>
+            <div class="header-right">
+                <div class="search-box">
+                    <span class="search-icon">@Icons.Search</span>
+                    <input type="text" placeholder="Search jobs, tags..." />
+                </div>
+                <ThemeToggle />
+            </div>
+        </header>
+
+        <main class="page-content">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    private bool _sidebarCollapsed = false;
+
+    private void ToggleSidebar()
+    {
+        _sidebarCollapsed = !_sidebarCollapsed;
+    }
+}

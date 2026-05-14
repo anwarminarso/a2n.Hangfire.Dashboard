@@ -1,0 +1,113 @@
+@page "/jobs/deleted"
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Deleted Jobs</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Deleted Jobs</h2>
+
+    @if (_jobs is null)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (_jobs.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">🗑️</span>
+            <p>No deleted jobs.</p>
+        </div>
+    }
+    else
+    {
+        <div class="toolbar">
+            <button class="btn btn--primary" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
+                🔄 Requeue
+            </button>
+        </div>
+
+        <div class="section-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
+                        <th>Id</th>
+                        <th>Job</th>
+                        <th>Deleted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var job in _jobs)
+                    {
+                        <tr>
+                            <td class="col-check">
+                                <input type="checkbox" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" />
+                            </td>
+                            <td class="font-mono">@ShortenId(job.Key)</td>
+                            <td>@GetJobName(job.Value)</td>
+                            <td>
+                                @if (job.Value?.DeletedAt.HasValue == true)
+                                {
+                                    @FormatRelativeTime(job.Value.DeletedAt.Value)
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-info">Showing @_jobs.Count of @_totalCount deleted jobs</div>
+    }
+</div>
+
+@code {
+    private JobList<DeletedJobDto>? _jobs;
+    private long _totalCount;
+    private HashSet<string> _selectedJobs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Run(() =>
+        {
+            _totalCount = Monitor.GetDeletedListCount();
+            _jobs = Monitor.GetDeletedJobs(0, 20);
+        });
+    }
+
+    private bool IsSelected(string id) => _selectedJobs.Contains(id);
+    private void ToggleJob(string id) { if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id); }
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        if (_jobs is null) return;
+        if ((bool)(e.Value ?? false)) _selectedJobs = new(_jobs.Select(j => j.Key));
+        else _selectedJobs.Clear();
+    }
+    private async Task RequeueSelected()
+    {
+        await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _totalCount = Monitor.GetDeletedListCount();
+        _jobs = Monitor.GetDeletedJobs(0, 20);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+    private static string GetJobName(DeletedJobDto? dto) =>
+        dto?.Job is null ? "Unknown" : $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+}

@@ -1,0 +1,18 @@
+@page "/retries"
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Retries</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Retries</h2>
+
+    <div class="empty-state">
+        <span class="empty-icon">🔁</span>
+        <p>Retries view.</p>
+        <p class="text-muted">Jobs that are scheduled for retry after a failure.</p>
+    </div>
+</div>
+
+@code {
+    // TODO: Implement retries via JobStorageConnection.GetSetCount("retries") / GetRangeFromSet
+}

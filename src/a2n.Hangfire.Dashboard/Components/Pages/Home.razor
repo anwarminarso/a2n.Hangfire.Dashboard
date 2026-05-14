@@ -1,0 +1,172 @@
+@page "/"
+@inject HangfireMonitorService Monitor
+@implements IDisposable
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="dashboard-home">
+    @if (_stats is not null)
+    {
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">@_stats.Servers</div>
+                <div class="stat-label">Servers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">@_stats.Recurring</div>
+                <div class="stat-label">Recurring</div>
+            </div>
+            <div class="stat-card stat-card--info">
+                <div class="stat-value">@_stats.Enqueued</div>
+                <div class="stat-label">Enqueued</div>
+            </div>
+            <div class="stat-card stat-card--warning">
+                <div class="stat-value">@_stats.Processing</div>
+                <div class="stat-label">Processing</div>
+            </div>
+            <div class="stat-card stat-card--success">
+                <div class="stat-value">@FormatCount(_stats.Succeeded)</div>
+                <div class="stat-label">Succeeded</div>
+            </div>
+            <div class="stat-card stat-card--danger">
+                <div class="stat-value">@_stats.Failed</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">@_stats.Scheduled</div>
+                <div class="stat-label">Scheduled</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">@_stats.Deleted</div>
+                <div class="stat-label">Deleted</div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="stats-grid">
+            @for (var i = 0; i < 8; i++)
+            {
+                <div class="stat-card stat-card--loading">
+                    <div class="stat-value skeleton">&nbsp;</div>
+                    <div class="stat-label skeleton">&nbsp;</div>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="charts-section">
+        <div class="chart-card">
+            <h3>Realtime</h3>
+            <div class="chart-placeholder">Realtime chart — coming soon</div>
+        </div>
+        <div class="chart-card">
+            <h3>History (24h)</h3>
+            <div class="chart-placeholder">History chart — coming soon</div>
+        </div>
+    </div>
+
+    @if (_servers is not null && _servers.Count > 0)
+    {
+        <div class="section-card">
+            <h3>Servers</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Workers</th>
+                        <th>Queues</th>
+                        <th>Started</th>
+                        <th>Heartbeat</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var server in _servers)
+                    {
+                        <tr>
+                            <td class="font-mono">@ShortenServerId(server.Name)</td>
+                            <td>@server.WorkersCount</td>
+                            <td>@string.Join(", ", server.Queues)</td>
+                            <td>@FormatRelativeTime(server.StartedAt)</td>
+                            <td>
+                                @if (server.Heartbeat.HasValue)
+                                {
+                                    <span class="status-dot status-dot--active"></span>
+                                    @FormatRelativeTime(server.Heartbeat.Value)
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private StatisticsDto? _stats;
+    private IList<ServerDto>? _servers;
+    private System.Threading.Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Run(() =>
+        {
+            _stats = Monitor.GetStatistics();
+            _servers = Monitor.GetServers();
+        });
+
+        // Auto-refresh every 3 seconds (leveraging Blazor Server's persistent connection)
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            try
+            {
+                var stats = Monitor.GetStatistics();
+                var servers = Monitor.GetServers();
+
+                await InvokeAsync(() =>
+                {
+                    _stats = stats;
+                    _servers = servers;
+                    StateHasChanged();
+                });
+            }
+            catch { /* ignore refresh errors */ }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+
+    private static string FormatCount(long count)
+    {
+        return count switch
+        {
+            >= 1_000_000 => $"{count / 1_000_000.0:F1}M",
+            >= 1_000 => $"{count / 1_000.0:F1}K",
+            _ => count.ToString("N0")
+        };
+    }
+
+    private static string ShortenServerId(string serverId)
+    {
+        var parts = serverId.Split(':');
+        return parts.Length > 1
+            ? string.Join(":", parts.Take(parts.Length - 1))
+            : serverId;
+    }
+
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+}

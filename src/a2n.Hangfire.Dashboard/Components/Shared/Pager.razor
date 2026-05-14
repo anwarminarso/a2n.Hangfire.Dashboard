@@ -1,0 +1,94 @@
+@if (TotalCount > PageSize)
+{
+    <div class="pager">
+        <div class="pager-info">
+            Showing @(From + 1)–@Math.Min(From + PageSize, TotalCount) of @TotalCount
+        </div>
+        <div class="pager-controls">
+            <button class="pager-btn" disabled="@(CurrentPage <= 1)" @onclick="GoFirst">«</button>
+            <button class="pager-btn" disabled="@(CurrentPage <= 1)" @onclick="GoPrev">‹</button>
+
+            @foreach (var page in GetVisiblePages())
+            {
+                @if (page == -1)
+                {
+                    <span class="pager-ellipsis">…</span>
+                }
+                else
+                {
+                    <button class="pager-btn @(page == CurrentPage ? "pager-btn--active" : "")"
+                            @onclick="() => GoToPage(page)">@(page)</button>
+                }
+            }
+
+            <button class="pager-btn" disabled="@(CurrentPage >= TotalPages)" @onclick="GoNext">›</button>
+            <button class="pager-btn" disabled="@(CurrentPage >= TotalPages)" @onclick="GoLast">»</button>
+        </div>
+        <div class="pager-size">
+            <select value="@PageSize" @onchange="OnPageSizeChanged">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+            per page
+        </div>
+    </div>
+}
+else if (TotalCount > 0)
+{
+    <div class="pager">
+        <div class="pager-info">Showing all @TotalCount items</div>
+    </div>
+}
+
+@code {
+    [Parameter] public long TotalCount { get; set; }
+    [Parameter] public int PageSize { get; set; } = 20;
+    [Parameter] public int From { get; set; }
+    [Parameter] public EventCallback<(int From, int PageSize)> OnPageChanged { get; set; }
+
+    private int CurrentPage => (From / PageSize) + 1;
+    private int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+
+    private async Task GoToPage(int page)
+    {
+        var newFrom = (page - 1) * PageSize;
+        await OnPageChanged.InvokeAsync((newFrom, PageSize));
+    }
+
+    private Task GoFirst() => GoToPage(1);
+    private Task GoPrev() => GoToPage(Math.Max(1, CurrentPage - 1));
+    private Task GoNext() => GoToPage(Math.Min(TotalPages, CurrentPage + 1));
+    private Task GoLast() => GoToPage(TotalPages);
+
+    private async Task OnPageSizeChanged(ChangeEventArgs e)
+    {
+        var newSize = int.Parse(e.Value?.ToString() ?? "20");
+        await OnPageChanged.InvokeAsync((0, newSize));
+    }
+
+    private IEnumerable<int> GetVisiblePages()
+    {
+        const int maxVisible = 7;
+        var pages = new List<int>();
+
+        if (TotalPages <= maxVisible)
+        {
+            for (var i = 1; i <= TotalPages; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            var start = Math.Max(2, CurrentPage - 2);
+            var end = Math.Min(TotalPages - 1, CurrentPage + 2);
+
+            if (start > 2) pages.Add(-1); // ellipsis
+            for (var i = start; i <= end; i++) pages.Add(i);
+            if (end < TotalPages - 1) pages.Add(-1); // ellipsis
+            pages.Add(TotalPages);
+        }
+
+        return pages;
+    }
+}

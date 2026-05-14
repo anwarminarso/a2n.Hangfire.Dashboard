@@ -1,0 +1,31 @@
+@inject IHttpContextAccessor HttpContextAccessor
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="@GetBaseHref()" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+
+<body>
+    <script src="js/theme.js"></script>
+    <Routes @rendermode="InteractiveServer" />
+    <script src="_framework/blazor.web.js"></script>
+</body>
+
+</html>
+
+@code {
+    private string GetBaseHref()
+    {
+        var pathBase = HttpContextAccessor?.HttpContext?.Request.PathBase.Value;
+        if (string.IsNullOrEmpty(pathBase))
+            return "/";
+        return pathBase.TrimEnd('/') + "/";
+    }
+}

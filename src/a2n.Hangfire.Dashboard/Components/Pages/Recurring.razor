@@ -1,0 +1,172 @@
+@page "/recurring"
+@using global::Hangfire.Storage
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Recurring Jobs</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Recurring Jobs</h2>
+
+    @if (_jobs is null)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (_jobs.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">🔄</span>
+            <p>No recurring jobs configured.</p>
+        </div>
+    }
+    else
+    {
+        <div class="toolbar">
+            <button class="btn btn--primary" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
+                ▶️ Trigger Now
+            </button>
+            <button class="btn btn--danger" disabled="@(!_selectedJobs.Any())" @onclick="RemoveSelected">
+                🗑️ Remove
+            </button>
+        </div>
+
+        <div class="section-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
+                        <th>Id</th>
+                        <th>Cron</th>
+                        <th>Job</th>
+                        <th>Queue</th>
+                        <th>Next Execution</th>
+                        <th>Last Execution</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var job in _jobs)
+                    {
+                        <tr>
+                            <td class="col-check">
+                                <input type="checkbox" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" />
+                            </td>
+                            <td class="font-mono">@job.Id</td>
+                            <td><code class="cron-badge">@job.Cron</code></td>
+                            <td>@GetJobName(job)</td>
+                            <td><span class="badge">@(job.Queue ?? "default")</span></td>
+                            <td>
+                                @if (job.NextExecution.HasValue)
+                                {
+                                    @FormatFutureTime(job.NextExecution.Value)
+                                }
+                                else if (job.Error is not null)
+                                {
+                                    <span class="badge badge--danger">Error</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge--muted">Disabled</span>
+                                }
+                            </td>
+                            <td>
+                                @if (job.LastExecution.HasValue)
+                                {
+                                    <span class="@GetLastStateClass(job.LastJobState)">
+                                        @FormatRelativeTime(job.LastExecution.Value)
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Never</span>
+                                }
+                            </td>
+                        </tr>
+                        @if (job.Error is not null)
+                        {
+                            <tr class="detail-row">
+                                <td></td>
+                                <td colspan="6">
+                                    <div class="exception-detail">
+                                        <p>@job.Error</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<RecurringJobDto>? _jobs;
+    private HashSet<string> _selectedJobs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Run(() => { _jobs = Monitor.GetRecurringJobs(); });
+    }
+
+    private bool IsSelected(string id) => _selectedJobs.Contains(id);
+    private void ToggleJob(string id) { if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id); }
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        if (_jobs is null) return;
+        if ((bool)(e.Value ?? false)) _selectedJobs = new(_jobs.Select(j => j.Id));
+        else _selectedJobs.Clear();
+    }
+    private async Task TriggerSelected()
+    {
+        await Task.Run(() => Monitor.TriggerRecurringJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await Reload();
+    }
+
+    private async Task RemoveSelected()
+    {
+        await Task.Run(() => Monitor.RemoveRecurringJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _jobs = Monitor.GetRecurringJobs();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string GetJobName(RecurringJobDto dto) =>
+        dto.Job is null ? "Unknown" : $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
+
+    private static string GetLastStateClass(string? state) => state switch
+    {
+        "Succeeded" => "text-success",
+        "Failed" => "text-danger",
+        _ => ""
+    };
+
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+
+    private static string FormatFutureTime(DateTime utcTime)
+    {
+        var diff = utcTime - DateTime.UtcNow;
+        if (diff.TotalSeconds <= 0) return "now";
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"in {(int)diff.TotalSeconds}s",
+            < 3600 => $"in {(int)diff.TotalMinutes}m",
+            < 86400 => $"in {(int)diff.TotalHours}h",
+            _ => $"in {(int)diff.TotalDays}d"
+        };
+    }
+}

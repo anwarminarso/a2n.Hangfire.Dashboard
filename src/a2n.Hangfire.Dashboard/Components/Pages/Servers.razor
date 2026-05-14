@@ -1,0 +1,100 @@
+@page "/servers"
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Servers</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Servers</h2>
+
+    @if (_servers is null)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (_servers.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">🖥️</span>
+            <p>No active servers found.</p>
+            <p class="text-muted">Jobs will not be processed until a server is started.</p>
+        </div>
+    }
+    else
+    {
+        <div class="section-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Workers</th>
+                        <th>Queues</th>
+                        <th>Started</th>
+                        <th>Heartbeat</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var server in _servers)
+                    {
+                        <tr>
+                            <td>
+                                @if (IsServerHealthy(server))
+                                {
+                                    <span class="status-dot status-dot--active"></span>
+                                }
+                                else
+                                {
+                                    <span class="status-dot status-dot--danger"></span>
+                                }
+                                <span class="font-mono">@server.Name</span>
+                            </td>
+                            <td>@server.WorkersCount</td>
+                            <td>
+                                @foreach (var queue in server.Queues)
+                                {
+                                    <span class="badge">@queue</span>
+                                }
+                            </td>
+                            <td>@FormatRelativeTime(server.StartedAt)</td>
+                            <td>
+                                @if (server.Heartbeat.HasValue)
+                                {
+                                    @FormatRelativeTime(server.Heartbeat.Value)
+                                }
+                                else
+                                {
+                                    <span class="text-muted">N/A</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private IList<ServerDto>? _servers;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Run(() => { _servers = Monitor.GetServers(); });
+    }
+
+    private static bool IsServerHealthy(ServerDto server)
+    {
+        if (!server.Heartbeat.HasValue) return false;
+        return (DateTime.UtcNow - server.Heartbeat.Value).TotalMinutes < 2;
+    }
+
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+}

@@ -1,0 +1,66 @@
+<nav class="nav-menu">
+    <div class="nav-brand">
+        <span class="brand-icon">@Icons.Flame</span>
+        <span class="brand-text">Hangfire</span>
+    </div>
+
+    <div class="nav-section">
+        <span class="nav-section-title">Overview</span>
+        <NavLink class="nav-item" href="" Match="NavLinkMatch.All">
+            <span class="nav-icon">@Icons.Dashboard</span>
+            <span class="nav-label">Dashboard</span>
+        </NavLink>
+    </div>
+
+    <div class="nav-section">
+        <span class="nav-section-title">Jobs</span>
+        <NavLink class="nav-item" href="jobs/enqueued">
+            <span class="nav-icon">@Icons.Inbox</span>
+            <span class="nav-label">Enqueued</span>
+        </NavLink>
+        <NavLink class="nav-item" href="jobs/processing">
+            <span class="nav-icon">@Icons.Cog</span>
+            <span class="nav-label">Processing</span>
+        </NavLink>
+        <NavLink class="nav-item" href="jobs/scheduled">
+            <span class="nav-icon">@Icons.Clock</span>
+            <span class="nav-label">Scheduled</span>
+        </NavLink>
+        <NavLink class="nav-item" href="jobs/succeeded">
+            <span class="nav-icon">@Icons.CheckCircle</span>
+            <span class="nav-label">Succeeded</span>
+        </NavLink>
+        <NavLink class="nav-item" href="jobs/failed">
+            <span class="nav-icon">@Icons.XCircle</span>
+            <span class="nav-label">Failed</span>
+        </NavLink>
+        <NavLink class="nav-item" href="jobs/deleted">
+            <span class="nav-icon">@Icons.Trash2</span>
+            <span class="nav-label">Deleted</span>
+        </NavLink>
+        <NavLink class="nav-item" href="jobs/awaiting">
+            <span class="nav-icon">@Icons.Hourglass</span>
+            <span class="nav-label">Awaiting</span>
+        </NavLink>
+    </div>
+
+    <div class="nav-section">
+        <span class="nav-section-title">Management</span>
+        <NavLink class="nav-item" href="recurring">
+            <span class="nav-icon">@Icons.Repeat</span>
+            <span class="nav-label">Recurring</span>
+        </NavLink>
+        <NavLink class="nav-item" href="servers">
+            <span class="nav-icon">@Icons.Server</span>
+            <span class="nav-label">Servers</span>
+        </NavLink>
+        <NavLink class="nav-item" href="retries">
+            <span class="nav-icon">@Icons.RotateCcw</span>
+            <span class="nav-label">Retries</span>
+        </NavLink>
+        <NavLink class="nav-item" href="tags">
+            <span class="nav-icon">@Icons.Tag</span>
+            <span class="nav-label">Tags</span>
+        </NavLink>
+    </div>
+</nav>

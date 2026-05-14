@@ -1,0 +1,20 @@
+@page "/tags"
+@page "/tags/{SearchTag}"
+
+<PageTitle>Tags</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Tags</h2>
+
+    <div class="empty-state">
+        <span class="empty-icon">🏷️</span>
+        <p>Tags search and filtering.</p>
+        <p class="text-muted">Search jobs by tag — requires a2n.Hangfire.Tags to be configured.</p>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? SearchTag { get; set; }
+
+    // TODO: Implement tag search via TagsDataReader service
+}

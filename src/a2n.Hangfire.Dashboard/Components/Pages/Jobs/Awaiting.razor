@@ -1,0 +1,18 @@
+@page "/jobs/awaiting"
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Awaiting Jobs</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Awaiting Jobs</h2>
+
+    <div class="empty-state">
+        <span class="empty-icon">⏳</span>
+        <p>Awaiting jobs view.</p>
+        <p class="text-muted">Jobs waiting for their parent continuation to complete.</p>
+    </div>
+</div>
+
+@code {
+    // TODO: Implement awaiting jobs via JobStorageConnection.GetSetCount("awaiting")
+}

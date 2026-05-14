@@ -1,0 +1,185 @@
+@page "/jobs/failed"
+@inject HangfireMonitorService Monitor
+
+<PageTitle>Failed Jobs</PageTitle>
+
+<div class="page-container">
+    <h2 class="page-title">Failed Jobs</h2>
+
+    @if (_jobs is null)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (_jobs.Count == 0)
+    {
+        <div class="empty-state empty-state--success">
+            <span class="empty-icon">✅</span>
+            <p>No failed jobs. Everything is running smoothly.</p>
+        </div>
+    }
+    else
+    {
+        <div class="toolbar">
+            <button class="btn btn--primary" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
+                🔄 Requeue Selected
+            </button>
+            <button class="btn btn--danger" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                🗑️ Delete Selected
+            </button>
+        </div>
+
+        <div class="section-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="col-check">
+                            <input type="checkbox" @onchange="ToggleAll" />
+                        </th>
+                        <th>Id</th>
+                        <th>Job</th>
+                        <th>Reason</th>
+                        <th>Failed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var job in _jobs)
+                    {
+                        <tr class="@(IsSelected(job.Key) ? "row-selected" : "")">
+                            <td class="col-check">
+                                <input type="checkbox" checked="@IsSelected(job.Key)"
+                                       @onchange="() => ToggleJob(job.Key)" />
+                            </td>
+                            <td class="font-mono">@ShortenId(job.Key)</td>
+                            <td>@GetJobName(job.Value)</td>
+                            <td class="text-danger">@TruncateReason(job.Value?.Reason)</td>
+                            <td>
+                                @if (job.Value?.FailedAt.HasValue == true)
+                                {
+                                    @FormatRelativeTime(job.Value.FailedAt.Value)
+                                }
+                            </td>
+                        </tr>
+                        @if (job.Value?.ExceptionMessage is not null)
+                        {
+                            <tr class="detail-row">
+                                <td></td>
+                                <td colspan="4">
+                                    <div class="exception-detail">
+                                        <strong>@job.Value.ExceptionType</strong>
+                                        <p>@job.Value.ExceptionMessage</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-info">
+            Showing @_jobs.Count of @_totalCount failed jobs
+        </div>
+
+        <Pager TotalCount="@_totalCount" PageSize="@_pageSize" From="@_from"
+               OnPageChanged="HandlePageChanged" />
+    }
+</div>
+
+@code {
+    private JobList<FailedJobDto>? _jobs;
+    private long _totalCount;
+    private int _from = 0;
+    private int _pageSize = 20;
+    private HashSet<string> _selectedJobs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        await Task.Run(() =>
+        {
+            _totalCount = Monitor.GetFailedCount();
+            _jobs = Monitor.GetFailedJobs(_from, _pageSize);
+        });
+    }
+
+    private async Task HandlePageChanged((int From, int PageSize) args)
+    {
+        _from = args.From;
+        _pageSize = args.PageSize;
+        _selectedJobs.Clear();
+        await LoadData();
+    }
+
+    private bool IsSelected(string jobId) => _selectedJobs.Contains(jobId);
+
+    private void ToggleJob(string jobId)
+    {
+        if (!_selectedJobs.Remove(jobId))
+            _selectedJobs.Add(jobId);
+    }
+
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        if (_jobs is null) return;
+        if ((bool)(e.Value ?? false))
+            _selectedJobs = new HashSet<string>(_jobs.Select(j => j.Key));
+        else
+            _selectedJobs.Clear();
+    }
+
+    private async Task RequeueSelected()
+    {
+        await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await LoadData();
+    }
+
+    private async Task DeleteSelected()
+    {
+        await Task.Run(() => Monitor.DeleteJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await LoadData();
+    }
+
+    private async Task Reload()
+    {
+        _totalCount = Monitor.GetFailedCount();
+        _jobs = Monitor.GetFailedJobs(0, 20);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string ShortenId(string id)
+    {
+        if (Guid.TryParse(id, out _))
+            return id[..8] + "…";
+        return $"#{id}";
+    }
+
+    private static string GetJobName(FailedJobDto? dto)
+    {
+        if (dto?.Job is null) return "Unknown";
+        return $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
+    }
+
+    private static string? TruncateReason(string? reason)
+    {
+        if (reason is null) return null;
+        return reason.Length > 80 ? reason[..80] + "…" : reason;
+    }
+
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+}
