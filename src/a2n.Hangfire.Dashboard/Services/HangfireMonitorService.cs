@@ -85,6 +85,32 @@ public class HangfireMonitorService
         return 0;
     }
 
+    /// <summary>
+    /// Gets job IDs from a named set (e.g., "retries", "awaiting").
+    /// </summary>
+    public IReadOnlyList<string> GetSetJobIds(string setName, int from, int count)
+    {
+        using var connection = _storage.GetReadOnlyConnection();
+        if (connection is JobStorageConnection storageConnection)
+        {
+            return storageConnection.GetRangeFromSet(setName, from, from + count - 1);
+        }
+        return [];
+    }
+
+    /// <summary>
+    /// Gets count of items in a named set.
+    /// </summary>
+    public long GetSetCount(string setName)
+    {
+        using var connection = _storage.GetReadOnlyConnection();
+        if (connection is JobStorageConnection storageConnection)
+        {
+            return storageConnection.GetSetCount(setName);
+        }
+        return 0;
+    }
+
     // ===== Job Actions =====
 
     /// <summary>

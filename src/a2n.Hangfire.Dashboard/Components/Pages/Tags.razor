@@ -1,20 +1,120 @@
 @page "/tags"
 @page "/tags/{SearchTag}"
+@inject TagsDataReader TagsReader
+@inject HangfireMonitorService Monitor
 
 <PageTitle>Tags</PageTitle>
 
 <div class="page-container">
     <h2 class="page-title">Tags</h2>
 
-    <div class="empty-state">
-        <span class="empty-icon">🏷️</span>
-        <p>Tags search and filtering.</p>
-        <p class="text-muted">Search jobs by tag — requires a2n.Hangfire.Tags to be configured.</p>
-    </div>
+    @if (_allTags is null)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (string.IsNullOrEmpty(SearchTag))
+    {
+        @* Tag Cloud / Search *@
+        @if (_allTags.Length == 0)
+        {
+            <div class="empty-state">
+                <span class="empty-icon">🏷️</span>
+                <p>No tags found yet.</p>
+                <p class="text-muted">Tags will appear here when jobs are tagged.</p>
+            </div>
+        }
+        else
+        {
+            <div class="tags-cloud">
+                @foreach (var tag in _allTags)
+                {
+                    <a class="tag-cloud-item" href="/tags/@tag">@tag</a>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        @* Jobs filtered by tag *@
+        <div class="tags-viewer" style="margin-bottom: 16px;">
+            <a class="tag-badge" href="/tags/@SearchTag">@SearchTag</a>
+            <a class="btn" href="/tags" style="margin-left: 8px; font-size: 12px;">← All Tags</a>
+        </div>
+
+        @if (_taggedJobs is null || _taggedJobs.Count == 0)
+        {
+            <div class="empty-state">
+                <span class="empty-icon">📭</span>
+                <p>No jobs found with tag "@SearchTag".</p>
+            </div>
+        }
+        else
+        {
+            <div class="section-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Job</th>
+                            <th>State</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var jobId in _taggedJobs)
+                        {
+                            _jobDetails.TryGetValue(jobId, out var details);
+                            <tr>
+                                <td class="font-mono">
+                                    <a href="/jobs/details/@jobId" class="job-id-link">@ShortenId(jobId)</a>
+                                </td>
+                                <td>@(details.jobName ?? "Unknown")</td>
+                                <td>
+                                    @if (details.state is not null)
+                                    {
+                                        <span class="badge">@details.state</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination-info">@_taggedJobs.Count jobs with tag "@SearchTag"</div>
+        }
+    }
 </div>
 
 @code {
     [Parameter] public string? SearchTag { get; set; }
 
-    // TODO: Implement tag search via TagsDataReader service
+    private string[]? _allTags;
+    private IReadOnlyList<string>? _taggedJobs;
+    private Dictionary<string, (string? jobName, string? state)> _jobDetails = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Task.Run(() =>
+        {
+            _allTags = TagsReader.GetAllTags();
+
+            if (!string.IsNullOrEmpty(SearchTag))
+            {
+                _taggedJobs = TagsReader.GetJobsByTag(SearchTag, 0, 50);
+                _jobDetails.Clear();
+
+                foreach (var jobId in _taggedJobs)
+                {
+                    var detail = Monitor.GetJobDetails(jobId);
+                    var jobName = detail?.Job is not null
+                        ? $"{detail.Job.Type.Name}.{detail.Job.Method.Name}"
+                        : null;
+                    var state = detail?.History.FirstOrDefault()?.StateName;
+                    _jobDetails[jobId] = (jobName, state);
+                }
+            }
+        });
+    }
+
+    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
 }

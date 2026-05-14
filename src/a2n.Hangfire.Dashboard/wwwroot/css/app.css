@@ -1230,3 +1230,45 @@ html, body {
 
 .legend-dot--success { background-color: var(--color-success); }
 .legend-dot--danger { background-color: var(--color-danger); }
+
+
+/* ===== Tag Cloud ===== */
+.tags-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 20px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+}
+
+.tag-cloud-item {
+    display: inline-block;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 16px;
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    text-decoration: none;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.tag-cloud-item:hover {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+    transform: translateY(-1px);
+}
+
+/* ===== Console Link ===== */
+.console-link {
+    color: #93c5fd;
+    text-decoration: underline;
+}
+
+.console-link:hover {
+    color: #bfdbfe;
+}

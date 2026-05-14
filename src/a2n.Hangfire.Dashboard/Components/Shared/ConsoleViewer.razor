@@ -31,7 +31,7 @@
                 {
                     <div class="console-line" style="@GetLineStyle(line)">
                         <span class="console-time">@FormatTimeOffset(line.TimeOffset)</span>
-                        <span class="console-text">@line.Message</span>
+                        <span class="console-text">@((MarkupString)LinkifyText(line.Message))</span>
                     </div>
                 }
             }
@@ -67,5 +67,15 @@
     private static string? GetLineStyle(ConsoleLineDto line)
     {
         return line.TextColor is not null ? $"color: {line.TextColor}" : null;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex UrlRegex = new(
+        @"(https?://[^\s<>""']+)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string LinkifyText(string text)
+    {
+        var encoded = System.Net.WebUtility.HtmlEncode(text);
+        return UrlRegex.Replace(encoded, "<a href=\"$1\" target=\"_blank\" rel=\"nofollow\" class=\"console-link\">$1</a>");
     }
 }

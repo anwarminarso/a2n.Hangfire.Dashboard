@@ -6,13 +6,113 @@
 <div class="page-container">
     <h2 class="page-title">Awaiting Jobs</h2>
 
-    <div class="empty-state">
-        <span class="empty-icon">⏳</span>
-        <p>Awaiting jobs view.</p>
-        <p class="text-muted">Jobs waiting for their parent continuation to complete.</p>
-    </div>
+    @if (_jobIds is null)
+    {
+        <p class="text-muted">Loading...</p>
+    }
+    else if (_jobIds.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">⏳</span>
+            <p>No awaiting jobs.</p>
+            <p class="text-muted">Jobs waiting for parent continuations to complete.</p>
+        </div>
+    }
+    else
+    {
+        <div class="toolbar">
+            <button class="btn btn--primary" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
+                ▶️ Enqueue
+            </button>
+            <button class="btn btn--danger" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                🗑️ Delete
+            </button>
+        </div>
+
+        <div class="section-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="col-check"><input type="checkbox" @onchange="ToggleAll" /></th>
+                        <th>Id</th>
+                        <th>Job</th>
+                        <th>State</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var jobId in _jobIds)
+                    {
+                        _jobInfo.TryGetValue(jobId, out var info);
+                        <tr>
+                            <td class="col-check">
+                                <input type="checkbox" checked="@IsSelected(jobId)" @onchange="() => ToggleJob(jobId)" />
+                            </td>
+                            <td class="font-mono">
+                                <a href="/jobs/details/@jobId" class="job-id-link">@ShortenId(jobId)</a>
+                            </td>
+                            <td>@(info.jobName ?? "Unknown")</td>
+                            <td><span class="badge">@(info.state ?? "Awaiting")</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-info">@_jobIds.Count awaiting jobs</div>
+    }
 </div>
 
 @code {
-    // TODO: Implement awaiting jobs via JobStorageConnection.GetSetCount("awaiting")
+    private IReadOnlyList<string>? _jobIds;
+    private Dictionary<string, (string? jobName, string? state)> _jobInfo = new();
+    private HashSet<string> _selectedJobs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        await Task.Run(() =>
+        {
+            _jobIds = Monitor.GetSetJobIds("awaiting", 0, 50);
+            _jobInfo.Clear();
+            if (_jobIds is not null)
+            {
+                foreach (var jobId in _jobIds)
+                {
+                    var detail = Monitor.GetJobDetails(jobId);
+                    var jobName = detail?.Job is not null ? $"{detail.Job.Type.Name}.{detail.Job.Method.Name}" : null;
+                    var state = detail?.History.FirstOrDefault()?.StateName;
+                    _jobInfo[jobId] = (jobName, state);
+                }
+            }
+        });
+    }
+
+    private bool IsSelected(string id) => _selectedJobs.Contains(id);
+    private void ToggleJob(string id) { if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id); }
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        if (_jobIds is null) return;
+        if ((bool)(e.Value ?? false)) _selectedJobs = new(_jobIds);
+        else _selectedJobs.Clear();
+    }
+
+    private async Task EnqueueSelected()
+    {
+        await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await LoadData();
+    }
+
+    private async Task DeleteSelected()
+    {
+        await Task.Run(() => Monitor.DeleteJobs(_selectedJobs));
+        _selectedJobs.Clear();
+        await LoadData();
+    }
+
+    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
 }

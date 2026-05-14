@@ -1,5 +1,6 @@
 using Hangfire.Console;
 using Hangfire.Console.Server;
+using Hangfire.Console.States;
 
 // ReSharper disable once CheckNamespace
 namespace Hangfire;
@@ -26,6 +27,9 @@ public static class ConsoleGlobalConfigurationExtensions
 
         // Register server filter (captures console writes during job execution)
         GlobalJobFilters.Filters.Add(new ConsoleServerFilter(options));
+
+        // Register state filter (manages console expiration)
+        GlobalJobFilters.Filters.Add(new ConsoleApplyStateFilter(options), int.MaxValue);
 
         return configuration;
     }
