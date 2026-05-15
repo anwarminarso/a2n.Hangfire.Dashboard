@@ -1,0 +1,13 @@
+<Project>
+  <!-- 
+    This props file is automatically imported by consuming projects:
+    - Via NuGet: through buildTransitive mechanism
+    - Via ProjectReference: through Directory.Build.props or explicit import
+    
+    It ensures the host project includes Blazor framework static assets (blazor.web.js)
+    even if the host has no .razor files of its own.
+  -->
+  <PropertyGroup Condition="'$(UsingMicrosoftNETSdkWeb)' == 'true'">
+    <RequiresAspNetWebAssets Condition="'$(RequiresAspNetWebAssets)' == ''">true</RequiresAspNetWebAssets>
+  </PropertyGroup>
+</Project>

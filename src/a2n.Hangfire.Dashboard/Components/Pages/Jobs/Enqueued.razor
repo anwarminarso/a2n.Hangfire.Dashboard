@@ -27,7 +27,7 @@ else
         {
             <li class="nav-item">
                 <a class="nav-link @(q.Name == _activeQueue ? "active" : "")"
-                   href="/jobs/enqueued/@q.Name">
+                   href="jobs/enqueued/@q.Name">
                     @q.Name <span class="badge bg-secondary ms-1">@q.Length</span>
                 </a>
             </li>
@@ -79,7 +79,7 @@ else
                                             <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
                                                    @onchange="() => ToggleJob(job.Key)" />
                                         </td>
-                                        <td class="font-monospace"><a href="/jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                        <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                         <td><span class="badge bg-secondary">@(job.Value?.State ?? "N/A")</span></td>
                                         <td>@GetJobName(job.Value)</td>
                                         <td class="text-end">

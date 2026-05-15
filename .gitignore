@@ -30,6 +30,9 @@ msbuild.log
 msbuild.err
 msbuild.wrn
 
+# Exception: NuGet build props (needed for package consumers)
+!src/a2n.Hangfire.Dashboard/build/
+
 # Visual Studio
 .vs/
 

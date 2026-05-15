@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>a2n.Hangfire.Dashboard</RootNamespace>
 
+    <StaticWebAssetsEnabled>true</StaticWebAssetsEnabled>
+    
     <!-- NuGet metadata -->
     <PackageId>a2n.Hangfire.Dashboard</PackageId>
     <Description>Modern Blazor Server dashboard for Hangfire with embedded resources</Description>
@@ -19,6 +21,24 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <Choose>
+    <When Condition="'$(TargetFramework)' == 'net8.0'">
+      <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="8.0.*" />
+      </ItemGroup>
+    </When>
+    <When Condition="'$(TargetFramework)' == 'net9.0'">
+      <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.*" />
+      </ItemGroup>
+    </When>
+    <When Condition="'$(TargetFramework)' == 'net10.0'">
+      <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.*" />
+      </ItemGroup>
+    </When>
+  </Choose>
+  
   <ItemGroup>
     <InternalsVisibleTo Include="a2n.Hangfire.Dashboard.Tests" />
   </ItemGroup>
@@ -37,6 +57,12 @@
   <ItemGroup>
     <!-- All static assets embedded in the DLL -->
     <EmbeddedResource Include="Content\**\*" />
+  </ItemGroup>
+
+  <!-- Include build props/targets in NuGet package for consumer projects -->
+  <ItemGroup>
+    <None Include="build\a2n.Hangfire.Dashboard.props" Pack="true" PackagePath="build\" />
+    <None Include="build\a2n.Hangfire.Dashboard.props" Pack="true" PackagePath="buildTransitive\" />
   </ItemGroup>
 
 </Project>

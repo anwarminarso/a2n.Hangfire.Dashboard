@@ -56,10 +56,14 @@ A modern, open-source alternative Hangfire dashboard that replaces the built-in 
 - ✅ Form validation, active parameter badges, read-only result summary
 - ✅ Pagination with page size selector (10, 20, 50, 100, 500)
 
-### 2.2 Razor Class Library Conversion
-- [ ] Convert from web application (exe) to Razor Class Library (dll)
-- [ ] Static assets served via `_content/a2n.Hangfire.Dashboard/`
-- [ ] True NuGet drop-in: add package reference + 2 extension method calls
+### 2.2 Razor Class Library Conversion ✅
+- ✅ Converted from web application to Razor Class Library (dll)
+- ✅ Custom middleware pipeline (`app.Map` + `DashboardMiddleware` + `FrameworkScriptMiddleware`)
+- ✅ Static assets served via embedded resources (`_content/*`)
+- ✅ `_framework/blazor.web.js` served via custom middleware in branched pipeline
+- ✅ NuGet `buildTransitive` props for automatic `RequiresAspNetWebAssets` propagation
+- ✅ True NuGet drop-in: add package reference + `AddHangfireDashboardUI()` + `UseHangfireDashboardUI()`
+- ✅ Relative URL links for path prefix compatibility
 
 ### 2.3 Performance Insights
 - [ ] Top N slowest jobs
@@ -113,7 +117,7 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v0.1–v0.7 | Foundation (setup → grid standardization) | ✅ Done |
 | v1.0 | Phase 1 complete — full parity + realtime | ✅ Done |
 | v1.1 | Global search & advanced filters | ✅ Done |
-| v1.2 | Razor Class Library conversion | Planned |
+| v1.2 | Razor Class Library conversion | ✅ Done |
 | v1.3 | Performance insights | Planned |
 | v2.0 | Phase 2 complete | Planned |
 | v3.0 | Phase 3 — extensibility & integration | Planned |

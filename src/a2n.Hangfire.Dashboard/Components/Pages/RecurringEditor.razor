@@ -56,7 +56,7 @@
                 <button class="btn btn-primary" @onclick="Save" disabled="@_saving">
                     @(_saving ? "Saving..." : (_isEdit ? "Update" : "Create"))
                 </button>
-                <a class="btn btn-outline-secondary" href="/recurring">Cancel</a>
+                <a class="btn btn-outline-secondary" href="recurring">Cancel</a>
             </div>
         </div>
     </div>
@@ -114,7 +114,7 @@
                 string.IsNullOrWhiteSpace(_model.Queue) ? null : _model.Queue,
                 string.IsNullOrWhiteSpace(_model.TimeZoneId) ? null : _model.TimeZoneId));
 
-            Nav.NavigateTo("/recurring");
+            Nav.NavigateTo("recurring");
         }
         catch (Exception ex)
         {

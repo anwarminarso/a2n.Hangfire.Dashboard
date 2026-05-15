@@ -21,7 +21,34 @@ internal class DashboardMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Apply authorization filters before processing any request
+        var path = context.Request.Path.Value ?? string.Empty;
+
+        // Serve embedded static resources (CSS, JS, fonts, images) — no auth required for assets
+        if (path.StartsWith("/_content/", StringComparison.OrdinalIgnoreCase) ||
+            path.Equals("/_content", StringComparison.OrdinalIgnoreCase))
+        {
+            await EmbeddedResourceDispatcher.ServeResourceAsync(context, path);
+            return;
+        }
+
+        // Framework resources (_framework/blazor.web.js) — pass to next (FrameworkScriptMiddleware)
+        if (path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(context);
+            return;
+        }
+
+        // Blazor circuit and SignalR — pass to endpoint routing without auth
+        // (auth is handled at the Blazor component level)
+        if (path.StartsWith("/_blazor", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/hubs/", StringComparison.OrdinalIgnoreCase) ||
+            path.Equals("/hubs", StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(context);
+            return;
+        }
+
+        // All other requests: apply authorization
         if (!Authorize(context))
         {
             return;
@@ -45,40 +72,7 @@ internal class DashboardMiddleware
             }
         }
 
-        var path = context.Request.Path.Value ?? string.Empty;
-
-        // Route requests based on path pattern
-        if (path.StartsWith("/_content/", StringComparison.OrdinalIgnoreCase) ||
-            path.Equals("/_content", StringComparison.OrdinalIgnoreCase))
-        {
-            // Serve embedded static resources
-            await EmbeddedResourceDispatcher.ServeResourceAsync(context, path);
-            return;
-        }
-
-        if (path.StartsWith("/_blazor", StringComparison.OrdinalIgnoreCase))
-        {
-            // Pass to next middleware for Blazor circuit handler (needs endpoint routing)
-            await _next(context);
-            return;
-        }
-
-        if (path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase))
-        {
-            // Pass to next middleware for framework scripts (blazor.web.js served by ASP.NET Core)
-            await _next(context);
-            return;
-        }
-
-        if (path.StartsWith("/hubs/", StringComparison.OrdinalIgnoreCase) ||
-            path.Equals("/hubs", StringComparison.OrdinalIgnoreCase))
-        {
-            // Pass to next middleware for SignalR hub (needs endpoint routing)
-            await _next(context);
-            return;
-        }
-
-        // Unknown paths that don't match any known route → pass to next (fallback endpoint handles HTML shell)
+        // Pass to endpoint routing (Blazor page rendering)
         await _next(context);
     }
 
@@ -98,7 +92,6 @@ internal class DashboardMiddleware
         {
             if (!filter.Authorize(context))
             {
-                // Determine if user is authenticated to choose 401 vs 403
                 if (context.User?.Identity?.IsAuthenticated == true)
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;

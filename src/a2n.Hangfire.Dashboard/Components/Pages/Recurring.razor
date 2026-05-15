@@ -15,7 +15,7 @@ else
 {
     <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="d-flex gap-2">
-            <a class="btn btn-success btn-sm" href="/recurring/create">
+            <a class="btn btn-success btn-sm" href="recurring/create">
                 <i class="bi bi-plus-lg"></i> Create Job
             </a>
             <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
@@ -152,7 +152,7 @@ else
                                         }
                                     </td>
                                     <td>
-                                        <a class="btn btn-outline-secondary btn-sm" href="/recurring/edit/@job.Id" title="Edit this recurring job">
+                                        <a class="btn btn-outline-secondary btn-sm" href="recurring/edit/@job.Id" title="Edit this recurring job">
                                             <i class="bi bi-pencil"></i>
                                         </a>
                                         <button class="btn btn-outline-secondary btn-sm" @onclick="() => StopJob(job.Id)" title="Stop this recurring job">

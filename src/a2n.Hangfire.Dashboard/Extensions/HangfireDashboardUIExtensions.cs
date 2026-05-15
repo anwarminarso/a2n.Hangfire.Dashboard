@@ -66,9 +66,9 @@ public static class HangfireDashboardUIExtensions
     }
 
     /// <summary>
-    /// Maps the Hangfire Dashboard UI middleware pipeline at the specified path.
-    /// Creates a branched pipeline that handles all dashboard requests including
-    /// embedded resources, Blazor Server, SignalR, authorization, and antiforgery.
+    /// Maps the Hangfire Dashboard UI at the specified path.
+    /// Uses app.Map() to create an isolated branched pipeline so the dashboard
+    /// only responds to requests under the specified path prefix.
     /// </summary>
     /// <param name="app">The application builder</param>
     /// <param name="pathMatch">The path prefix for the dashboard (default: "/hangfire")</param>
@@ -84,15 +84,19 @@ public static class HangfireDashboardUIExtensions
         // Normalize pathMatch to ensure it starts with / and has no trailing slash
         pathMatch = "/" + pathMatch.Trim('/');
 
+        // app.Map creates a branched pipeline that ONLY handles requests starting with pathMatch.
+        // Inside the branch, Request.PathBase = original PathBase + pathMatch,
+        // and Request.Path = the remainder after stripping pathMatch.
+        // This ensures the dashboard doesn't interfere with other routes in the host app.
         app.Map(pathMatch, branch =>
         {
-            // Register the DashboardMiddleware on the branched pipeline
-            // It handles authorization, antiforgery, embedded resources, and routing
+            // DashboardMiddleware handles authorization, antiforgery, and embedded resources (_content/*)
             branch.UseMiddleware<DashboardMiddleware>(options);
 
-            // Static files must be enabled in the branch for _framework/blazor.web.js
-            // (served from the ASP.NET Core shared framework assembly)
-            branch.UseStaticFiles();
+            // FrameworkScriptMiddleware serves _framework/blazor.web.js from the static web assets
+            // file provider. This is needed because MapRazorComponents registers the _framework
+            // endpoint via MapStaticAssets which doesn't work correctly in a branched pipeline.
+            branch.UseMiddleware<FrameworkScriptMiddleware>();
 
             branch.UseRouting();
             branch.UseAntiforgery();
@@ -102,11 +106,10 @@ public static class HangfireDashboardUIExtensions
                 // Map DashboardHub SignalR endpoint within the branch
                 endpoints.MapHub<DashboardHub>("/hubs/dashboard");
 
-                // Map Blazor components (serves _framework/blazor.web.js, handles Blazor rendering,
-                // and sets up the _blazor SignalR endpoint for interactive server components)
+                // Map Blazor components — handles _blazor SignalR circuit and page rendering.
+                // Note: _framework/blazor.web.js is served by FrameworkScriptMiddleware above.
                 endpoints.MapRazorComponents<DashboardApp>()
                     .AddInteractiveServerRenderMode();
-
             });
         });
 

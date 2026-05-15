@@ -113,18 +113,13 @@ builder.Services.AddHangfire(config => config
 
 builder.Services.AddHangfireServer();
 
-// Add the alternate dashboard
-builder.Services.AddHangfireAlternateDashboard(new AlternateDashboardOptions
-{
-    DashboardTitle = "My Jobs",
-    DefaultRecordsPerPage = 20,
-    DefaultTheme = "auto",  // "auto", "light", or "dark"
-});
+// Add the dashboard UI services (Blazor, SignalR, internal services)
+builder.Services.AddHangfireDashboardUI();
 
 var app = builder.Build();
 
-// Use the alternate dashboard (replaces app.UseHangfireDashboard())
-app.UseHangfireAlternateDashboard("/hangfire");
+// Use the dashboard UI at /hangfire (replaces app.UseHangfireDashboard())
+app.UseHangfireDashboardUI("/hangfire");
 
 app.Run();
 ```
@@ -132,6 +127,31 @@ app.Run();
 ### 3. That's it
 
 Navigate to `/hangfire` and enjoy your new dashboard.
+
+### Important: Project Reference (Development)
+
+If you reference `a2n.Hangfire.Dashboard` via `<ProjectReference>` (not NuGet), add this to your host `.csproj`:
+
+```xml
+<PropertyGroup>
+  <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
+</PropertyGroup>
+```
+
+This tells MSBuild to include Blazor framework assets (`blazor.web.js`). When consuming via NuGet package, this is handled automatically — no extra configuration needed.
+
+### Configuration Options
+
+```csharp
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
+{
+    DashboardTitle = "My Jobs",
+    DefaultRecordsPerPage = 20,
+    DefaultTheme = "auto",  // "auto", "light", or "dark"
+    IsReadOnly = false,
+    Authorization = new[] { new MyAuthFilter() },
+});
+```
 
 ## Backward Compatibility
 
@@ -153,7 +173,7 @@ public void ProcessOrder() { }
 If you have an existing `DashboardOptions` configuration, it still works:
 
 ```csharp
-builder.Services.AddHangfireAlternateDashboard(new DashboardOptions
+app.UseHangfireDashboardUI("/hangfire", new DashboardOptions
 {
     DashboardTitle = "My Jobs",
     Authorization = new[] { new MyAuthFilter() },
@@ -200,21 +220,24 @@ cd a2n.Hangfire.Dashboard/samples/SampleApp
 dotnet run
 ```
 
-Open `https://localhost:5001/serviceJob` to see the dashboard in action with sample jobs running.
+Open `https://localhost:7100/hangfire` to see the dashboard in action with sample jobs running.
 
 ## Roadmap
 
 ### ✅ v1.0 — Feature Parity
 Full parity with the built-in dashboard plus Console, Tags, and Recurring Job Admin integrated.
 
-### ✅ v1.1 — Search & Filter (Current)
+### ✅ v1.1 — Search & Filter
 Global search across all job states, advanced filters (date range, state, server, duration, tags, queue, recurring job), saved filter presets.
 
-### 🔜 v1.2 — Razor Class Library
-Convert to NuGet-distributable Razor Class Library for true drop-in replacement.
+### ✅ v1.2 — Razor Class Library
+Converted to NuGet-distributable Razor Class Library with custom middleware pipeline. True drop-in replacement via package reference.
+
+### 🔜 v1.3 — Performance Insights
+Top N slowest jobs, queue throughput, server utilization, job duration trends.
 
 ### 📋 v2.0 — Differentiation
-Performance insights, enhanced job details, Razor Class Library conversion.
+Performance insights, enhanced job details.
 
 ### 🏢 v3.0 — Extensibility & Integration
 Notifications & alerts, REST API, Prometheus metrics, theming & customization.
@@ -230,6 +253,16 @@ Contributions are welcome! Whether it's bug reports, feature requests, or pull r
 3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+### Development Setup
+
+```bash
+git clone https://github.com/anwarminarso/a2n.Hangfire.Dashboard.git
+cd a2n.Hangfire.Dashboard/samples/SampleApp
+dotnet run
+```
+
+> **Note:** The SampleApp uses `<ProjectReference>` to the dashboard library. The `<RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>` property in its `.csproj` is required for MSBuild to include `blazor.web.js`. This is only needed for project reference — NuGet consumers get this automatically via the package's `buildTransitive` props.
 
 ## License
 

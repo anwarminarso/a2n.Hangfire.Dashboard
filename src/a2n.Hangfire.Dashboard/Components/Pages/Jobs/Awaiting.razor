@@ -56,7 +56,7 @@
                                         <input type="checkbox" class="form-check-input" checked="@IsSelected(jobId)" @onchange="() => ToggleJob(jobId)" />
                                     </td>
                                     <td class="font-monospace">
-                                        <a href="/jobs/details/@jobId">@ShortenId(jobId)</a>
+                                        <a href="jobs/details/@jobId">@ShortenId(jobId)</a>
                                     </td>
                                     <td>@(info.jobName ?? "Unknown")</td>
                                     <td>
@@ -72,7 +72,7 @@
                                     <td class="font-monospace">
                                         @if (!string.IsNullOrEmpty(info.parentId))
                                         {
-                                            <a href="/jobs/details/@info.parentId">
+                                            <a href="jobs/details/@info.parentId">
                                                 @if (!string.IsNullOrEmpty(info.parentState))
                                                 {
                                                     <span class="badge @GetParentStateBadgeClass(info.parentState)">@ShortenId(info.parentId)</span>
