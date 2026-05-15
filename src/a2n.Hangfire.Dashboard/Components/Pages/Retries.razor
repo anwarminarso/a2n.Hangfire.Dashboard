@@ -58,7 +58,7 @@ else
                                     <input type="checkbox" class="form-check-input" checked="@IsSelected(jobId)" @onchange="() => ToggleJob(jobId)" />
                                 </td>
                                 <td>
-                                    <a href="/jobs/details/@jobId" class="text-decoration-none font-monospace">@ShortenId(jobId)</a>
+                                    <a href="jobs/details/@jobId" class="text-decoration-none font-monospace">@ShortenId(jobId)</a>
                                 </td>
                                 <td><span class="badge bg-secondary">@(info.state ?? "Scheduled")</span></td>
                                 <td>@(info.jobName ?? "Unknown")</td>

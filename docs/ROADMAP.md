@@ -56,18 +56,39 @@ A modern, open-source alternative Hangfire dashboard that replaces the built-in 
 - ✅ Form validation, active parameter badges, read-only result summary
 - ✅ Pagination with page size selector (10, 20, 50, 100, 500)
 
-### 2.2 Razor Class Library Conversion
-- [ ] Convert from web application (exe) to Razor Class Library (dll)
-- [ ] Static assets served via `_content/a2n.Hangfire.Dashboard/`
-- [ ] True NuGet drop-in: add package reference + 2 extension method calls
+### 2.2 Razor Class Library Conversion ✅
+- ✅ Converted from web application to Razor Class Library (dll)
+- ✅ Custom middleware pipeline (`app.Map` + `DashboardMiddleware` + `FrameworkScriptMiddleware`)
+- ✅ Static assets served via embedded resources (`_content/*`)
+- ✅ `_framework/blazor.web.js` served via custom middleware in branched pipeline
+- ✅ NuGet `buildTransitive` props for automatic `RequiresAspNetWebAssets` propagation
+- ✅ True NuGet drop-in: add package reference + `AddHangfireDashboardUI()` + `UseHangfireDashboardUI()`
+- ✅ Relative URL links for path prefix compatibility
 
-### 2.3 Performance Insights
+### 2.3 Storage-Specific Query Optimization
+- [ ] `IStorageQueryProvider` interface — abstraction for database-level queries
+- [ ] SQL Server adapter (Dapper + raw T-SQL) — JOINs, LIKE, OFFSET/FETCH, query hints
+- [ ] PostgreSQL adapter (Dapper + Npgsql) — JOINs, ILIKE, LIMIT/OFFSET
+- [ ] Fallback to generic Hangfire API when no adapter is registered
+- [ ] Search optimization: database-level WHERE/LIKE for name & exception search
+- [ ] Tags optimization: JOIN-based filtering (tag + state + date in single query)
+- [ ] Pagination: server-side OFFSET/FETCH instead of client-side Skip/Take
+- [ ] LIKE pattern sanitization (escape `%`, `_`, `[` from user input)
+- [ ] Parameterized queries only — zero string concatenation of user input
+
+> **Design notes:**
+> - Only relational databases with significant production usage need adapters (SQL Server, PostgreSQL)
+> - Redis: generic API is already optimal (no SQL, no JOINs possible)
+> - SQLite: volume too low to justify, generic API sufficient
+> - MongoDB/MySQL: deferred unless community demand arises
+
+### 2.4 Performance Insights
 - [ ] Top N slowest jobs
 - [ ] Queue throughput (jobs/minute, jobs/hour)
 - [ ] Server utilization (worker busy %)
 - [ ] Job duration trend (per job type over time)
 
-### 2.4 Enhanced Job Details
+### 2.5 Enhanced Job Details
 - [ ] Job dependency graph (continuations visualized)
 - [ ] Retry history with diff
 - [ ] Job execution duration chart (historical)
@@ -113,8 +134,9 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v0.1–v0.7 | Foundation (setup → grid standardization) | ✅ Done |
 | v1.0 | Phase 1 complete — full parity + realtime | ✅ Done |
 | v1.1 | Global search & advanced filters | ✅ Done |
-| v1.2 | Razor Class Library conversion | Planned |
-| v1.3 | Performance insights | Planned |
+| v1.2 | Razor Class Library conversion | ✅ Done |
+| v1.3 | Storage-specific query optimization | Planned |
+| v1.4 | Performance insights | Planned |
 | v2.0 | Phase 2 complete | Planned |
 | v3.0 | Phase 3 — extensibility & integration | Planned |
 

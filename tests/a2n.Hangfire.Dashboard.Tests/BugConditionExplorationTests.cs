@@ -55,7 +55,7 @@ public class BugConditionExplorationTests : TestContext
     public void TitleH1_InNavbarHeader_ShouldHaveNoBorderOutlineCssRule()
     {
         // Arrange
-        var cssPath = Path.Combine(GetSourceProjectRoot(), "wwwroot", "css", "app.css");
+        var cssPath = Path.Combine(GetSourceProjectRoot(), "Content", "css", "app.css");
         var cssContent = File.ReadAllText(cssPath);
 
         // Act & Assert
@@ -84,7 +84,7 @@ public class BugConditionExplorationTests : TestContext
     /// When AppPath is configured (non-null), the header should render a "Back to Site"
     /// anchor element that navigates to the configured AppPath.
     /// 
-    /// EXPECTED TO FAIL on unfixed code: MainLayout does not inject AlternateDashboardOptions
+    /// EXPECTED TO FAIL on unfixed code: MainLayout does not inject DashboardUIOptions
     /// and does not render any "Back to Site" link.
     /// Counterexample: Header contains no anchor element for "Back to Site" navigation despite AppPath being set.
     /// </summary>
@@ -96,12 +96,12 @@ public class BugConditionExplorationTests : TestContext
         var razorContent = File.ReadAllText(razorPath);
 
         // Act & Assert
-        // The MainLayout should inject AlternateDashboardOptions
-        var injectsOptions = razorContent.Contains("@inject AlternateDashboardOptions") ||
-                             razorContent.Contains("@inject a2n.Hangfire.Dashboard.AlternateDashboardOptions");
+        // The MainLayout should inject DashboardUIOptions
+        var injectsOptions = razorContent.Contains("@inject DashboardUIOptions") ||
+                             razorContent.Contains("@inject a2n.Hangfire.Dashboard.DashboardUIOptions");
 
         Assert.True(injectsOptions,
-            "Bug 1.2 confirmed: MainLayout.razor does not inject AlternateDashboardOptions. " +
+            "Bug 1.2 confirmed: MainLayout.razor does not inject DashboardUIOptions. " +
             "Without injecting the options, the component cannot access AppPath to render the 'Back to Site' link.");
 
         // The MainLayout should contain a "Back to Site" link/anchor
@@ -206,7 +206,7 @@ public class BugConditionExplorationTests : TestContext
             Arb.From(Gen.Elements("info", "warning", "success", "danger", "neutral")),
             (string category) =>
             {
-                var cssPath = Path.Combine(GetSourceProjectRoot(), "wwwroot", "css", "app.css");
+                var cssPath = Path.Combine(GetSourceProjectRoot(), "Content", "css", "app.css");
                 var cssContent = File.ReadAllText(cssPath);
 
                 var className = $"hf-stat-card-{category}";
@@ -234,7 +234,7 @@ public class BugConditionExplorationTests : TestContext
                 "Job #123", "Recurring Jobs", "Tags", "Retries", "Hangfire Dashboard")),
             (string pageTitle) =>
             {
-                var cssPath = Path.Combine(GetSourceProjectRoot(), "wwwroot", "css", "app.css");
+                var cssPath = Path.Combine(GetSourceProjectRoot(), "Content", "css", "app.css");
                 var cssContent = File.ReadAllText(cssPath);
 
                 // Regardless of what page title is displayed, the CSS should have

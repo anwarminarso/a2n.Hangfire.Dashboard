@@ -5,8 +5,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Hangfire.Console</RootNamespace>
+    <Version>1.2.0-alpha.1</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Description>Drop-in replacement for Hangfire.Console with modern dashboard support</Description>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Description>Drop-in replacement for Hangfire.Console — adds realtime console-like logging to Hangfire jobs. Supports colored text, progress bars, URL detection, and collapsible multi-execution logs. Same namespace and API as the original — just swap the NuGet package.</Description>
+    <PackageId>a2n.Hangfire.Console</PackageId>
+    <Authors>a2n</Authors>
+    <PackageTags>hangfire;console;logging;background-jobs;progress-bar;realtime;colored-output;aspnetcore;dotnet</PackageTags>
+    <RepositoryUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</PackageProjectUrl>
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>

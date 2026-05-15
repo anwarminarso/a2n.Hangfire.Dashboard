@@ -1,7 +1,8 @@
 @page "/"
 @inject HangfireMonitorService Monitor
 @inject IJSRuntime JS
-@implements IDisposable
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -192,6 +193,7 @@ else
 @code {
     private StatisticsDto _stats;
     private IList<ServerDto> _servers;
+    private HubConnection _hubConnection;
     private Timer _refreshTimer;
     private long _prevSucceeded;
     private long _prevDeleted;
@@ -219,6 +221,58 @@ else
             _prevFailed = _stats.Failed;
         }
 
+        // Connect to SignalR hub using a URL relative to the Path_Prefix.
+        // NavigationManager.ToAbsoluteUri uses the <base href> which includes the path prefix,
+        // so "hubs/dashboard" resolves to "{Path_Prefix}/hubs/dashboard" regardless of mount point.
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("hubs/dashboard"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<Dictionary<string, object>>("MetricsUpdated", async (metrics) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                try
+                {
+                    var succeeded = Convert.ToInt64(metrics.GetValueOrDefault("succeeded", 0L));
+                    var failed = Convert.ToInt64(metrics.GetValueOrDefault("failed", 0L));
+                    var deleted = Convert.ToInt64(metrics.GetValueOrDefault("deleted", 0L));
+
+                    var deltaSucceeded = Math.Max(0, succeeded - _prevSucceeded);
+                    var deltaFailed = Math.Max(0, failed - _prevFailed);
+                    var deltaDeleted = Math.Max(0, deleted - _prevDeleted);
+                    _prevSucceeded = succeeded;
+                    _prevFailed = failed;
+                    _prevDeleted = deleted;
+
+                    _stats = Monitor.GetStatistics();
+                    _servers = Monitor.GetServers();
+                    StateHasChanged();
+
+                    if (_chartsInitialized)
+                    {
+                        await JS.InvokeVoidAsync("dashboardCharts.updateRealtimeChart", deltaSucceeded, deltaFailed, deltaDeleted);
+                    }
+                }
+                catch { }
+            });
+        });
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            await _hubConnection.InvokeAsync("SubscribeToMetrics");
+        }
+        catch
+        {
+            // Fallback to timer-based polling if SignalR connection fails
+            StartFallbackTimer();
+        }
+    }
+
+    private void StartFallbackTimer()
+    {
         _refreshTimer = new Timer(async _ =>
         {
             try
@@ -271,9 +325,17 @@ else
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _refreshTimer?.Dispose();
+        if (_hubConnection is not null)
+        {
+            try
+            {
+                await _hubConnection.DisposeAsync();
+            }
+            catch { }
+        }
     }
 
     private async Task SwitchHistoryPeriod(string period)

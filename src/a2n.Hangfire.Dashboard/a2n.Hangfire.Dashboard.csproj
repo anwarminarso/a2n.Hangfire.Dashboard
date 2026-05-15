@@ -1,13 +1,31 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <OutputType>Library</OutputType>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>a2n.Hangfire.Dashboard</RootNamespace>
-    <!--<OutputType>Library</OutputType>-->
+    <Version>1.2.0-alpha.1</Version>
+
+    <StaticWebAssetsEnabled>true</StaticWebAssetsEnabled>
+
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- NuGet metadata -->
+    <PackageId>a2n.Hangfire.Dashboard</PackageId>
+    <Description>A modern, open-source alternative dashboard for Hangfire. Built with Blazor Server, Bootstrap 5, Chart.js, and SignalR. Features realtime monitoring, global search with advanced filters, console log viewer, tag management, recurring job CRUD, dark/light theme, and responsive design. Drop-in replacement — zero code changes required.</Description>
+    <Authors>a2n</Authors>
+    <PackageTags>hangfire;dashboard;blazor;monitoring;background-jobs;realtime;signalr;search;console;tags;recurring-jobs;bootstrap;chartjs;dark-mode;aspnetcore;dotnet</PackageTags>
+    <RepositoryUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</PackageProjectUrl>
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  
   <ItemGroup>
     <InternalsVisibleTo Include="a2n.Hangfire.Dashboard.Tests" />
   </ItemGroup>
@@ -15,12 +33,26 @@
   <ItemGroup>
     <PackageReference Include="Hangfire.Core" Version="1.8.*" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
-    <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.*" Condition="'$(TargetFramework)' == 'net8.0'" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.*" Condition="'$(TargetFramework)' == 'net9.0'" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.*" Condition="'$(TargetFramework)' == 'net10.0'" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\a2n.Hangfire.Console\a2n.Hangfire.Console.csproj" />
     <ProjectReference Include="..\a2n.Hangfire.Tags\a2n.Hangfire.Tags.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- All static assets embedded in the DLL -->
+    <EmbeddedResource Include="Content\**\*" />
+  </ItemGroup>
+
+  <!-- Include build props/targets in NuGet package for consumer projects -->
+  <ItemGroup>
+    <None Include="build\a2n.Hangfire.Dashboard.props" Pack="true" PackagePath="build\" />
+    <None Include="build\a2n.Hangfire.Dashboard.props" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

@@ -20,20 +20,30 @@ builder.Services.AddHangfireServer(options =>
     options.WorkerCount = 2;
 });
 
-// Add our alternate dashboard (option A: our options)
-builder.Services.AddHangfireAlternateDashboard(new AlternateDashboardOptions
-{
-    DashboardTitle = "Service Job",
-    DefaultRecordsPerPage = 20,
-    DefaultTheme = "auto",
-});
+// Add Hangfire Dashboard UI services (registers Blazor, SignalR, and all internal services)
+builder.Services.AddHangfireDashboardUI();
 
-// Option B: use existing DashboardOptions for backward compat
-// builder.Services.AddHangfireAlternateDashboard(new DashboardOptions
+// Optional: Configure with DashboardUIOptions for authorization and custom title
+// builder.Services.AddHangfireDashboardUI();
+// app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 // {
-//     DashboardTitle = "Service Job",
-//     Authorization = new[] { new MyAuthFilter() },
+//     DashboardTitle = "My Service Dashboard",
+//     DefaultRecordsPerPage = 50,
+//     DefaultTheme = "auto",
+//     Authorization = new[]
+//     {
+//         new MyDashboardAuthFilter()
+//     }
 // });
+//
+// Example authorization filter:
+// public class MyDashboardAuthFilter : IDashboardAuthorizationFilter
+// {
+//     public bool Authorize(HttpContext context)
+//     {
+//         return context.User.Identity?.IsAuthenticated ?? false;
+//     }
+// }
 
 var app = builder.Build();
 
@@ -43,8 +53,8 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-// Use our alternate dashboard (replaces app.UseHangfireDashboard)
-app.UseHangfireAlternateDashboard("/serviceJob");
+// Use Hangfire Dashboard UI at /hangfire (replaces app.UseHangfireDashboard)
+app.UseHangfireDashboardUI("/hangfire");
 
 // Seed sample recurring jobs
 app.Lifetime.ApplicationStarted.Register(() =>

@@ -1,4 +1,6 @@
-<Router AppAssembly="typeof(Program).Assembly">
+@attribute [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+
+<Router AppAssembly="typeof(DashboardApp).Assembly">
     <Found Context="routeData">
         <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

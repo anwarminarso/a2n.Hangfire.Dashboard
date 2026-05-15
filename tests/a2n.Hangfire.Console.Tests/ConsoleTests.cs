@@ -381,7 +381,15 @@ public class ConsoleTextColorTests
         Assert.Equal("#00ffff", ConsoleTextColor.Cyan.ToString());
         Assert.Equal("#ff00ff", ConsoleTextColor.Magenta.ToString());
         Assert.Equal("#ffffff", ConsoleTextColor.White.ToString());
-        Assert.Equal("#808080", ConsoleTextColor.Gray.ToString());
+        Assert.Equal("#c0c0c0", ConsoleTextColor.Gray.ToString());
+        Assert.Equal("#808080", ConsoleTextColor.DarkGray.ToString());
+        Assert.Equal("#000000", ConsoleTextColor.Black.ToString());
+        Assert.Equal("#000080", ConsoleTextColor.DarkBlue.ToString());
+        Assert.Equal("#008000", ConsoleTextColor.DarkGreen.ToString());
+        Assert.Equal("#008080", ConsoleTextColor.DarkCyan.ToString());
+        Assert.Equal("#800000", ConsoleTextColor.DarkRed.ToString());
+        Assert.Equal("#800080", ConsoleTextColor.DarkMagenta.ToString());
+        Assert.Equal("#808000", ConsoleTextColor.DarkYellow.ToString());
     }
 
     [Fact]

@@ -161,7 +161,7 @@ public class PreservationPropertyTests
     public void Header_AppPathNull_NoBackToSiteLink()
     {
         // Arrange
-        var options = new AlternateDashboardOptions { AppPath = null };
+        var options = new DashboardUIOptions { AppPath = null };
 
         using var ctx = new Bunit.TestContext();
         SetupMainLayoutServices(ctx, options);
@@ -180,16 +180,15 @@ public class PreservationPropertyTests
 
     /// <summary>
     /// Property 2 - Preservation Requirement 3.2:
-    /// For AppPath = "/" (default), header also does not render "Back to Site" link
-    /// on UNFIXED code (since the link was never implemented).
+    /// For AppPath = "/" (default), header renders "Back to Site" link pointing to "/".
     /// 
     /// **Validates: Requirements 3.2**
     /// </summary>
     [Fact]
-    public void Header_AppPathDefault_NoBackToSiteLinkOnUnfixedCode()
+    public void Header_AppPathDefault_RendersBackToSiteLink()
     {
         // Arrange - default AppPath is "/"
-        var options = new AlternateDashboardOptions();
+        var options = new DashboardUIOptions();
 
         using var ctx = new Bunit.TestContext();
         SetupMainLayoutServices(ctx, options);
@@ -197,15 +196,14 @@ public class PreservationPropertyTests
         // Act
         var cut = ctx.RenderComponent<MainLayout>();
 
-        // Assert - on UNFIXED code, no "Back to Site" link exists regardless of AppPath
-        // This test captures the current state: the link is simply not implemented yet
+        // Assert - on fixed code, "Back to Site" link exists when AppPath is set
         var header = cut.Find("header.navbar");
         var allAnchors = header.QuerySelectorAll("a");
         var backToSiteLink = allAnchors.FirstOrDefault(a =>
             a.TextContent.Contains("Back to Site", StringComparison.OrdinalIgnoreCase));
 
-        // On unfixed code, there is no "Back to Site" link at all
-        Assert.Null(backToSiteLink);
+        // The bug was fixed: "Back to Site" link now renders when AppPath is configured
+        Assert.NotNull(backToSiteLink);
     }
 
     /// <summary>
@@ -218,7 +216,7 @@ public class PreservationPropertyTests
     public void Header_AppPathNull_NeverRendersBackToSiteLink()
     {
         // This test specifically validates that null AppPath never produces a link
-        var options = new AlternateDashboardOptions { AppPath = null };
+        var options = new DashboardUIOptions { AppPath = null };
 
         using var ctx = new Bunit.TestContext();
         SetupMainLayoutServices(ctx, options);
@@ -433,7 +431,7 @@ public class PreservationPropertyTests
     public void Header_H1Element_RendersWithNavbarTextClass()
     {
         // Arrange
-        var options = new AlternateDashboardOptions { AppPath = null };
+        var options = new DashboardUIOptions { AppPath = null };
 
         using var ctx = new Bunit.TestContext();
         SetupMainLayoutServices(ctx, options);
@@ -458,7 +456,7 @@ public class PreservationPropertyTests
     public void Header_AlwaysContainsThemeToggle()
     {
         // Arrange
-        var options = new AlternateDashboardOptions { AppPath = null };
+        var options = new DashboardUIOptions { AppPath = null };
 
         using var ctx = new Bunit.TestContext();
         SetupMainLayoutServices(ctx, options);
@@ -520,7 +518,7 @@ public class PreservationPropertyTests
     /// Sets up services needed for MainLayout rendering in bUnit.
     /// Uses real InMemory storage to avoid mocking non-virtual methods.
     /// </summary>
-    private void SetupMainLayoutServices(Bunit.TestContext ctx, AlternateDashboardOptions options)
+    private void SetupMainLayoutServices(Bunit.TestContext ctx, DashboardUIOptions options)
     {
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
 

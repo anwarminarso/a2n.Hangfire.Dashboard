@@ -55,7 +55,7 @@ else
                                     <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
                                            @onchange="() => ToggleJob(job.Key)" />
                                 </td>
-                                <td class="font-monospace"><a href="/jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                 <td>
                                     <div>@GetJobName(job.Value)</div>
                                     @if (!string.IsNullOrEmpty(job.Value?.Reason))

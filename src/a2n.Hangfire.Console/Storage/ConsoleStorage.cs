@@ -107,8 +107,8 @@ internal class ConsoleStorage : IDisposable
     public void Expire(ConsoleId consoleId, TimeSpan expireIn)
     {
         using var tran = (JobStorageTransaction)_connection.CreateWriteTransaction();
-        tran.ExpireSet(consoleId.GetSetKey(), expireIn);
-        tran.ExpireHash(consoleId.GetHashKey(), expireIn);
+        var expiration = new ConsoleExpirationTransaction(tran);
+        expiration.Expire(consoleId, expireIn);
         tran.Commit();
     }
 
@@ -120,5 +120,21 @@ internal class ConsoleStorage : IDisposable
     public StateData? GetState(ConsoleId consoleId)
     {
         return _connection.GetStateData(consoleId.JobId);
+    }
+
+    public double? GetProgress(ConsoleId consoleId)
+    {
+        var progress = _connection.GetValueFromHash(consoleId.GetHashKey(), "progress");
+        if (string.IsNullOrEmpty(progress))
+            return null;
+
+        try
+        {
+            return double.Parse(progress, CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

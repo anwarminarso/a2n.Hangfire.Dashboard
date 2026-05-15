@@ -53,7 +53,7 @@
                                         <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
                                                @onchange="() => ToggleJob(job.Key)" />
                                     </td>
-                                    <td class="font-monospace"><a href="/jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                    <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                     <td>@GetJobName(job.Value)</td>
                                     <td>@GetPerformanceDuration(job.Value)</td>
                                     <td>@GetLatency(job.Value)</td>

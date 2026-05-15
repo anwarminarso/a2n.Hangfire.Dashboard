@@ -6,15 +6,14 @@ namespace Hangfire.Console;
 public interface IProgressBar
 {
     /// <summary>
-    /// Sets the value of the progress bar (0-100).
+    /// Updates a value of a progress bar.
     /// </summary>
-    /// <param name="value">Progress value</param>
-    void SetValue(double value);
+    /// <param name="value">New value (0-100)</param>
+    void SetValue(int value);
 
     /// <summary>
-    /// Sets the value and color of the progress bar.
+    /// Updates a value of a progress bar.
     /// </summary>
-    /// <param name="value">Progress value (0-100)</param>
-    /// <param name="color">Color for the progress bar</param>
-    void SetValue(double value, ConsoleTextColor color);
+    /// <param name="value">New value (0-100)</param>
+    void SetValue(double value);
 }
