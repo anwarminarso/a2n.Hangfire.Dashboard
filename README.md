@@ -11,7 +11,7 @@ A modern, open-source alternative to the built-in Hangfire Dashboard — with re
 ---
 
 <!-- TODO: Replace with actual screenshot -->
-![Dashboard Overview](docs/screenshots/dashboard-overview.png)
+![Dashboard Overview](docs/screenshots/home.png)
 
 ## Why This Exists
 
@@ -75,9 +75,15 @@ This project replaces all of that with a single package:
 </details>
 
 <details>
-<summary>🌙 Dark Mode</summary>
+<summary> 🖥️Auto — ☀️Light — 🌙Dark Mode</summary>
 
-![Dark Mode](docs/screenshots/dark-mode.png)
+![Dark Mode](docs/screenshots/auto-light-dark-mode.png)
+
+</details>
+<details>
+<summary>🔍 Advanced Search</summary>
+
+![Recurring Jobs](docs/screenshots/search.png)
 
 </details>
 
