@@ -61,56 +61,48 @@ A modern, open-source alternative Hangfire dashboard that replaces the built-in 
 - [ ] Static assets served via `_content/a2n.Hangfire.Dashboard/`
 - [ ] True NuGet drop-in: add package reference + 2 extension method calls
 
-### 2.3 Notifications & Alerts
-- [ ] Browser push notifications
-- [ ] Webhook notifications (Slack, Teams, Discord, generic HTTP)
-- [ ] Configurable alert rules
-- [ ] Notification history log
-
-### 2.4 Performance Insights
+### 2.3 Performance Insights
 - [ ] Top N slowest jobs
 - [ ] Queue throughput (jobs/minute, jobs/hour)
 - [ ] Server utilization (worker busy %)
 - [ ] Job duration trend (per job type over time)
 
-### 2.5 Job Execution Timeline
-- [ ] Gantt-like view: concurrent job execution
-- [ ] Server workload distribution
-
-### 2.6 Enhanced Job Details
+### 2.4 Enhanced Job Details
 - [ ] Job dependency graph (continuations visualized)
 - [ ] Retry history with diff
 - [ ] Job execution duration chart (historical)
 
-### 2.7 Standalone Deployment
-- [ ] Deploy dashboard as separate application
-- [ ] Connect to Hangfire storage directly (connection string config)
+---
+
+## Phase 3 — Extensibility & Integration
+
+**Goal**: Features for extensibility and integration with external tools.
+
+### 3.1 Notifications & Alerts
+- [ ] Webhook notifications (Slack, Teams, Discord, generic HTTP)
+- [ ] Browser push notifications
+- [ ] Configurable alert rules
+- [ ] Notification history log
+
+### 3.2 API & Metrics
+- [ ] REST API for job data (optional package)
+- [ ] Prometheus /metrics endpoint
+- [ ] Export to CSV/JSON
+
+### 3.3 Customization
+- [ ] Theming (custom colors, logo)
+- [ ] Configurable homepage widgets
+- [ ] Hide/show pages via options
 
 ---
 
-## Phase 3 — Enterprise Features
+## Stretch Goals
 
-**Goal**: Features for teams and production environments.
+Items that may be implemented if there is demand, but are not prioritized.
 
-### 3.1 Multi-Environment
-- [ ] Single dashboard, multiple storage connections
-- [ ] Environment switcher (Production, Staging, Dev)
-
-### 3.2 Role-Based Access Control
-- [ ] Roles: Viewer, Operator, Admin
-- [ ] Integration: Azure AD, OAuth2, OpenID Connect
-- [ ] Audit log
-
-### 3.3 API & Integration
-- [ ] REST API for all dashboard data
-- [ ] Prometheus metrics endpoint
-- [ ] Export to CSV/JSON
-- [ ] Webhook on events
-
-### 3.4 Customization
-- [ ] Theming (custom colors, logo)
-- [ ] Configurable homepage widgets
-- [ ] Hide/show pages per role
+- [ ] Job Execution Timeline — Gantt-like view for concurrent job execution + server workload distribution
+- [ ] Visual cron builder component (interactive UI)
+- [ ] Execution history per recurring job
 
 ---
 
@@ -122,9 +114,9 @@ A modern, open-source alternative Hangfire dashboard that replaces the built-in 
 | v1.0 | Phase 1 complete — full parity + realtime | ✅ Done |
 | v1.1 | Global search & advanced filters | ✅ Done |
 | v1.2 | Razor Class Library conversion | Planned |
-| v1.3 | Notifications & alerts | Planned |
+| v1.3 | Performance insights | Planned |
 | v2.0 | Phase 2 complete | Planned |
-| v3.0 | Phase 3 — enterprise features | Planned |
+| v3.0 | Phase 3 — extensibility & integration | Planned |
 
 ---
 

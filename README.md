@@ -208,10 +208,10 @@ Global search across all job states, advanced filters (date range, state, server
 Convert to NuGet-distributable Razor Class Library for true drop-in replacement.
 
 ### 📋 v2.0 — Differentiation
-Performance insights, job execution timeline, notifications, standalone deployment mode.
+Performance insights, enhanced job details, Razor Class Library conversion.
 
-### 🏢 v3.0 — Enterprise
-Multi-environment, RBAC, REST API, Prometheus metrics.
+### 🏢 v3.0 — Extensibility & Integration
+Notifications & alerts, REST API, Prometheus metrics, theming & customization.
 
 See the full [roadmap](docs/ROADMAP.md) for details.
 
