@@ -5,14 +5,14 @@ using Xunit;
 namespace a2n.Hangfire.Dashboard.Tests;
 
 /// <summary>
-/// Tests for AlternateDashboardOptions.
+/// Tests for DashboardUIOptions.
 /// </summary>
-public class AlternateDashboardOptionsTests
+public class DashboardUIOptionsTests
 {
     [Fact]
     public void DefaultValues_AreCorrect()
     {
-        var options = new AlternateDashboardOptions();
+        var options = new DashboardUIOptions();
 
         Assert.Equal("/", options.AppPath);
         Assert.Equal("Hangfire Dashboard", options.DashboardTitle);
@@ -31,7 +31,7 @@ public class AlternateDashboardOptionsTests
             DashboardTitle = "My Custom Title"
         };
 
-        var result = AlternateDashboardOptions.FromDashboardOptions(hangfireOptions);
+        var result = DashboardUIOptions.FromDashboardOptions(hangfireOptions);
 
         Assert.Equal("My Custom Title", result.DashboardTitle);
     }
@@ -44,7 +44,7 @@ public class AlternateDashboardOptionsTests
             AppPath = "/my-app"
         };
 
-        var result = AlternateDashboardOptions.FromDashboardOptions(hangfireOptions);
+        var result = DashboardUIOptions.FromDashboardOptions(hangfireOptions);
 
         Assert.Equal("/my-app", result.AppPath);
     }
@@ -57,7 +57,7 @@ public class AlternateDashboardOptionsTests
             StatsPollingInterval = 5000
         };
 
-        var result = AlternateDashboardOptions.FromDashboardOptions(hangfireOptions);
+        var result = DashboardUIOptions.FromDashboardOptions(hangfireOptions);
 
         Assert.Equal(5000, result.StatsPollingInterval);
     }
@@ -70,7 +70,7 @@ public class AlternateDashboardOptionsTests
             DefaultRecordsPerPage = 50
         };
 
-        var result = AlternateDashboardOptions.FromDashboardOptions(hangfireOptions);
+        var result = DashboardUIOptions.FromDashboardOptions(hangfireOptions);
 
         Assert.Equal(50, result.DefaultRecordsPerPage);
     }
@@ -83,7 +83,7 @@ public class AlternateDashboardOptionsTests
             DarkModeEnabled = true
         };
 
-        var result = AlternateDashboardOptions.FromDashboardOptions(hangfireOptions);
+        var result = DashboardUIOptions.FromDashboardOptions(hangfireOptions);
 
         Assert.Equal("auto", result.DefaultTheme);
     }
@@ -96,7 +96,7 @@ public class AlternateDashboardOptionsTests
             DarkModeEnabled = false
         };
 
-        var result = AlternateDashboardOptions.FromDashboardOptions(hangfireOptions);
+        var result = DashboardUIOptions.FromDashboardOptions(hangfireOptions);
 
         Assert.Equal("light", result.DefaultTheme);
     }
@@ -105,12 +105,12 @@ public class AlternateDashboardOptionsTests
     public void FromDashboardOptions_NullInput_Throws()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            AlternateDashboardOptions.FromDashboardOptions(null!));
+            DashboardUIOptions.FromDashboardOptions(null!));
     }
 }
 
 /// <summary>
-/// Tests for IAlternateDashboardAuthorizationFilter interface contract.
+/// Tests for IDashboardAuthorizationFilter interface contract.
 /// </summary>
 public class AuthorizationFilterTests
 {
@@ -128,12 +128,12 @@ public class AuthorizationFilterTests
         Assert.False(filter.Authorize(null!));
     }
 
-    private class AllowAllFilter : IAlternateDashboardAuthorizationFilter
+    private class AllowAllFilter : IDashboardAuthorizationFilter
     {
         public bool Authorize(Microsoft.AspNetCore.Http.HttpContext context) => true;
     }
 
-    private class DenyAllFilter : IAlternateDashboardAuthorizationFilter
+    private class DenyAllFilter : IDashboardAuthorizationFilter
     {
         public bool Authorize(Microsoft.AspNetCore.Http.HttpContext context) => false;
     }

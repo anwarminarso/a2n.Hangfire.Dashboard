@@ -1,12 +1,23 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <OutputType>Library</OutputType>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>a2n.Hangfire.Dashboard</RootNamespace>
-    <!--<OutputType>Library</OutputType>-->
+
+    <!-- NuGet metadata -->
+    <PackageId>a2n.Hangfire.Dashboard</PackageId>
+    <Description>Modern Blazor Server dashboard for Hangfire with embedded resources</Description>
+    <Authors>a2n</Authors>
+    <PackageTags>hangfire;dashboard;blazor;monitoring</PackageTags>
+    <RepositoryUrl>https://github.com/nicearma/HangfireDashboard</RepositoryUrl>
   </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="a2n.Hangfire.Dashboard.Tests" />
@@ -15,12 +26,17 @@
   <ItemGroup>
     <PackageReference Include="Hangfire.Core" Version="1.8.*" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
-    <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.*" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\a2n.Hangfire.Console\a2n.Hangfire.Console.csproj" />
     <ProjectReference Include="..\a2n.Hangfire.Tags\a2n.Hangfire.Tags.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- All static assets embedded in the DLL -->
+    <EmbeddedResource Include="Content\**\*" />
   </ItemGroup>
 
 </Project>

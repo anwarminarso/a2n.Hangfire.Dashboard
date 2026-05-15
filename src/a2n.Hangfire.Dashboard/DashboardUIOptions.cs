@@ -1,12 +1,13 @@
 using Hangfire;
 using Hangfire.Dashboard;
+using Microsoft.AspNetCore.Http;
 
 namespace a2n.Hangfire.Dashboard;
 
 /// <summary>
-/// Configuration options for the alternate Hangfire Dashboard.
+/// Configuration options for the Hangfire Dashboard UI.
 /// </summary>
-public class AlternateDashboardOptions
+public class DashboardUIOptions
 {
     /// <summary>
     /// The path for the Back To Site link. Set to null to hide it.
@@ -40,21 +41,21 @@ public class AlternateDashboardOptions
     public string DefaultTheme { get; set; } = "auto";
 
     /// <summary>
-    /// Authorization filters for the alternate dashboard.
+    /// Authorization filters for the dashboard.
     /// </summary>
-    public IEnumerable<IAlternateDashboardAuthorizationFilter> Authorization { get; set; } = [];
+    public IEnumerable<IDashboardAuthorizationFilter> Authorization { get; set; } = [];
 
     /// <summary>
-    /// Creates AlternateDashboardOptions from an existing Hangfire DashboardOptions instance.
+    /// Creates DashboardUIOptions from an existing Hangfire DashboardOptions instance.
     /// Maps relevant properties for backward compatibility.
     /// </summary>
     /// <param name="hangfireOptions">The existing DashboardOptions from Hangfire</param>
-    /// <returns>A new AlternateDashboardOptions with mapped values</returns>
-    public static AlternateDashboardOptions FromDashboardOptions(DashboardOptions hangfireOptions)
+    /// <returns>A new DashboardUIOptions with mapped values</returns>
+    public static DashboardUIOptions FromDashboardOptions(DashboardOptions hangfireOptions)
     {
         ArgumentNullException.ThrowIfNull(hangfireOptions);
 
-        return new AlternateDashboardOptions
+        return new DashboardUIOptions
         {
             AppPath = hangfireOptions.AppPath,
             DashboardTitle = hangfireOptions.DashboardTitle,
@@ -64,17 +65,4 @@ public class AlternateDashboardOptions
             DefaultTheme = hangfireOptions.DarkModeEnabled ? "auto" : "light",
         };
     }
-}
-
-/// <summary>
-/// Authorization filter for the alternate dashboard.
-/// </summary>
-public interface IAlternateDashboardAuthorizationFilter
-{
-    /// <summary>
-    /// Determines whether the current request is authorized to access the dashboard.
-    /// </summary>
-    /// <param name="context">The HTTP context</param>
-    /// <returns>True if authorized, false otherwise</returns>
-    bool Authorize(HttpContext context);
 }

@@ -17,6 +17,7 @@
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
     <PackageReference Include="bunit" Version="1.*" />
     <PackageReference Include="FsCheck.Xunit" Version="2.*" />
+    <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
   </ItemGroup>
 
   <ItemGroup>

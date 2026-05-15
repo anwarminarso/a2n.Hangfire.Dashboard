@@ -1,5 +1,8 @@
 using a2n.Hangfire.Dashboard.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
