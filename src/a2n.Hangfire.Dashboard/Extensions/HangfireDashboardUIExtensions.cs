@@ -30,10 +30,18 @@ public static class HangfireDashboardUIExtensions
 
         services.AddHttpContextAccessor();
 
+        // Register Blazor Server interactive components.
+        // AddRazorComponents() is idempotent — safe to call even if host app already called it.
+        // AddInteractiveServerComponents() registers the render mode provider required by
+        // .AddInteractiveServerRenderMode() in the endpoint mapping.
         services.AddRazorComponents()
             .AddInteractiveServerComponents();
 
-        services.AddSignalR();
+        // Note: We do NOT call AddSignalR() here because the host app may already register it
+        // with custom options (e.g., AddJsonProtocol). SignalR services are additive and
+        // the host app is responsible for calling AddSignalR() if it uses SignalR elsewhere.
+        // If the host app does NOT use SignalR, AddInteractiveServerComponents() above
+        // already registers the necessary SignalR services for Blazor Server circuits.
 
         services.AddScoped<HangfireMonitorService>(sp =>
         {
