@@ -21,36 +21,41 @@ internal class ConsoleApplyStateFilter : IApplyStateFilter
 
     public void OnStateApplied(ApplyStateContext context, IWriteOnlyTransaction transaction)
     {
-        // We only care about final states (Succeeded, Failed, Deleted)
-        if (!context.NewState.IsFinal)
+        if (!_options.FollowJobRetentionPolicy)
+        {
+            // Console sessions use their own expiration timeout.
+            // Do not expire here, will be expired by ConsoleServerFilter.
+            return;
+        }
+
+        var jobDetails = context.Storage.GetMonitoringApi().JobDetails(context.BackgroundJob.Id);
+        if (jobDetails?.History is null)
             return;
 
-        try
+        var expiration = new ConsoleExpirationTransaction((JobStorageTransaction)transaction);
+
+        foreach (var state in jobDetails.History)
         {
-            // Get the Processing state data to find StartedAt
-            var connection = context.Connection;
-            if (connection is not JobStorageConnection storageConnection)
-                return;
+            if (state.StateName != ProcessingState.StateName)
+                continue;
 
-            // Look for StartedAt in job state history
-            var jobData = storageConnection.GetStateData(context.BackgroundJob.Id);
-            if (jobData is null)
-                return;
+            if (!state.Data.TryGetValue("StartedAt", out var startedAtStr))
+                continue;
 
-            // Try to get all state history to find Processing state
-            // For simplicity, we'll use the job's properties or state data
-            // The ConsoleServerFilter already handles expiration in OnPerformed
-            // This filter is a safety net for edge cases
+            var startedAt = JobHelper.DeserializeDateTime(startedAtStr);
+            var consoleId = new ConsoleId(context.BackgroundJob.Id, startedAt);
 
-            if (_options.FollowJobRetentionPolicy)
+            if (context.NewState.IsFinal)
             {
-                // Expiration is handled by ConsoleServerFilter.OnPerformed
-                // This is just a safety net
+                // Job in final state is a subject for expiration.
+                // To keep storage clean, its console sessions should also be expired.
+                expiration.Expire(consoleId, context.JobExpirationTimeout);
             }
-        }
-        catch
-        {
-            // Ignore errors during state transitions
+            else
+            {
+                // Job will be persisted, so should its console sessions.
+                expiration.Persist(consoleId);
+            }
         }
     }
 

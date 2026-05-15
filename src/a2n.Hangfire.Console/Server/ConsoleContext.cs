@@ -61,7 +61,7 @@ internal class ConsoleContext
         var progressBarId = Interlocked.Increment(ref _nextProgressBarId)
             .ToString(CultureInfo.InvariantCulture);
 
-        var progressBar = new DefaultProgressBar(this, progressBarId, name, color);
+        var progressBar = new DefaultProgressBar(this, progressBarId, _options.ProgressBarDecimalDigits, name, color);
         progressBar.SetValue(value);
         return progressBar;
     }
@@ -76,40 +76,71 @@ internal class ConsoleContext
     }
 }
 
+/// <summary>
+/// Default progress bar implementation that writes updates to storage.
+/// </summary>
 internal class DefaultProgressBar : IProgressBar
 {
     private readonly ConsoleContext _context;
     private readonly string _progressBarId;
-    private readonly string? _name;
-    private readonly ConsoleTextColor? _color;
+    private readonly int _decimalDigits;
+    private string? _name;
+    private string? _color;
+    private double _value;
 
-    public DefaultProgressBar(ConsoleContext context, string progressBarId, string? name, ConsoleTextColor? color)
+    internal DefaultProgressBar(ConsoleContext context, string progressBarId, int decimalDigits, string? name, ConsoleTextColor? color)
     {
-        _context = context;
-        _progressBarId = progressBarId;
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _progressBarId = progressBarId ?? throw new ArgumentNullException(nameof(progressBarId));
+        _decimalDigits = decimalDigits;
         _name = name;
-        _color = color;
+        _color = color?.ToString();
+        _value = -1;
+    }
+
+    public void SetValue(int value)
+    {
+        SetValue((double)value);
     }
 
     public void SetValue(double value)
     {
+        value = Math.Round(value, _decimalDigits);
+
+        if (value < 0 || value > 100)
+            throw new ArgumentOutOfRangeException(nameof(value), "Value should be in range 0..100");
+
+        // ReSharper disable once CompareOfFloatsByEqualityOperator
+        if (Interlocked.Exchange(ref _value, value) == value) return;
+
         _context.AddLine(new ConsoleLine
         {
             Message = _progressBarId,
-            ProgressValue = Math.Round(Math.Max(0, Math.Min(100, value)), 1),
             ProgressName = _name,
-            TextColor = _color?.ToString()
+            ProgressValue = value,
+            TextColor = _color
         });
+
+        _name = null; // write name only once
+        _color = null; // write color only once
+    }
+}
+
+/// <summary>
+/// No-op progress bar used when console context is not available.
+/// </summary>
+internal class NoOpProgressBar : IProgressBar
+{
+    public void SetValue(int value)
+    {
+        SetValue((double)value);
     }
 
-    public void SetValue(double value, ConsoleTextColor color)
+    public void SetValue(double value)
     {
-        _context.AddLine(new ConsoleLine
-        {
-            Message = _progressBarId,
-            ProgressValue = Math.Round(Math.Max(0, Math.Min(100, value)), 1),
-            ProgressName = _name,
-            TextColor = color.ToString()
-        });
+        value = Math.Round(value, 1);
+
+        if (value < 0 || value > 100)
+            throw new ArgumentOutOfRangeException(nameof(value), "Value should be in range 0..100");
     }
 }

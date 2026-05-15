@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Hangfire.Console</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Description>Drop-in replacement for Hangfire.Console with modern dashboard support</Description>
   </PropertyGroup>
 
