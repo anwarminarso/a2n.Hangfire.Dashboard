@@ -1,0 +1,575 @@
+@using a2n.Hangfire.Dashboard.Models
+
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+        <button class="btn btn-sm btn-link text-decoration-none p-0 d-flex align-items-center gap-1"
+                @onclick="TogglePanel" aria-expanded="@_isExpanded" aria-controls="filter-panel-body">
+            <i class="bi @(_isExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+            <span>Advanced Filters</span>
+        </button>
+        @if (GetActiveFilterCount() > 0)
+        {
+            <span class="badge bg-primary">@GetActiveFilterCount() active</span>
+        }
+    </div>
+
+    @if (_isExpanded)
+    {
+        <div class="card-body" id="filter-panel-body">
+            <div class="row g-3">
+                @* Date Range Filter *@
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label class="form-label fw-semibold small">Date Range</label>
+                    <div class="d-flex flex-column gap-2">
+                        <div>
+                            <label class="form-label small text-body-secondary mb-0">From</label>
+                            <input type="datetime-local" class="form-control form-control-sm"
+                                   value="@FormatDateTime(_dateFrom)"
+                                   @onchange="HandleDateFromChanged" />
+                        </div>
+                        <div>
+                            <label class="form-label small text-body-secondary mb-0">To</label>
+                            <input type="datetime-local" class="form-control form-control-sm"
+                                   value="@FormatDateTime(_dateTo)"
+                                   @onchange="HandleDateToChanged" />
+                        </div>
+                        @if (_dateRangeError is not null)
+                        {
+                            <div class="text-danger small">
+                                <i class="bi bi-exclamation-circle"></i> @_dateRangeError
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* State Filter *@
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label class="form-label fw-semibold small d-flex align-items-center gap-1">
+                        State
+                        @if (_selectedStates.Count > 0)
+                        {
+                            <span class="badge bg-primary">@_selectedStates.Count</span>
+                        }
+                    </label>
+                    <div class="d-flex flex-column gap-1">
+                        @foreach (var state in _allStates)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="state-@state"
+                                       checked="@_selectedStates.Contains(state)"
+                                       @onchange="e => HandleStateChanged(state, (bool)e.Value)" />
+                                <label class="form-check-label small" for="state-@state">@state</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* Server Filter *@
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label class="form-label fw-semibold small">Server</label>
+                    @if (Options?.Servers is not null && Options.Servers.Count > 0)
+                    {
+                        <select class="form-select form-select-sm"
+                                value="@_selectedServer"
+                                @onchange="HandleServerChanged">
+                            <option value="">All servers</option>
+                            @foreach (var server in Options.Servers)
+                            {
+                                <option value="@server">@server</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <select class="form-select form-select-sm" disabled>
+                            <option>No servers available</option>
+                        </select>
+                    }
+                </div>
+
+                @* Duration Filter *@
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label class="form-label fw-semibold small">Duration (seconds)</label>
+                    <div class="d-flex gap-2">
+                        <div class="flex-fill">
+                            <input type="number" class="form-control form-control-sm"
+                                   placeholder="Min" min="0" max="86400"
+                                   value="@_minDuration"
+                                   @onchange="HandleMinDurationChanged" />
+                        </div>
+                        <div class="flex-fill">
+                            <input type="number" class="form-control form-control-sm"
+                                   placeholder="Max" min="0" max="86400"
+                                   value="@_maxDuration"
+                                   @onchange="HandleMaxDurationChanged" />
+                        </div>
+                    </div>
+                    @if (_durationError is not null)
+                    {
+                        <div class="text-danger small mt-1">
+                            <i class="bi bi-exclamation-circle"></i> @_durationError
+                        </div>
+                    }
+                </div>
+
+                @* Queue Filter *@
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label class="form-label fw-semibold small">Queue</label>
+                    @if (Options?.Queues is not null && Options.Queues.Count > 0)
+                    {
+                        <select class="form-select form-select-sm"
+                                value="@_selectedQueue"
+                                @onchange="HandleQueueChanged">
+                            <option value="">All queues</option>
+                            @foreach (var queue in Options.Queues.OrderBy(q => q))
+                            {
+                                <option value="@queue">@queue</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <select class="form-select form-select-sm" disabled>
+                            <option>No queues available</option>
+                        </select>
+                    }
+                </div>
+
+                @* Tags Filter (conditional) *@
+                @if (Options?.TagsFeatureAvailable == true)
+                {
+                    <div class="col-12 col-md-6 col-lg-4">
+                        <label class="form-label fw-semibold small d-flex align-items-center gap-1">
+                            Tags
+                            @if (_selectedTags.Count > 0)
+                            {
+                                <span class="badge bg-primary">@_selectedTags.Count</span>
+                            }
+                        </label>
+                        @if (_tagsError)
+                        {
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control form-control-sm" disabled
+                                       placeholder="Error loading tags" />
+                                <span class="input-group-text text-danger">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                </span>
+                            </div>
+                        }
+                        else if (Options?.Tags is null || Options.Tags.Count == 0)
+                        {
+                            <input type="text" class="form-control form-control-sm" disabled
+                                   placeholder="No tags available" />
+                        }
+                        else
+                        {
+                            <div class="position-relative">
+                                <input type="text" class="form-control form-control-sm"
+                                       placeholder="Type to filter tags..."
+                                       @bind="_tagSearchText"
+                                       @bind:event="oninput"
+                                       @onfocus="() => _showTagDropdown = true" />
+                                @if (_showTagDropdown)
+                                {
+                                    <div class="dropdown-menu show w-100 overflow-auto" style="max-height: 200px; position: absolute; z-index: 1050;">
+                                        @{ var filteredTags = GetFilteredTags(); }
+                                        @if (filteredTags.Count == 0)
+                                        {
+                                            <div class="dropdown-item-text text-muted small">No matching tags</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var tag in filteredTags)
+                                            {
+                                                <label class="dropdown-item d-flex align-items-center gap-2 py-1">
+                                                    <input type="checkbox" class="form-check-input m-0"
+                                                           checked="@_selectedTags.Contains(tag)"
+                                                           @onchange="e => HandleTagChanged(tag, (bool)e.Value)" />
+                                                    <span class="small">@tag</span>
+                                                </label>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @if (_selectedTags.Count > 0)
+                            {
+                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                    @foreach (var tag in _selectedTags)
+                                    {
+                                        <span class="badge bg-primary d-inline-flex align-items-center gap-1">
+                                            @tag
+                                            <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
+                                                    @onclick="() => RemoveTag(tag)" aria-label="Remove tag @tag"></button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+
+                @* Recurring Job ID Filter *@
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label class="form-label fw-semibold small">Recurring Job</label>
+                    @if (Options?.RecurringJobIds is not null && Options.RecurringJobIds.Count > 0)
+                    {
+                        <div class="position-relative">
+                            <input type="text" class="form-control form-control-sm"
+                                   placeholder="Type to search recurring jobs..."
+                                   value="@_recurringJobSearchText"
+                                   @oninput="HandleRecurringJobSearchInput"
+                                   @onfocus="() => _showRecurringJobDropdown = true" />
+                            @if (_showRecurringJobDropdown)
+                            {
+                                <div class="dropdown-menu show w-100 overflow-auto" style="max-height: 200px; position: absolute; z-index: 1050;">
+                                    @{ var filteredJobs = GetFilteredRecurringJobs(); }
+                                    @if (filteredJobs.Count == 0)
+                                    {
+                                        <div class="dropdown-item-text text-muted small">No matching recurring jobs</div>
+                                    }
+                                    else
+                                    {
+                                        @if (!string.IsNullOrEmpty(_selectedRecurringJobId))
+                                        {
+                                            <button class="dropdown-item small text-body-secondary" @onclick="ClearRecurringJob">
+                                                <i class="bi bi-x-circle"></i> Clear selection
+                                            </button>
+                                            <div class="dropdown-divider"></div>
+                                        }
+                                        @foreach (var jobId in filteredJobs)
+                                        {
+                                            <button class="dropdown-item small @(jobId == _selectedRecurringJobId ? "active" : "")"
+                                                    @onclick="() => SelectRecurringJob(jobId)">
+                                                @jobId
+                                            </button>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(_selectedRecurringJobId))
+                        {
+                            <div class="mt-1">
+                                <span class="badge bg-info d-inline-flex align-items-center gap-1">
+                                    @_selectedRecurringJobId
+                                    <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
+                                            @onclick="ClearRecurringJob" aria-label="Clear recurring job selection"></button>
+                                </span>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <input type="text" class="form-control form-control-sm" disabled
+                               placeholder="No recurring jobs available" />
+                    }
+                </div>
+            </div>
+
+            @* Clear All Filters button *@
+            @if (GetActiveFilterCount() > 0)
+            {
+                <div class="mt-3 pt-2 border-top">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearAllFilters">
+                        <i class="bi bi-x-lg"></i> Clear All Filters
+                    </button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public FilterOptions Options { get; set; }
+    [Parameter] public SearchRequest CurrentRequest { get; set; }
+    [Parameter] public EventCallback<SearchRequest> OnFilterChanged { get; set; }
+    [Parameter] public bool TagsError { get; set; }
+
+    private bool _isExpanded = false;
+    private bool _tagsError;
+
+    // Date range
+    private DateTime? _dateFrom;
+    private DateTime? _dateTo;
+    private string _dateRangeError;
+
+    // State
+    private static readonly string[] _allStates = { "Enqueued", "Processing", "Scheduled", "Succeeded", "Failed", "Deleted", "Awaiting" };
+    private HashSet<string> _selectedStates = new();
+
+    // Server
+    private string _selectedServer = "";
+
+    // Duration
+    private int? _minDuration;
+    private int? _maxDuration;
+    private string _durationError;
+
+    // Queue
+    private string _selectedQueue = "";
+
+    // Tags
+    private string _tagSearchText = "";
+    private bool _showTagDropdown = false;
+    private HashSet<string> _selectedTags = new();
+
+    // Recurring Job ID
+    private string _recurringJobSearchText = "";
+    private bool _showRecurringJobDropdown = false;
+    private string _selectedRecurringJobId = "";
+
+    protected override void OnParametersSet()
+    {
+        _tagsError = TagsError;
+
+        if (CurrentRequest is not null)
+        {
+            _dateFrom = CurrentRequest.DateFrom;
+            _dateTo = CurrentRequest.DateTo;
+            _selectedStates = new HashSet<string>(CurrentRequest.States ?? new List<string>());
+            _selectedServer = CurrentRequest.Server ?? "";
+            _minDuration = CurrentRequest.MinDurationSeconds;
+            _maxDuration = CurrentRequest.MaxDurationSeconds;
+            _selectedQueue = CurrentRequest.Queue ?? "";
+            _selectedTags = new HashSet<string>(CurrentRequest.Tags ?? new List<string>());
+            _selectedRecurringJobId = CurrentRequest.RecurringJobId ?? "";
+            _recurringJobSearchText = _selectedRecurringJobId;
+        }
+    }
+
+    private void TogglePanel()
+    {
+        _isExpanded = !_isExpanded;
+    }
+
+    private int GetActiveFilterCount()
+    {
+        int count = 0;
+        if (_dateFrom.HasValue || _dateTo.HasValue) count++;
+        if (_selectedStates.Count > 0) count++;
+        if (!string.IsNullOrEmpty(_selectedServer)) count++;
+        if (_minDuration.HasValue || _maxDuration.HasValue) count++;
+        if (!string.IsNullOrEmpty(_selectedQueue)) count++;
+        if (_selectedTags.Count > 0) count++;
+        if (!string.IsNullOrEmpty(_selectedRecurringJobId)) count++;
+        return count;
+    }
+
+    // --- Date Range ---
+
+    private string FormatDateTime(DateTime? dt)
+    {
+        return dt?.ToString("yyyy-MM-ddTHH:mm:ss") ?? "";
+    }
+
+    private void HandleDateFromChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _dateFrom = string.IsNullOrWhiteSpace(value) ? null : DateTime.Parse(value);
+        ValidateDateRange();
+        if (_dateRangeError is null) NotifyFilterChanged();
+    }
+
+    private void HandleDateToChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _dateTo = string.IsNullOrWhiteSpace(value) ? null : DateTime.Parse(value);
+        ValidateDateRange();
+        if (_dateRangeError is null) NotifyFilterChanged();
+    }
+
+    private void ValidateDateRange()
+    {
+        if (_dateFrom.HasValue && _dateTo.HasValue && _dateFrom.Value > _dateTo.Value)
+        {
+            _dateRangeError = "From must be before To";
+        }
+        else
+        {
+            _dateRangeError = null;
+        }
+    }
+
+    // --- State ---
+
+    private void HandleStateChanged(string state, bool isChecked)
+    {
+        if (isChecked)
+            _selectedStates.Add(state);
+        else
+            _selectedStates.Remove(state);
+
+        NotifyFilterChanged();
+    }
+
+    // --- Server ---
+
+    private void HandleServerChanged(ChangeEventArgs e)
+    {
+        _selectedServer = e.Value?.ToString() ?? "";
+        NotifyFilterChanged();
+    }
+
+    // --- Duration ---
+
+    private void HandleMinDurationChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _minDuration = string.IsNullOrWhiteSpace(value) ? null : int.TryParse(value, out var v) ? v : null;
+        ValidateDuration();
+        if (_durationError is null) NotifyFilterChanged();
+    }
+
+    private void HandleMaxDurationChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _maxDuration = string.IsNullOrWhiteSpace(value) ? null : int.TryParse(value, out var v) ? v : null;
+        ValidateDuration();
+        if (_durationError is null) NotifyFilterChanged();
+    }
+
+    private void ValidateDuration()
+    {
+        if (_minDuration.HasValue && (_minDuration.Value < 0 || _minDuration.Value > 86400))
+        {
+            _durationError = "Value must be 0-86400";
+            return;
+        }
+        if (_maxDuration.HasValue && (_maxDuration.Value < 0 || _maxDuration.Value > 86400))
+        {
+            _durationError = "Value must be 0-86400";
+            return;
+        }
+        if (_minDuration.HasValue && _maxDuration.HasValue && _minDuration.Value > _maxDuration.Value)
+        {
+            _durationError = "Min must be ≤ Max";
+            return;
+        }
+        _durationError = null;
+    }
+
+    // --- Queue ---
+
+    private void HandleQueueChanged(ChangeEventArgs e)
+    {
+        _selectedQueue = e.Value?.ToString() ?? "";
+        NotifyFilterChanged();
+    }
+
+    // --- Tags ---
+
+    private List<string> GetFilteredTags()
+    {
+        if (Options?.Tags is null) return new List<string>();
+
+        var tags = Options.Tags.OrderBy(t => t).ToList();
+        if (!string.IsNullOrWhiteSpace(_tagSearchText))
+        {
+            tags = tags.Where(t => t.Contains(_tagSearchText, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        return tags;
+    }
+
+    private void HandleTagChanged(string tag, bool isChecked)
+    {
+        if (isChecked)
+            _selectedTags.Add(tag);
+        else
+            _selectedTags.Remove(tag);
+
+        NotifyFilterChanged();
+    }
+
+    private void RemoveTag(string tag)
+    {
+        _selectedTags.Remove(tag);
+        NotifyFilterChanged();
+    }
+
+    // --- Recurring Job ID ---
+
+    private void HandleRecurringJobSearchInput(ChangeEventArgs e)
+    {
+        _recurringJobSearchText = e.Value?.ToString() ?? "";
+        _showRecurringJobDropdown = true;
+    }
+
+    private List<string> GetFilteredRecurringJobs()
+    {
+        if (Options?.RecurringJobIds is null) return new List<string>();
+
+        var jobs = Options.RecurringJobIds.OrderBy(j => j).ToList();
+        if (!string.IsNullOrWhiteSpace(_recurringJobSearchText))
+        {
+            jobs = jobs.Where(j => j.Contains(_recurringJobSearchText, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        return jobs;
+    }
+
+    private void SelectRecurringJob(string jobId)
+    {
+        _selectedRecurringJobId = jobId;
+        _recurringJobSearchText = jobId;
+        _showRecurringJobDropdown = false;
+        NotifyFilterChanged();
+    }
+
+    private void ClearRecurringJob()
+    {
+        _selectedRecurringJobId = "";
+        _recurringJobSearchText = "";
+        _showRecurringJobDropdown = false;
+        NotifyFilterChanged();
+    }
+
+    // --- Clear All ---
+
+    private void ClearAllFilters()
+    {
+        _dateFrom = null;
+        _dateTo = null;
+        _dateRangeError = null;
+        _selectedStates.Clear();
+        _selectedServer = "";
+        _minDuration = null;
+        _maxDuration = null;
+        _durationError = null;
+        _selectedQueue = "";
+        _selectedTags.Clear();
+        _tagSearchText = "";
+        _selectedRecurringJobId = "";
+        _recurringJobSearchText = "";
+        NotifyFilterChanged();
+    }
+
+    // --- Notify Parent ---
+
+    private void NotifyFilterChanged()
+    {
+        if (HasValidationErrors()) return;
+
+        var request = new SearchRequest
+        {
+            Query = CurrentRequest?.Query ?? "",
+            From = 0, // Reset to first page on filter change
+            PageSize = CurrentRequest?.PageSize ?? 20,
+            DateFrom = _dateFrom,
+            DateTo = _dateTo,
+            States = _selectedStates.ToList(),
+            Server = string.IsNullOrEmpty(_selectedServer) ? null : _selectedServer,
+            MinDurationSeconds = _minDuration,
+            MaxDurationSeconds = _maxDuration,
+            Queue = string.IsNullOrEmpty(_selectedQueue) ? null : _selectedQueue,
+            Tags = _selectedTags.ToList(),
+            RecurringJobId = string.IsNullOrEmpty(_selectedRecurringJobId) ? null : _selectedRecurringJobId
+        };
+
+        OnFilterChanged.InvokeAsync(request);
+    }
+
+    private bool HasValidationErrors()
+    {
+        return _dateRangeError is not null || _durationError is not null;
+    }
+}

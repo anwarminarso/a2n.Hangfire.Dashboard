@@ -53,6 +53,13 @@ public static class HangfireAlternateDashboardExtensions
             return new TagsDataReader(storage);
         });
 
+        services.AddScoped<SearchService>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            var tagsReader = sp.GetRequiredService<TagsDataReader>();
+            return new SearchService(storage, tagsReader);
+        });
+
         services.AddHostedService<MetricsBroadcastService>();
 
         return services;

@@ -1,0 +1,331 @@
+@using a2n.Hangfire.Dashboard.Models
+@inject IJSRuntime JS
+
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+        <span class="fw-semibold small">
+            <i class="bi bi-bookmark"></i> Filter Presets
+        </span>
+        <button class="btn btn-sm btn-outline-primary" @onclick="StartSavePreset" disabled="@_storageUnavailable">
+            <i class="bi bi-plus-lg"></i> Save Current Filters
+        </button>
+    </div>
+
+    <div class="card-body py-2">
+        @if (_storageUnavailable)
+        {
+            <div class="alert alert-warning small mb-0 py-1 px-2">
+                <i class="bi bi-exclamation-triangle"></i> Storage unavailable. Presets cannot be loaded or saved.
+            </div>
+        }
+        else if (_errorMessage is not null)
+        {
+            <div class="alert alert-danger small mb-0 py-1 px-2">
+                <i class="bi bi-exclamation-circle"></i> @_errorMessage
+            </div>
+        }
+
+        @* Save Preset Form *@
+        @if (_showSaveForm)
+        {
+            <div class="mb-2 p-2 border rounded bg-body-tertiary">
+                <div class="d-flex gap-2 align-items-start">
+                    <div class="flex-fill">
+                        <input type="text" class="form-control form-control-sm"
+                               placeholder="Preset name (1-50 characters)"
+                               maxlength="50"
+                               @bind="_presetName"
+                               @bind:event="oninput"
+                               @onkeydown="HandleSaveKeyDown" />
+                        @if (_saveValidationError is not null)
+                        {
+                            <div class="text-danger small mt-1">
+                                <i class="bi bi-exclamation-circle"></i> @_saveValidationError
+                            </div>
+                        }
+                    </div>
+                    <button class="btn btn-sm btn-primary" @onclick="SavePreset">Save</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSave">Cancel</button>
+                </div>
+            </div>
+        }
+
+        @* Overwrite Confirmation *@
+        @if (_showOverwriteConfirm)
+        {
+            <div class="mb-2 p-2 border rounded bg-warning-subtle">
+                <div class="small mb-1">
+                    <i class="bi bi-exclamation-triangle"></i> A preset named "<strong>@_presetName.Trim()</strong>" already exists. Overwrite?
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-warning" @onclick="ConfirmOverwrite">Overwrite</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelOverwrite">Cancel</button>
+                </div>
+            </div>
+        }
+
+        @* Delete Confirmation *@
+        @if (_showDeleteConfirm)
+        {
+            <div class="mb-2 p-2 border rounded bg-danger-subtle">
+                <div class="small mb-1">
+                    <i class="bi bi-trash"></i> Delete preset "<strong>@_presetToDelete</strong>"?
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-danger" @onclick="ConfirmDelete">Delete</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelDelete">Cancel</button>
+                </div>
+            </div>
+        }
+
+        @* Preset List *@
+        @if (_presets.Count > 0)
+        {
+            <ul class="list-group list-group-flush">
+                @foreach (var preset in _presets.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    <li class="list-group-item d-flex align-items-center justify-content-between py-1 px-2">
+                        <button class="btn btn-sm btn-link text-decoration-none text-start p-0 flex-fill text-truncate"
+                                title="Load preset: @preset.Name"
+                                @onclick="() => SelectPreset(preset)">
+                            <i class="bi bi-bookmark-fill text-primary me-1"></i>
+                            <span class="small">@preset.Name</span>
+                        </button>
+                        <button class="btn btn-sm btn-link text-danger p-0 ms-2"
+                                title="Delete preset"
+                                @onclick="() => RequestDelete(preset.Name)"
+                                @onclick:stopPropagation="true">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+        else if (!_storageUnavailable)
+        {
+            <div class="text-body-secondary small text-center py-1">
+                No saved presets. Click "Save Current Filters" to create one.
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public SearchRequest CurrentRequest { get; set; }
+    [Parameter] public EventCallback<FilterPreset> OnPresetSelected { get; set; }
+    [Parameter] public string PathPrefix { get; set; }
+
+    private List<FilterPreset> _presets = new();
+    private bool _storageUnavailable;
+    private string _errorMessage;
+
+    // Save form state
+    private bool _showSaveForm;
+    private string _presetName = "";
+    private string _saveValidationError;
+
+    // Overwrite confirmation
+    private bool _showOverwriteConfirm;
+
+    // Delete confirmation
+    private bool _showDeleteConfirm;
+    private string _presetToDelete;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadPresetsAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadPresetsAsync()
+    {
+        try
+        {
+            var result = await JS.InvokeAsync<FilterPreset[]>("searchPresets.loadPresets", PathPrefix ?? "");
+            _presets = result?.ToList() ?? new List<FilterPreset>();
+            _storageUnavailable = false;
+            _errorMessage = null;
+        }
+        catch
+        {
+            _storageUnavailable = true;
+            _presets = new List<FilterPreset>();
+        }
+    }
+
+    // --- Save Preset ---
+
+    private void StartSavePreset()
+    {
+        _showSaveForm = true;
+        _presetName = "";
+        _saveValidationError = null;
+        _showOverwriteConfirm = false;
+        _errorMessage = null;
+    }
+
+    private void CancelSave()
+    {
+        _showSaveForm = false;
+        _presetName = "";
+        _saveValidationError = null;
+    }
+
+    private async Task HandleSaveKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SavePreset();
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelSave();
+        }
+    }
+
+    private async Task SavePreset()
+    {
+        _saveValidationError = null;
+        _errorMessage = null;
+
+        var trimmedName = _presetName?.Trim() ?? "";
+
+        // Validate non-empty
+        if (string.IsNullOrWhiteSpace(trimmedName))
+        {
+            _saveValidationError = "Preset name is required.";
+            return;
+        }
+
+        // Validate length (1-50 after trim)
+        if (trimmedName.Length > 50)
+        {
+            _saveValidationError = "Preset name must be 50 characters or fewer.";
+            return;
+        }
+
+        // Check for duplicate
+        try
+        {
+            var exists = await JS.InvokeAsync<bool>("searchPresets.presetExists", PathPrefix ?? "", trimmedName);
+            if (exists)
+            {
+                _showOverwriteConfirm = true;
+                _showSaveForm = false;
+                return;
+            }
+        }
+        catch
+        {
+            _errorMessage = "Storage unavailable. Preset could not be saved.";
+            _showSaveForm = false;
+            return;
+        }
+
+        await DoSavePreset(trimmedName);
+    }
+
+    private async Task ConfirmOverwrite()
+    {
+        var trimmedName = _presetName?.Trim() ?? "";
+        _showOverwriteConfirm = false;
+        await DoSavePreset(trimmedName);
+    }
+
+    private void CancelOverwrite()
+    {
+        _showOverwriteConfirm = false;
+        _showSaveForm = true;
+    }
+
+    private async Task DoSavePreset(string name)
+    {
+        var preset = new FilterPreset
+        {
+            Name = name,
+            Query = CurrentRequest?.Query ?? "",
+            States = CurrentRequest?.States?.ToList() ?? new List<string>(),
+            DateFrom = CurrentRequest?.DateFrom,
+            DateTo = CurrentRequest?.DateTo,
+            Server = CurrentRequest?.Server,
+            MinDurationSeconds = CurrentRequest?.MinDurationSeconds,
+            MaxDurationSeconds = CurrentRequest?.MaxDurationSeconds,
+            Tags = CurrentRequest?.Tags?.ToList() ?? new List<string>(),
+            Queue = CurrentRequest?.Queue,
+            RecurringJobId = CurrentRequest?.RecurringJobId
+        };
+
+        try
+        {
+            var success = await JS.InvokeAsync<bool>("searchPresets.savePreset", PathPrefix ?? "", preset);
+            if (success)
+            {
+                _showSaveForm = false;
+                _presetName = "";
+                _saveValidationError = null;
+                _errorMessage = null;
+                await LoadPresetsAsync();
+            }
+            else
+            {
+                _errorMessage = "Preset could not be saved. Storage may be full or unavailable.";
+                _showSaveForm = false;
+            }
+        }
+        catch
+        {
+            _errorMessage = "Storage unavailable. Preset could not be saved.";
+            _showSaveForm = false;
+        }
+    }
+
+    // --- Select Preset ---
+
+    private async Task SelectPreset(FilterPreset preset)
+    {
+        await OnPresetSelected.InvokeAsync(preset);
+    }
+
+    // --- Delete Preset ---
+
+    private void RequestDelete(string presetName)
+    {
+        _presetToDelete = presetName;
+        _showDeleteConfirm = true;
+        _errorMessage = null;
+    }
+
+    private void CancelDelete()
+    {
+        _showDeleteConfirm = false;
+        _presetToDelete = null;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        _showDeleteConfirm = false;
+
+        try
+        {
+            var success = await JS.InvokeAsync<bool>("searchPresets.deletePreset", PathPrefix ?? "", _presetToDelete);
+            if (success)
+            {
+                _errorMessage = null;
+                await LoadPresetsAsync();
+            }
+            else
+            {
+                _errorMessage = "Preset could not be deleted. Storage may be unavailable.";
+            }
+        }
+        catch
+        {
+            _errorMessage = "Storage unavailable. Preset could not be deleted.";
+        }
+
+        _presetToDelete = null;
+    }
+}

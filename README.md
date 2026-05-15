@@ -36,6 +36,8 @@ This project replaces all of that with a single package:
 | Recurring job management | View only | **Full CRUD + Start/Stop** |
 | Console output (logs, progress bars) | ❌ (plugin) | ✅ Built-in |
 | Job tagging & search | ❌ (plugin) | ✅ Built-in |
+| Global search & advanced filters | ❌ | ✅ **Search by ID, name, queue, tag, exception** |
+| Filter presets (save & reuse) | ❌ | ✅ Built-in |
 | Dark mode | Auto only (system theme) | ✅ Auto / Light / Dark toggle |
 | Mobile responsive | Partial | ✅ Full responsive |
 | Modern UI framework | jQuery + Bootstrap 3 | Blazor + Bootstrap 5 |
@@ -196,14 +198,17 @@ Open `https://localhost:5001/serviceJob` to see the dashboard in action with sam
 
 ## Roadmap
 
-### ✅ v1.0 — Feature Parity (Current)
+### ✅ v1.0 — Feature Parity
 Full parity with the built-in dashboard plus Console, Tags, and Recurring Job Admin integrated.
 
-### 🔜 v1.1 — Search & Filter
-Global search, advanced filters, saved presets.
+### ✅ v1.1 — Search & Filter (Current)
+Global search across all job states, advanced filters (date range, state, server, duration, tags, queue, recurring job), saved filter presets.
+
+### 🔜 v1.2 — Razor Class Library
+Convert to NuGet-distributable Razor Class Library for true drop-in replacement.
 
 ### 📋 v2.0 — Differentiation
-Performance insights, job execution timeline, standalone deployment mode.
+Performance insights, job execution timeline, notifications, standalone deployment mode.
 
 ### 🏢 v3.0 — Enterprise
 Multi-environment, RBAC, REST API, Prometheus metrics.

@@ -34,6 +34,12 @@
                 <h1 class="navbar-text fw-semibold fs-6 mb-0">@_pageTitle</h1>
             </div>
             <div class="d-flex align-items-center gap-2">
+                @if (!_isSearchPage)
+                {
+                    <div class="d-none d-md-block">
+                        <SearchBar />
+                    </div>
+                }
                 @if (Options.AppPath is not null)
                 {
                     <a href="@Options.AppPath" class="btn btn-sm btn-outline-secondary">
@@ -53,6 +59,7 @@
 
 @code {
     private string _pageTitle = "Dashboard";
+    private bool _isSearchPage;
 
     protected override void OnInitialized()
     {
@@ -80,6 +87,8 @@
                 path = path[baseAbsPath.Length..];
         }
 
+        _isSearchPage = path == "/search";
+
         _pageTitle = path switch
         {
             "" or "/" => "Dashboard",
@@ -94,6 +103,7 @@
             "/servers" => "Servers",
             "/retries" => "Retries",
             "/tags" => "Tags",
+            "/search" => "Search",
             _ when path.StartsWith("/jobs/details/") => $"Job #{path.Split('/').Last()}",
             _ when path.StartsWith("/recurring/") => "Recurring Job Editor",
             _ => "Hangfire Dashboard"

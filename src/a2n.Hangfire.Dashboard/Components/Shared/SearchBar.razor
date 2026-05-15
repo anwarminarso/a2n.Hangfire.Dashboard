@@ -1,0 +1,48 @@
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div class="input-group input-group-sm" style="width: 320px;">
+    <input type="text"
+           class="form-control"
+           placeholder="Search by ID, name, queue, tag..."
+           maxlength="200"
+           @bind="_query"
+           @bind:event="oninput"
+           @onkeydown="HandleKeyDown"
+           id="global-search-input"
+           aria-label="Search jobs" />
+    <button class="btn btn-outline-secondary" type="button"
+            @onclick="ExecuteSearch"
+            aria-label="Search">
+        <i class="bi bi-search"></i>
+    </button>
+</div>
+
+@code {
+    private string _query = "";
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            ExecuteSearch();
+        }
+        else if (e.Key == "Escape")
+        {
+            if (!string.IsNullOrEmpty(_query))
+            {
+                _query = "";
+            }
+            await JS.InvokeVoidAsync("eval", "document.getElementById('global-search-input')?.blur()");
+        }
+    }
+
+    private void ExecuteSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_query))
+            return;
+
+        var encodedQuery = Uri.EscapeDataString(_query.Trim());
+        Navigation.NavigateTo($"search?q={encodedQuery}");
+    }
+}

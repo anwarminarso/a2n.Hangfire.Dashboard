@@ -1,0 +1,748 @@
+@page "/search"
+@using a2n.Hangfire.Dashboard.Models
+@using a2n.Hangfire.Dashboard.Services
+@inject SearchService SearchService
+@inject NavigationManager Navigation
+
+<PageTitle>Search</PageTitle>
+
+@* ═══════════════════════════════════════════════════════════════════
+   SEARCH FORM AREA (editable)
+   ═══════════════════════════════════════════════════════════════════ *@
+
+@* Search input *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <input type="text"
+               class="form-control"
+               placeholder="Search by ID, name, queue (queue:name), tag (tag:name), exception (exception:text)..."
+               maxlength="200"
+               @bind="_searchQuery"
+               @bind:event="oninput"
+               @onkeydown="HandleSearchKeyDown"
+               aria-label="Search jobs" />
+    </div>
+</div>
+
+@* FilterPanel — always visible with expand/collapse *@
+<FilterPanel Options="@_filterOptions"
+             CurrentRequest="@_currentFilterRequest"
+             OnFilterChanged="HandleFilterChanged"
+             TagsError="@_tagsError" />
+
+@* Validation errors *@
+@if (_validationErrors.Count > 0)
+{
+    <div class="alert alert-danger py-2 mb-3">
+        <i class="bi bi-exclamation-triangle"></i>
+        <ul class="mb-0 ps-3">
+            @foreach (var error in _validationErrors)
+            {
+                <li class="small">@error</li>
+            }
+        </ul>
+    </div>
+}
+
+@* Active search parameters (live synch with form, removable) + Search button *@
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+    <div class="d-flex align-items-center flex-wrap gap-1">
+        @if (!string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            <span class="badge bg-primary d-inline-flex align-items-center gap-1">
+                <i class="bi bi-search"></i> @_searchQuery.Trim()
+                <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearSearchQuery" aria-label="Clear search query"></button>
+            </span>
+        }
+        @if (_currentFilterRequest.States is not null && _currentFilterRequest.States.Count > 0)
+        {
+            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                <i class="bi bi-funnel"></i> @string.Join(", ", _currentFilterRequest.States)
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearStateParam" aria-label="Clear state filter"></button>
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_currentFilterRequest.Queue))
+        {
+            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                <i class="bi bi-collection"></i> @_currentFilterRequest.Queue
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearQueueParam" aria-label="Clear queue filter"></button>
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_currentFilterRequest.Server))
+        {
+            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                <i class="bi bi-hdd-rack"></i> @_currentFilterRequest.Server
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearServerParam" aria-label="Clear server filter"></button>
+            </span>
+        }
+        @if (_currentFilterRequest.DateFrom.HasValue || _currentFilterRequest.DateTo.HasValue)
+        {
+            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                <i class="bi bi-calendar-range"></i> @GetDateRangeLabel()
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearDateRangeParam" aria-label="Clear date range"></button>
+            </span>
+        }
+        @if (_currentFilterRequest.MinDurationSeconds.HasValue || _currentFilterRequest.MaxDurationSeconds.HasValue)
+        {
+            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                <i class="bi bi-stopwatch"></i> @GetDurationLabel()
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearDurationParam" aria-label="Clear duration filter"></button>
+            </span>
+        }
+        @if (_currentFilterRequest.Tags is not null && _currentFilterRequest.Tags.Count > 0)
+        {
+            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                <i class="bi bi-tags"></i> @string.Join(", ", _currentFilterRequest.Tags)
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearTagsParam" aria-label="Clear tags filter"></button>
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_currentFilterRequest.RecurringJobId))
+        {
+            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                <i class="bi bi-arrow-repeat"></i> @_currentFilterRequest.RecurringJobId
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearRecurringJobParam" aria-label="Clear recurring job filter"></button>
+            </span>
+        }
+        @if (string.IsNullOrWhiteSpace(_searchQuery) && !HasActiveFilters())
+        {
+            <span class="text-body-secondary small fst-italic">No search parameters set</span>
+        }
+    </div>
+    <button class="btn btn-primary" type="button" @onclick="ExecuteSearchFromButton">
+        <i class="bi bi-search"></i> Search Jobs
+    </button>
+</div>
+
+<hr class="mt-0 mb-3" />
+
+@* ═══════════════════════════════════════════════════════════════════
+   SEARCH RESULTS AREA (read-only)
+   ═══════════════════════════════════════════════════════════════════ *@
+
+@if (!_hasSearched)
+{
+    <div class="card text-center py-5">
+        <div class="card-body">
+            <i class="bi bi-search fs-1 text-muted"></i>
+            <p class="mt-3 mb-0 text-muted">Enter a search term or apply filters, then click <strong>Search Jobs</strong>.</p>
+            <p class="small text-muted mt-1">
+                Supports: job ID, name, <code>queue:name</code>, <code>tag:name</code>,
+                <code>exception:text</code>
+            </p>
+        </div>
+    </div>
+}
+else if (_isLoading)
+{
+    <div class="d-flex align-items-center gap-2 py-4">
+        <div class="spinner-border spinner-border-sm text-primary" role="status">
+            <span class="visually-hidden">Searching...</span>
+        </div>
+        <span class="text-muted">Searching...</span>
+    </div>
+}
+else if (_result is not null && _result.TimedOut)
+{
+    <div class="card border-warning">
+        <div class="card-body text-center py-4">
+            <i class="bi bi-clock-history fs-2 text-warning"></i>
+            <h5 class="mt-2">Search Timed Out</h5>
+            <p class="text-muted mb-0">
+                The search took too long to complete. Try narrowing your search criteria.
+            </p>
+        </div>
+    </div>
+}
+else if (_result is not null && _result.HasError)
+{
+    <div class="card border-danger">
+        <div class="card-body text-center py-4">
+            <i class="bi bi-exclamation-triangle fs-2 text-danger"></i>
+            <h5 class="mt-2">Search Error</h5>
+            <p class="text-muted mb-0">@(_result.ErrorMessage ?? "The search could not be completed.")</p>
+        </div>
+    </div>
+}
+else if (_result is not null)
+{
+    @* Summary line — read-only badges (no × buttons) *@
+    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+        <span class="text-body-secondary">
+            <strong>@_result.TotalCount</strong> result@(_result.TotalCount != 1 ? "s" : "") found
+        </span>
+        @if (!string.IsNullOrWhiteSpace(_lastSearchedQuery))
+        {
+            <span class="badge bg-primary">
+                <i class="bi bi-search"></i> @_lastSearchedQuery
+            </span>
+        }
+        @if (_lastSearchedRequest.States is not null && _lastSearchedRequest.States.Count > 0)
+        {
+            <span class="badge bg-info text-dark">
+                <i class="bi bi-funnel"></i> @string.Join(", ", _lastSearchedRequest.States)
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_lastSearchedRequest.Queue))
+        {
+            <span class="badge bg-info text-dark">
+                <i class="bi bi-collection"></i> @_lastSearchedRequest.Queue
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_lastSearchedRequest.Server))
+        {
+            <span class="badge bg-info text-dark">
+                <i class="bi bi-hdd-rack"></i> @_lastSearchedRequest.Server
+            </span>
+        }
+        @if (_lastSearchedRequest.DateFrom.HasValue || _lastSearchedRequest.DateTo.HasValue)
+        {
+            <span class="badge bg-info text-dark">
+                <i class="bi bi-calendar-range"></i> @GetLastSearchedDateRangeLabel()
+            </span>
+        }
+        @if (_lastSearchedRequest.MinDurationSeconds.HasValue || _lastSearchedRequest.MaxDurationSeconds.HasValue)
+        {
+            <span class="badge bg-info text-dark">
+                <i class="bi bi-stopwatch"></i> @GetLastSearchedDurationLabel()
+            </span>
+        }
+        @if (_lastSearchedRequest.Tags is not null && _lastSearchedRequest.Tags.Count > 0)
+        {
+            <span class="badge bg-info text-dark">
+                <i class="bi bi-tags"></i> @string.Join(", ", _lastSearchedRequest.Tags)
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_lastSearchedRequest.RecurringJobId))
+        {
+            <span class="badge bg-info text-dark">
+                <i class="bi bi-arrow-repeat"></i> @_lastSearchedRequest.RecurringJobId
+            </span>
+        }
+    </div>
+
+    @if (_result.TotalCount == 0)
+    {
+        <div class="card text-center py-5">
+            <div class="card-body">
+                <i class="bi bi-inbox fs-1 text-muted"></i>
+                <h5 class="mt-2">No Results Found</h5>
+                <p class="text-muted mb-0">@GetEmptyStateMessage()</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        @* Top toolbar: page size selector *@
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <small class="text-body-secondary">
+                Showing @(_from + 1)–@Math.Min(_from + _pageSize, _result.TotalCount) of @_result.TotalCount
+            </small>
+            <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
+        </div>
+
+        @* Results table *@
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Job ID</th>
+                                <th>Job Name</th>
+                                <th>State</th>
+                                <th>Queue</th>
+                                <th class="text-end">Last State Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _result.Items)
+                            {
+                                <tr>
+                                    <td class="font-monospace">
+                                        <a href="@GetJobDetailsUrl(item.JobId)">@ShortenJobId(item.JobId)</a>
+                                    </td>
+                                    <td>
+                                        <div>@(item.JobName ?? "Unknown")</div>
+                                        @if (item.Tags is not null && item.Tags.Length > 0)
+                                        {
+                                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                                @foreach (var tag in item.Tags)
+                                                {
+                                                    <span class="badge @GetTagBadgeClass(tag)">@tag</span>
+                                                }
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(item.ExceptionExcerpt))
+                                        {
+                                            <div class="text-danger small mt-1 text-truncate" style="max-width: 400px;"
+                                                 title="@item.ExceptionExcerpt">
+                                                <i class="bi bi-exclamation-circle"></i> @item.ExceptionExcerpt
+                                            </div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge @GetStateBadgeClass(item.State)">@(item.State ?? "Unknown")</span>
+                                    </td>
+                                    <td>@(item.Queue ?? "—")</td>
+                                    <td class="text-end">
+                                        @if (item.LastStateChange.HasValue)
+                                        {
+                                            <RelativeTime UtcTime="@item.LastStateChange.Value" />
+                                        }
+                                        else if (item.CreatedAt.HasValue)
+                                        {
+                                            <RelativeTime UtcTime="@item.CreatedAt.Value" />
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        @* Bottom pager *@
+        <Pager TotalCount="@_result.TotalCount" PageSize="@_pageSize" From="@_from"
+               OnPageChanged="HandlePageChanged" />
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")]
+    public string Query { get; set; }
+
+    [SupplyParameterFromQuery(Name = "page")]
+    public int? Page { get; set; }
+
+    [SupplyParameterFromQuery(Name = "pageSize")]
+    public int? PageSizeParam { get; set; }
+
+    private SearchResult _result;
+    private bool _isLoading;
+    private bool _hasSearched;
+    private int _from;
+    private int _pageSize = 20;
+    private string _searchQuery = "";
+
+    // Filter state (live, editable)
+    private FilterOptions _filterOptions = new();
+    private SearchRequest _currentFilterRequest = new();
+    private bool _tagsError;
+    private List<string> _validationErrors = new();
+
+    // Last searched state (read-only snapshot for results display)
+    private string _lastSearchedQuery = "";
+    private SearchRequest _lastSearchedRequest = new();
+
+    private static readonly int[] ValidPageSizes = { 10, 20, 50, 100, 500 };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _pageSize = PageSizeParam.HasValue && ValidPageSizes.Contains(PageSizeParam.Value)
+            ? PageSizeParam.Value
+            : 20;
+
+        _from = Page.HasValue && Page.Value > 1
+            ? (Page.Value - 1) * _pageSize
+            : 0;
+
+        LoadFilterOptions();
+
+        _searchQuery = Query?.Trim() ?? "";
+
+        _currentFilterRequest = new SearchRequest
+        {
+            Query = _searchQuery,
+            From = _from,
+            PageSize = _pageSize
+        };
+
+        // If query came from URL (e.g., from global SearchBar), auto-execute
+        if (!string.IsNullOrWhiteSpace(Query))
+        {
+            _hasSearched = true;
+            await ExecuteSearch();
+        }
+    }
+
+    private void LoadFilterOptions()
+    {
+        try
+        {
+            _filterOptions = SearchService.GetFilterOptions();
+            _tagsError = false;
+        }
+        catch
+        {
+            _filterOptions = new FilterOptions();
+            _tagsError = true;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════
+    // Form validation
+    // ═══════════════════════════════════════════════════
+
+    private bool ValidateForm()
+    {
+        _validationErrors.Clear();
+
+        if (string.IsNullOrWhiteSpace(_searchQuery) && !HasActiveFilters())
+        {
+            _validationErrors.Add("Enter a search term or apply at least one filter.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            var q = _searchQuery.Trim();
+            if (!q.StartsWith("queue:", StringComparison.OrdinalIgnoreCase)
+                && !q.StartsWith("tag:", StringComparison.OrdinalIgnoreCase)
+                && !q.StartsWith("exception:", StringComparison.OrdinalIgnoreCase)
+                && !q.All(char.IsDigit)
+                && q.Length < 2)
+            {
+                _validationErrors.Add("Search query must be at least 2 characters for name search.");
+            }
+        }
+
+        if (_currentFilterRequest.DateFrom.HasValue && _currentFilterRequest.DateTo.HasValue
+            && _currentFilterRequest.DateFrom.Value > _currentFilterRequest.DateTo.Value)
+        {
+            _validationErrors.Add("Date range: 'From' must be before 'To'.");
+        }
+
+        if (_currentFilterRequest.MinDurationSeconds.HasValue && _currentFilterRequest.MaxDurationSeconds.HasValue
+            && _currentFilterRequest.MinDurationSeconds.Value > _currentFilterRequest.MaxDurationSeconds.Value)
+        {
+            _validationErrors.Add("Duration: minimum must be ≤ maximum.");
+        }
+
+        if (_currentFilterRequest.MinDurationSeconds.HasValue
+            && (_currentFilterRequest.MinDurationSeconds.Value < 0 || _currentFilterRequest.MinDurationSeconds.Value > 86400))
+        {
+            _validationErrors.Add("Duration: value must be between 0 and 86400 seconds.");
+        }
+
+        if (_currentFilterRequest.MaxDurationSeconds.HasValue
+            && (_currentFilterRequest.MaxDurationSeconds.Value < 0 || _currentFilterRequest.MaxDurationSeconds.Value > 86400))
+        {
+            _validationErrors.Add("Duration: value must be between 0 and 86400 seconds.");
+        }
+
+        return _validationErrors.Count == 0;
+    }
+
+    private bool HasActiveFilters()
+    {
+        return _currentFilterRequest.DateFrom.HasValue
+            || _currentFilterRequest.DateTo.HasValue
+            || (_currentFilterRequest.States is not null && _currentFilterRequest.States.Count > 0)
+            || !string.IsNullOrEmpty(_currentFilterRequest.Server)
+            || _currentFilterRequest.MinDurationSeconds.HasValue
+            || _currentFilterRequest.MaxDurationSeconds.HasValue
+            || (_currentFilterRequest.Tags is not null && _currentFilterRequest.Tags.Count > 0)
+            || !string.IsNullOrEmpty(_currentFilterRequest.Queue)
+            || !string.IsNullOrEmpty(_currentFilterRequest.RecurringJobId);
+    }
+
+    // ═══════════════════════════════════════════════════
+    // Search execution
+    // ═══════════════════════════════════════════════════
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ExecuteSearchFromButton();
+        }
+    }
+
+    private async Task ExecuteSearchFromButton()
+    {
+        _currentFilterRequest.Query = _searchQuery?.Trim() ?? "";
+
+        if (!ValidateForm())
+        {
+            StateHasChanged();
+            return;
+        }
+
+        _hasSearched = true;
+        _from = 0;
+        await ExecuteSearch();
+    }
+
+    private async Task ExecuteSearch()
+    {
+        _isLoading = true;
+        _result = null;
+        _validationErrors.Clear();
+        StateHasChanged();
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+            var request = new SearchRequest
+            {
+                Query = _searchQuery?.Trim() ?? "",
+                From = _from,
+                PageSize = _pageSize,
+                DateFrom = _currentFilterRequest.DateFrom,
+                DateTo = _currentFilterRequest.DateTo,
+                States = _currentFilterRequest.States ?? new List<string>(),
+                Server = _currentFilterRequest.Server,
+                MinDurationSeconds = _currentFilterRequest.MinDurationSeconds,
+                MaxDurationSeconds = _currentFilterRequest.MaxDurationSeconds,
+                Tags = _currentFilterRequest.Tags ?? new List<string>(),
+                Queue = _currentFilterRequest.Queue,
+                RecurringJobId = _currentFilterRequest.RecurringJobId
+            };
+
+            _result = await SearchService.SearchAsync(request, cts.Token);
+
+            // Snapshot the searched parameters for read-only display in results
+            _lastSearchedQuery = _searchQuery?.Trim() ?? "";
+            _lastSearchedRequest = new SearchRequest
+            {
+                States = request.States?.ToList(),
+                Queue = request.Queue,
+                Server = request.Server,
+                DateFrom = request.DateFrom,
+                DateTo = request.DateTo,
+                MinDurationSeconds = request.MinDurationSeconds,
+                MaxDurationSeconds = request.MaxDurationSeconds,
+                Tags = request.Tags?.ToList(),
+                RecurringJobId = request.RecurringJobId
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            _result = new SearchResult { TimedOut = true };
+        }
+        catch (Exception)
+        {
+            _result = new SearchResult
+            {
+                HasError = true,
+                ErrorMessage = "The search could not be completed."
+            };
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleFilterChanged(SearchRequest updatedRequest)
+    {
+        // Synch filter state (no auto-execute — user must click "Search Jobs")
+        _currentFilterRequest = updatedRequest;
+        _searchQuery = updatedRequest.Query ?? _searchQuery;
+        _validationErrors.Clear();
+        StateHasChanged();
+    }
+
+    private void HandlePageChanged((int From, int PageSize) args)
+    {
+        var page = (args.From / args.PageSize) + 1;
+        NavigateWithParams(_searchQuery, page, args.PageSize);
+    }
+
+    private void HandlePageSizeChanged(int newSize)
+    {
+        NavigateWithParams(_searchQuery, 1, newSize);
+    }
+
+    // ═══════════════════════════════════════════════════
+    // Active parameter badge removal (form area — synch)
+    // ═══════════════════════════════════════════════════
+
+    private void ClearSearchQuery()
+    {
+        _searchQuery = "";
+        _currentFilterRequest.Query = "";
+        StateHasChanged();
+    }
+
+    private void ClearStateParam()
+    {
+        _currentFilterRequest.States = new List<string>();
+        StateHasChanged();
+    }
+
+    private void ClearQueueParam()
+    {
+        _currentFilterRequest.Queue = null;
+        StateHasChanged();
+    }
+
+    private void ClearServerParam()
+    {
+        _currentFilterRequest.Server = null;
+        StateHasChanged();
+    }
+
+    private void ClearDateRangeParam()
+    {
+        _currentFilterRequest.DateFrom = null;
+        _currentFilterRequest.DateTo = null;
+        StateHasChanged();
+    }
+
+    private void ClearDurationParam()
+    {
+        _currentFilterRequest.MinDurationSeconds = null;
+        _currentFilterRequest.MaxDurationSeconds = null;
+        StateHasChanged();
+    }
+
+    private void ClearTagsParam()
+    {
+        _currentFilterRequest.Tags = new List<string>();
+        StateHasChanged();
+    }
+
+    private void ClearRecurringJobParam()
+    {
+        _currentFilterRequest.RecurringJobId = null;
+        StateHasChanged();
+    }
+
+    // ═══════════════════════════════════════════════════
+    // Helper methods
+    // ═══════════════════════════════════════════════════
+
+    private string GetDateRangeLabel()
+    {
+        if (_currentFilterRequest.DateFrom.HasValue && _currentFilterRequest.DateTo.HasValue)
+            return $"{_currentFilterRequest.DateFrom.Value:g} – {_currentFilterRequest.DateTo.Value:g}";
+        if (_currentFilterRequest.DateFrom.HasValue)
+            return $"From {_currentFilterRequest.DateFrom.Value:g}";
+        return $"To {_currentFilterRequest.DateTo.Value:g}";
+    }
+
+    private string GetDurationLabel()
+    {
+        if (_currentFilterRequest.MinDurationSeconds.HasValue && _currentFilterRequest.MaxDurationSeconds.HasValue)
+            return $"{_currentFilterRequest.MinDurationSeconds}s – {_currentFilterRequest.MaxDurationSeconds}s";
+        if (_currentFilterRequest.MinDurationSeconds.HasValue)
+            return $"≥ {_currentFilterRequest.MinDurationSeconds}s";
+        return $"≤ {_currentFilterRequest.MaxDurationSeconds}s";
+    }
+
+    private string GetLastSearchedDateRangeLabel()
+    {
+        if (_lastSearchedRequest.DateFrom.HasValue && _lastSearchedRequest.DateTo.HasValue)
+            return $"{_lastSearchedRequest.DateFrom.Value:g} – {_lastSearchedRequest.DateTo.Value:g}";
+        if (_lastSearchedRequest.DateFrom.HasValue)
+            return $"From {_lastSearchedRequest.DateFrom.Value:g}";
+        return $"To {_lastSearchedRequest.DateTo.Value:g}";
+    }
+
+    private string GetLastSearchedDurationLabel()
+    {
+        if (_lastSearchedRequest.MinDurationSeconds.HasValue && _lastSearchedRequest.MaxDurationSeconds.HasValue)
+            return $"{_lastSearchedRequest.MinDurationSeconds}s – {_lastSearchedRequest.MaxDurationSeconds}s";
+        if (_lastSearchedRequest.MinDurationSeconds.HasValue)
+            return $"≥ {_lastSearchedRequest.MinDurationSeconds}s";
+        return $"≤ {_lastSearchedRequest.MaxDurationSeconds}s";
+    }
+
+    private void NavigateWithParams(string query, int page, int pageSize)
+    {
+        var uri = "search";
+        var queryParams = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(query))
+            queryParams.Add($"q={Uri.EscapeDataString(query.Trim())}");
+
+        if (page > 1)
+            queryParams.Add($"page={page}");
+
+        if (pageSize != 20)
+            queryParams.Add($"pageSize={pageSize}");
+
+        if (queryParams.Count > 0)
+            uri += "?" + string.Join("&", queryParams);
+
+        Navigation.NavigateTo(uri);
+    }
+
+    private string GetJobDetailsUrl(string jobId) => $"/jobs/details/{jobId}";
+
+    private static string ShortenJobId(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return "—";
+        if (Guid.TryParse(id, out _))
+            return id[..8] + "…";
+        return $"#{id}";
+    }
+
+    private static string GetStateBadgeClass(string state)
+    {
+        return state?.ToLowerInvariant() switch
+        {
+            "succeeded" => "bg-success",
+            "failed" => "bg-danger",
+            "processing" => "bg-warning text-dark",
+            "enqueued" => "bg-info text-dark",
+            "scheduled" => "bg-info text-dark",
+            "awaiting" => "bg-info text-dark",
+            "deleted" => "bg-secondary",
+            "created" => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetTagBadgeClass(string tag)
+    {
+        if (!string.IsNullOrEmpty(_lastSearchedQuery))
+        {
+            var q = _lastSearchedQuery.Trim();
+            if (q.StartsWith("tag:", StringComparison.OrdinalIgnoreCase))
+            {
+                var searchedTag = q[4..].Trim();
+                if (string.Equals(tag, searchedTag, StringComparison.OrdinalIgnoreCase))
+                    return "bg-warning text-dark";
+            }
+        }
+        return "bg-primary";
+    }
+
+    private string GetEmptyStateMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_lastSearchedQuery))
+            return "No jobs matched the current filters. Try broadening your search.";
+
+        var q = _lastSearchedQuery.Trim();
+
+        if (q.StartsWith("queue:", StringComparison.OrdinalIgnoreCase))
+            return $"No jobs found in queue \"{q[6..].Trim()}\".";
+
+        if (q.StartsWith("tag:", StringComparison.OrdinalIgnoreCase))
+            return $"No jobs found with tag \"{q[4..].Trim()}\".";
+
+        if (q.StartsWith("exception:", StringComparison.OrdinalIgnoreCase))
+            return $"No failed jobs found matching \"{q[10..].Trim()}\".";
+
+        if (q.All(char.IsDigit) && q.Length <= 20)
+            return $"No job found with ID \"{q}\".";
+
+        return $"No jobs found matching \"{q}\". Try broadening your search or removing filters.";
+    }
+}

@@ -5,7 +5,12 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>a2n.Hangfire.Dashboard</RootNamespace>
+    <!--<OutputType>Library</OutputType>-->
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="a2n.Hangfire.Dashboard.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Hangfire.Core" Version="1.8.*" />
