@@ -1,0 +1,37 @@
+@*
+    Renders a compact Bootstrap card displaying a statistic with title, value, and optional subtitle.
+    Used on analytics pages for summary metrics (Total Processed, Failure Rate, etc.).
+*@
+
+<div class="card h-100">
+    <div class="card-body p-3">
+        <div class="text-muted small mb-1">@Title</div>
+        <div class="h3 mb-1 @TextClass">@Value</div>
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <div class="text-muted small">@Subtitle</div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The title/label displayed above the value (e.g., "Total Processed", "Failure Rate").
+    /// </summary>
+    [Parameter, EditorRequired] public string Title { get; set; }
+
+    /// <summary>
+    /// The main value to display prominently (e.g., "12,345", "2.3%").
+    /// </summary>
+    [Parameter, EditorRequired] public string Value { get; set; }
+
+    /// <summary>
+    /// Optional subtitle displayed below the value in muted text.
+    /// </summary>
+    [Parameter] public string Subtitle { get; set; }
+
+    /// <summary>
+    /// Optional CSS class for coloring the value text (e.g., "text-success", "text-danger").
+    /// </summary>
+    [Parameter] public string TextClass { get; set; }
+}

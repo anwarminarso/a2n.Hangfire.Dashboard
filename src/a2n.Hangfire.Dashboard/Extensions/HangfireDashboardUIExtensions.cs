@@ -1,6 +1,7 @@
 using a2n.Hangfire.Dashboard;
 using a2n.Hangfire.Dashboard.Components;
 using a2n.Hangfire.Dashboard.Hubs;
+using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Middleware;
 using a2n.Hangfire.Dashboard.Services;
 using Hangfire;
@@ -20,10 +21,26 @@ public static class HangfireDashboardUIExtensions
     /// Adds required services for the Hangfire Dashboard UI.
     /// Registers all internal services: HangfireMonitorService, ConsoleDataReader,
     /// TagsDataReader, SearchService, MetricsBroadcastService, SignalR, and Blazor Server components.
+    /// Uses GenericQueryProvider as fallback when no storage adapter is configured.
     /// </summary>
     /// <param name="services">The service collection</param>
     /// <returns>The service collection for chaining</returns>
     public static IServiceCollection AddHangfireDashboardUI(this IServiceCollection services)
+    {
+        return services.AddHangfireDashboardUI(configure: null);
+    }
+
+    /// <summary>
+    /// Adds required services for the Hangfire Dashboard UI with storage adapter configuration.
+    /// Registers all internal services and allows configuring a storage adapter for optimized
+    /// queries and analytics via the <see cref="DashboardStorageOptionsBuilder"/>.
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="configure">Action to configure storage adapter (optional). When null, GenericQueryProvider is used as fallback.</param>
+    /// <returns>The service collection for chaining</returns>
+    public static IServiceCollection AddHangfireDashboardUI(
+        this IServiceCollection services,
+        Action<DashboardStorageOptionsBuilder> configure)
     {
         // Register default DashboardUIOptions (can be replaced by UseHangfireDashboardUI)
         services.AddSingleton(new DashboardUIOptions());
@@ -65,10 +82,35 @@ public static class HangfireDashboardUIExtensions
         {
             var storage = sp.GetRequiredService<JobStorage>();
             var tagsReader = sp.GetRequiredService<TagsDataReader>();
-            return new SearchService(storage, tagsReader);
+            var queryProvider = sp.GetService<IStorageQueryProvider>();
+            return new SearchService(storage, tagsReader, queryProvider);
         });
 
         services.AddHostedService<MetricsBroadcastService>();
+
+        // Storage adapter configuration
+        var builder = new DashboardStorageOptionsBuilder(services);
+        configure?.Invoke(builder);
+
+        // If no query provider was registered, use GenericQueryProvider fallback
+        if (!builder.HasQueryProvider)
+        {
+            services.AddScoped<IStorageQueryProvider>(sp =>
+            {
+                var storage = sp.GetRequiredService<JobStorage>();
+                var tagsReader = sp.GetRequiredService<TagsDataReader>();
+                return new GenericQueryProvider(storage, tagsReader);
+            });
+        }
+
+        // Register AnalyticsService (checks IStorageMetricsProvider availability at runtime)
+        services.AddScoped<AnalyticsService>();
+
+        // Register AnalyticsBroadcastService only if metrics provider is available
+        if (builder.HasMetricsProvider)
+        {
+            services.AddHostedService<AnalyticsBroadcastService>();
+        }
 
         return services;
     }

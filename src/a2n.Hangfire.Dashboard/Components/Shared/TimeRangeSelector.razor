@@ -1,0 +1,173 @@
+@* Shared time range selector used on all analytics pages *@
+@using a2n.Hangfire.Dashboard.Models
+
+<div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Time range presets">
+        @foreach (var preset in _presets)
+        {
+            <button type="button"
+                    class="btn @(IsActive(preset.Value) ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick="() => SelectPreset(preset.Value)">
+                @preset.Label
+            </button>
+        }
+    </div>
+    @if (_showCustomInputs)
+    {
+        <div class="d-flex align-items-center gap-2">
+            <input type="date" class="form-control form-control-sm" style="width:150px"
+                   value="@_customFromStr"
+                   @onchange="OnCustomFromChanged"
+                   max="@_todayStr" />
+            <span class="text-body-secondary">—</span>
+            <input type="date" class="form-control form-control-sm" style="width:150px"
+                   value="@_customToStr"
+                   @onchange="OnCustomToChanged"
+                   max="@_todayStr" />
+            <button class="btn btn-sm btn-primary" @onclick="ApplyCustomRange"
+                    disabled="@(!IsCustomRangeValid)">
+                Apply
+            </button>
+        </div>
+        @if (!string.IsNullOrEmpty(_validationMessage))
+        {
+            <small class="text-danger">@_validationMessage</small>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public TimeRangePreset SelectedPreset { get; set; } = TimeRangePreset.Last24h;
+    [Parameter] public EventCallback<TimeRangeSelection> OnRangeChanged { get; set; }
+
+    private record PresetOption(string Label, TimeRangePreset Value);
+
+    private static readonly PresetOption[] _presets =
+    {
+        new("1h", TimeRangePreset.Last1h),
+        new("6h", TimeRangePreset.Last6h),
+        new("24h", TimeRangePreset.Last24h),
+        new("7d", TimeRangePreset.Last7d),
+        new("30d", TimeRangePreset.Last30d),
+        new("Custom", TimeRangePreset.Custom)
+    };
+
+    private bool _showCustomInputs;
+    private string _customFromStr = "";
+    private string _customToStr = "";
+    private string _todayStr = "";
+    private string _validationMessage = "";
+
+    private DateTimeOffset? _customFrom;
+    private DateTimeOffset? _customTo;
+
+    private bool IsCustomRangeValid =>
+        _customFrom.HasValue && _customTo.HasValue
+        && _customFrom.Value < _customTo.Value
+        && (_customTo.Value - _customFrom.Value) <= TimeRangeSelection.MaxCustomSpan;
+
+    protected override void OnInitialized()
+    {
+        _todayStr = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd");
+        _showCustomInputs = SelectedPreset == TimeRangePreset.Custom;
+
+        // Set default custom range values (last 7 days as starting point)
+        var now = DateTimeOffset.UtcNow;
+        _customFrom = now.AddDays(-7);
+        _customTo = now;
+        _customFromStr = _customFrom.Value.ToString("yyyy-MM-dd");
+        _customToStr = _customTo.Value.ToString("yyyy-MM-dd");
+    }
+
+    private bool IsActive(TimeRangePreset preset)
+    {
+        if (preset == TimeRangePreset.Custom)
+            return _showCustomInputs;
+        return SelectedPreset == preset && !_showCustomInputs;
+    }
+
+    private async Task SelectPreset(TimeRangePreset preset)
+    {
+        if (preset == TimeRangePreset.Custom)
+        {
+            _showCustomInputs = true;
+            SelectedPreset = TimeRangePreset.Custom;
+            return;
+        }
+
+        _showCustomInputs = false;
+        SelectedPreset = preset;
+        _validationMessage = "";
+
+        var selection = TimeRangeSelection.FromPreset(preset);
+        await OnRangeChanged.InvokeAsync(selection);
+    }
+
+    private void OnCustomFromChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _customFromStr = value ?? "";
+
+        if (DateTimeOffset.TryParse(value, out var parsed))
+        {
+            _customFrom = parsed;
+        }
+        else
+        {
+            _customFrom = null;
+        }
+
+        ValidateCustomRange();
+    }
+
+    private void OnCustomToChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _customToStr = value ?? "";
+
+        if (DateTimeOffset.TryParse(value, out var parsed))
+        {
+            // Set to end of day for the "to" date
+            _customTo = parsed.AddDays(1).AddTicks(-1);
+        }
+        else
+        {
+            _customTo = null;
+        }
+
+        ValidateCustomRange();
+    }
+
+    private void ValidateCustomRange()
+    {
+        _validationMessage = "";
+
+        if (!_customFrom.HasValue || !_customTo.HasValue)
+        {
+            _validationMessage = "Please select both start and end dates.";
+            return;
+        }
+
+        if (_customFrom.Value >= _customTo.Value)
+        {
+            _validationMessage = "Start date must be before end date.";
+            return;
+        }
+
+        var span = _customTo.Value - _customFrom.Value;
+        if (span > TimeRangeSelection.MaxCustomSpan)
+        {
+            _validationMessage = "Custom range cannot exceed 90 days.";
+        }
+    }
+
+    private async Task ApplyCustomRange()
+    {
+        if (!IsCustomRangeValid)
+            return;
+
+        SelectedPreset = TimeRangePreset.Custom;
+        var selection = TimeRangeSelection.FromCustom(_customFrom!.Value, _customTo!.Value);
+        await OnRangeChanged.InvokeAsync(selection);
+    }
+}

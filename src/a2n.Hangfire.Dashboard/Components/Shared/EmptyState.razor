@@ -1,0 +1,16 @@
+@*
+    Renders a placeholder message within a chart or data area indicating no data is available.
+    Used when a chart receives an empty dataset from the Storage Metrics Provider.
+*@
+
+<div class="d-flex flex-column align-items-center justify-content-center text-muted py-5">
+    <i class="bi bi-bar-chart fs-1 mb-2"></i>
+    <p class="mb-0">@Message</p>
+</div>
+
+@code {
+    /// <summary>
+    /// The message to display when no data is available (e.g., "No data available for the selected period").
+    /// </summary>
+    [Parameter] public string Message { get; set; } = "No data available for the selected period";
+}

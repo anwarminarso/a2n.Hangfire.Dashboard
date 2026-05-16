@@ -1,0 +1,643 @@
+@page "/analytics"
+@using a2n.Hangfire.Dashboard.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@inject AnalyticsService Analytics
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>Analytics Overview</PageTitle>
+
+<h4 class="mb-3">Analytics Overview</h4>
+
+<div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <TimeRangeSelector SelectedPreset="@_selectedPreset" OnRangeChanged="OnTimeRangeChanged" />
+    @if (_selectedPreset == TimeRangePreset.Last1h)
+    {
+        @if (_connectionStatus == ConnectionStatus.Connected)
+        {
+            <span class="badge bg-success d-flex align-items-center gap-1">
+                <span class="spinner-grow spinner-grow-sm" style="width: 0.5rem; height: 0.5rem;" aria-hidden="true"></span>
+                Live
+            </span>
+        }
+        else if (_connectionStatus == ConnectionStatus.Reconnecting)
+        {
+            <span class="badge bg-warning text-dark d-flex align-items-center gap-1">
+                <span class="spinner-border spinner-border-sm" style="width: 0.5rem; height: 0.5rem;" aria-hidden="true"></span>
+                Reconnecting
+            </span>
+        }
+    }
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else
+{
+    @* Stat Cards *@
+    <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 g-3 mb-4">
+        <div class="col">
+            <StatCard Title="Total Processed"
+                      Value="@FormatCount(_totalProcessed)"
+                      Subtitle="succeeded + failed + deleted" />
+        </div>
+        <div class="col">
+            <StatCard Title="Avg Duration"
+                      Value="@FormatDuration(_avgDurationMs)"
+                      Subtitle="processing time" />
+        </div>
+        <div class="col">
+            <StatCard Title="Avg Latency"
+                      Value="@FormatDuration(_avgLatencyMs)"
+                      Subtitle="queue wait time" />
+        </div>
+        <div class="col">
+            <StatCard Title="Failure Rate"
+                      Value="@($"{_failureRatePercent:F1}%")"
+                      TextClass="@(_failureRatePercent > 5 ? "text-danger" : _failureRatePercent > 1 ? "text-warning" : "text-success")" />
+        </div>
+        <div class="col">
+            <StatCard Title="Active Servers"
+                      Value="@_activeServers.ToString()"
+                      Subtitle="with heartbeat" />
+        </div>
+    </div>
+
+    @* Charts in 2-column grid *@
+    <div class="row g-3">
+        <div class="col-12 col-xl-6">
+            <AnalyticsChart Title="Throughput"
+                            ChartType="line"
+                            ChartId="analytics-overview-throughput"
+                            ChartData="@_throughputChartData"
+                            ChartOptions="@_throughputChartOptions"
+                            IsEmpty="@(_throughputData.Count == 0)"
+                            EmptyMessage="No throughput data available for the selected period" />
+        </div>
+        <div class="col-12 col-xl-6">
+            <AnalyticsChart Title="Failure Rate"
+                            ChartType="line"
+                            ChartId="analytics-overview-failure-rate"
+                            ChartData="@_failureRateChartData"
+                            ChartOptions="@_failureRateChartOptions"
+                            IsEmpty="@(_throughputData.Count == 0)"
+                            EmptyMessage="No failure rate data available for the selected period" />
+        </div>
+        <div class="col-12 col-xl-6">
+            <AnalyticsChart Title="Hourly Activity"
+                            ChartType="bar"
+                            ChartData="@_hourlyActivityChartData"
+                            ChartOptions="@_hourlyActivityChartOptions"
+                            IsEmpty="@(_hourlyActivityData.Count == 0)"
+                            EmptyMessage="No hourly activity data available for the selected period" />
+        </div>
+        <div class="col-12 col-xl-6">
+            <AnalyticsChart Title="Top Job Types"
+                            ChartType="bar"
+                            ChartData="@_topJobTypesChartData"
+                            ChartOptions="@_topJobTypesChartOptions"
+                            IsEmpty="@(_topJobTypesData.Count == 0)"
+                            EmptyMessage="No job type data available for the selected period" />
+        </div>
+    </div>
+}
+
+@code {
+    private TimeRangePreset _selectedPreset = TimeRangePreset.Last24h;
+    private DateTimeOffset _from;
+    private DateTimeOffset _to;
+    private bool _loading = true;
+
+    // SignalR realtime connection
+    private HubConnection _hubConnection;
+    private ConnectionStatus _connectionStatus = ConnectionStatus.Disconnected;
+
+    private enum ConnectionStatus
+    {
+        Disconnected,
+        Connected,
+        Reconnecting
+    }
+
+    // Stat card values
+    private long _totalProcessed;
+    private double _avgDurationMs;
+    private double _avgLatencyMs;
+    private double _failureRatePercent;
+    private int _activeServers;
+
+    // Chart data sources
+    private IReadOnlyList<ThroughputDataPoint> _throughputData = Array.Empty<ThroughputDataPoint>();
+    private IReadOnlyList<HourlyActivityDto> _hourlyActivityData = Array.Empty<HourlyActivityDto>();
+    private IReadOnlyList<JobTypeVolumeDto> _topJobTypesData = Array.Empty<JobTypeVolumeDto>();
+
+    // Chart.js data objects
+    private object _throughputChartData;
+    private object _throughputChartOptions;
+    private object _failureRateChartData;
+    private object _failureRateChartOptions;
+    private object _hourlyActivityChartData;
+    private object _hourlyActivityChartOptions;
+    private object _topJobTypesChartData;
+    private object _topJobTypesChartOptions;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var selection = TimeRangeSelection.FromPreset(TimeRangePreset.Last24h);
+        _from = selection.From;
+        _to = selection.To;
+
+        await LoadDataAsync();
+    }
+
+    private async Task OnTimeRangeChanged(TimeRangeSelection selection)
+    {
+        _selectedPreset = selection.Preset;
+        _from = selection.From;
+        _to = selection.To;
+        _loading = true;
+
+        // Manage SignalR connection based on time range
+        if (selection.Preset == TimeRangePreset.Last1h)
+        {
+            await ConnectToSignalRAsync();
+        }
+        else
+        {
+            await DisconnectFromSignalRAsync();
+        }
+
+        await LoadDataAsync();
+    }
+
+    private async Task ConnectToSignalRAsync()
+    {
+        // Already connected
+        if (_hubConnection is not null &&
+            _hubConnection.State == HubConnectionState.Connected)
+            return;
+
+        // Dispose any existing connection before creating a new one
+        if (_hubConnection is not null)
+        {
+            await DisposeHubConnectionAsync();
+        }
+
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("hubs/dashboard"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        // Handle incoming analytics updates
+        _hubConnection.On<AnalyticsBroadcastPayload>("AnalyticsUpdate", async (payload) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                try
+                {
+                    // Update throughput data and rebuild charts
+                    if (payload.Throughput is not null && payload.Throughput.Count > 0)
+                    {
+                        _throughputData = payload.Throughput;
+
+                        // Recompute stat cards with new throughput data
+                        long totalSucceeded = 0, totalFailed = 0, totalDeleted = 0;
+                        foreach (var dp in _throughputData)
+                        {
+                            totalSucceeded += dp.Succeeded;
+                            totalFailed += dp.Failed;
+                            totalDeleted += dp.Deleted;
+                        }
+                        _totalProcessed = totalSucceeded + totalFailed + totalDeleted;
+                        _failureRatePercent = AnalyticsService.ComputeFailureRatePercent(
+                            totalFailed, totalSucceeded + totalFailed);
+
+                        // Update server count from snapshot
+                        if (payload.ServerUtilization?.Data is not null)
+                        {
+                            _activeServers = payload.ServerUtilization.Data.Count;
+                        }
+
+                        // Update throughput chart via JS interop
+                        BuildThroughputChart();
+                        BuildFailureRateChart();
+
+                        if (_throughputChartData is not null)
+                        {
+                            await JS.InvokeVoidAsync("analyticsCharts.updateChartData",
+                                GetChartCanvasId("throughput"), _throughputChartData);
+                        }
+                        if (_failureRateChartData is not null)
+                        {
+                            await JS.InvokeVoidAsync("analyticsCharts.updateChartData",
+                                GetChartCanvasId("failure-rate"), _failureRateChartData);
+                        }
+                    }
+
+                    StateHasChanged();
+                }
+                catch (JSDisconnectedException) { }
+                catch (ObjectDisposedException) { }
+            });
+        });
+
+        // Handle reconnection events
+        _hubConnection.Reconnecting += (ex) =>
+        {
+            _connectionStatus = ConnectionStatus.Reconnecting;
+            InvokeAsync(StateHasChanged);
+            return Task.CompletedTask;
+        };
+
+        _hubConnection.Reconnected += async (connectionId) =>
+        {
+            _connectionStatus = ConnectionStatus.Connected;
+            // Re-subscribe after reconnection
+            try
+            {
+                await _hubConnection.InvokeAsync("SubscribeToAnalytics");
+            }
+            catch { }
+            await InvokeAsync(StateHasChanged);
+        };
+
+        _hubConnection.Closed += (ex) =>
+        {
+            _connectionStatus = ConnectionStatus.Disconnected;
+            InvokeAsync(StateHasChanged);
+            return Task.CompletedTask;
+        };
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            await _hubConnection.InvokeAsync("SubscribeToAnalytics");
+            _connectionStatus = ConnectionStatus.Connected;
+        }
+        catch
+        {
+            _connectionStatus = ConnectionStatus.Disconnected;
+        }
+    }
+
+    private async Task DisconnectFromSignalRAsync()
+    {
+        if (_hubConnection is null) return;
+
+        try
+        {
+            if (_hubConnection.State == HubConnectionState.Connected)
+            {
+                await _hubConnection.InvokeAsync("UnsubscribeFromAnalytics");
+            }
+        }
+        catch { }
+
+        await DisposeHubConnectionAsync();
+        _connectionStatus = ConnectionStatus.Disconnected;
+    }
+
+    private async Task DisposeHubConnectionAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            try
+            {
+                await _hubConnection.DisposeAsync();
+            }
+            catch { }
+            _hubConnection = null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the canvas ID for a specific chart by name.
+    /// The AnalyticsChart component generates random IDs, so we track them via a lookup.
+    /// For realtime updates, we use well-known IDs for the throughput and failure rate charts.
+    /// </summary>
+    private string GetChartCanvasId(string chartName)
+    {
+        // These IDs are set on the AnalyticsChart components via the ChartId parameter
+        return $"analytics-overview-{chartName}";
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            var interval = AnalyticsService.SelectInterval(_from, _to);
+
+            // Load all data in parallel
+            var throughputTask = Analytics.GetThroughputTimelineAsync(_from, _to, interval);
+            var durationStatsTask = Analytics.GetJobDurationStatsAsync(_from, _to);
+            var latencyStatsTask = Analytics.GetQueueLatencyStatsAsync(_from, _to);
+            var hourlyTask = Analytics.GetHourlyActivityPatternAsync(_from, _to);
+            var topJobsTask = Analytics.GetJobTypeVolumeAsync(10, _from, _to);
+            var serverUtilTask = Analytics.GetServerUtilizationSnapshotAsync();
+
+            await Task.WhenAll(throughputTask, durationStatsTask, latencyStatsTask,
+                hourlyTask, topJobsTask, serverUtilTask);
+
+            _throughputData = throughputTask.Result;
+            _hourlyActivityData = hourlyTask.Result;
+            _topJobTypesData = topJobsTask.Result;
+
+            // Compute stat card values
+            ComputeStatCards(throughputTask.Result, durationStatsTask.Result,
+                latencyStatsTask.Result, serverUtilTask.Result);
+
+            // Build chart data objects
+            BuildThroughputChart();
+            BuildFailureRateChart();
+            BuildHourlyActivityChart();
+            BuildTopJobTypesChart();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ComputeStatCards(
+        IReadOnlyList<ThroughputDataPoint> throughput,
+        IReadOnlyList<JobDurationStatsDto> durationStats,
+        IReadOnlyList<QueueLatencyStatsDto> latencyStats,
+        SnapshotResult<IReadOnlyList<ServerUtilizationDto>> serverUtil)
+    {
+        // Total Processed = sum of succeeded + failed + deleted
+        long totalSucceeded = 0, totalFailed = 0, totalDeleted = 0;
+        foreach (var dp in throughput)
+        {
+            totalSucceeded += dp.Succeeded;
+            totalFailed += dp.Failed;
+            totalDeleted += dp.Deleted;
+        }
+        _totalProcessed = totalSucceeded + totalFailed + totalDeleted;
+
+        // Failure Rate
+        _failureRatePercent = AnalyticsService.ComputeFailureRatePercent(
+            totalFailed, totalSucceeded + totalFailed);
+
+        // Average Duration (weighted average across all job types)
+        if (durationStats.Count > 0)
+        {
+            long totalCount = 0;
+            double weightedSum = 0;
+            foreach (var stat in durationStats)
+            {
+                weightedSum += stat.AverageMs * stat.Count;
+                totalCount += stat.Count;
+            }
+            _avgDurationMs = totalCount > 0 ? weightedSum / totalCount : 0;
+        }
+        else
+        {
+            _avgDurationMs = 0;
+        }
+
+        // Average Latency (average across all queues)
+        if (latencyStats.Count > 0)
+        {
+            double sum = 0;
+            foreach (var stat in latencyStats)
+            {
+                sum += stat.AverageMs;
+            }
+            _avgLatencyMs = sum / latencyStats.Count;
+        }
+        else
+        {
+            _avgLatencyMs = 0;
+        }
+
+        // Active Servers
+        _activeServers = serverUtil?.Data?.Count ?? 0;
+    }
+
+    private void BuildThroughputChart()
+    {
+        if (_throughputData.Count == 0) return;
+
+        var labels = _throughputData.Select(d => d.Timestamp.LocalDateTime.ToString("HH:mm")).ToArray();
+        _throughputChartData = new
+        {
+            labels,
+            datasets = new object[]
+            {
+                new
+                {
+                    label = "Succeeded",
+                    data = _throughputData.Select(d => d.Succeeded).ToArray(),
+                    backgroundColor = "rgba(25, 135, 84, 0.3)",
+                    borderColor = "rgba(25, 135, 84, 1)",
+                    borderWidth = 1,
+                    fill = true
+                },
+                new
+                {
+                    label = "Failed",
+                    data = _throughputData.Select(d => d.Failed).ToArray(),
+                    backgroundColor = "rgba(220, 53, 69, 0.3)",
+                    borderColor = "rgba(220, 53, 69, 1)",
+                    borderWidth = 1,
+                    fill = true
+                },
+                new
+                {
+                    label = "Deleted",
+                    data = _throughputData.Select(d => d.Deleted).ToArray(),
+                    backgroundColor = "rgba(108, 117, 125, 0.3)",
+                    borderColor = "rgba(108, 117, 125, 1)",
+                    borderWidth = 1,
+                    fill = true
+                }
+            }
+        };
+
+        _throughputChartOptions = new
+        {
+            responsive = true,
+            maintainAspectRatio = false,
+            interaction = new { mode = "index", intersect = false },
+            scales = new
+            {
+                x = new { stacked = true },
+                y = new { stacked = true, beginAtZero = true }
+            },
+            plugins = new
+            {
+                legend = new { position = "bottom" }
+            }
+        };
+    }
+
+    private void BuildFailureRateChart()
+    {
+        if (_throughputData.Count == 0) return;
+
+        var labels = _throughputData.Select(d => d.Timestamp.LocalDateTime.ToString("HH:mm")).ToArray();
+        var failureRates = _throughputData.Select(d =>
+        {
+            var total = d.Succeeded + d.Failed;
+            return total > 0 ? Math.Round((double)d.Failed / total * 100, 1) : 0.0;
+        }).ToArray();
+
+        _failureRateChartData = new
+        {
+            labels,
+            datasets = new object[]
+            {
+                new
+                {
+                    label = "Failure Rate (%)",
+                    data = failureRates,
+                    borderColor = "rgba(220, 53, 69, 1)",
+                    backgroundColor = "rgba(220, 53, 69, 0.1)",
+                    borderWidth = 2,
+                    fill = true,
+                    tension = 0.3
+                }
+            }
+        };
+
+        _failureRateChartOptions = new
+        {
+            responsive = true,
+            maintainAspectRatio = false,
+            scales = new
+            {
+                y = new
+                {
+                    beginAtZero = true,
+                    max = 100,
+                    ticks = new { callback_suffix = "%" }
+                }
+            },
+            plugins = new
+            {
+                legend = new { position = "bottom" }
+            }
+        };
+    }
+
+    private void BuildHourlyActivityChart()
+    {
+        if (_hourlyActivityData.Count == 0) return;
+
+        // Ensure all 24 hours are represented
+        var hourlyMap = _hourlyActivityData.ToDictionary(h => h.Hour, h => h.JobCount);
+        var labels = Enumerable.Range(0, 24).Select(h => $"{h:D2}:00").ToArray();
+        var data = Enumerable.Range(0, 24).Select(h => hourlyMap.GetValueOrDefault(h, 0)).ToArray();
+
+        _hourlyActivityChartData = new
+        {
+            labels,
+            datasets = new object[]
+            {
+                new
+                {
+                    label = "Jobs",
+                    data,
+                    backgroundColor = "rgba(13, 110, 253, 0.6)",
+                    borderColor = "rgba(13, 110, 253, 1)",
+                    borderWidth = 1
+                }
+            }
+        };
+
+        _hourlyActivityChartOptions = new
+        {
+            responsive = true,
+            maintainAspectRatio = false,
+            scales = new
+            {
+                y = new { beginAtZero = true }
+            },
+            plugins = new
+            {
+                legend = new { display = false }
+            }
+        };
+    }
+
+    private void BuildTopJobTypesChart()
+    {
+        if (_topJobTypesData.Count == 0) return;
+
+        var labels = _topJobTypesData.Select(j => ShortenJobType(j.JobType)).ToArray();
+        var data = _topJobTypesData.Select(j => j.ExecutionCount).ToArray();
+
+        _topJobTypesChartData = new
+        {
+            labels,
+            datasets = new object[]
+            {
+                new
+                {
+                    label = "Executions",
+                    data,
+                    backgroundColor = "rgba(111, 66, 193, 0.6)",
+                    borderColor = "rgba(111, 66, 193, 1)",
+                    borderWidth = 1
+                }
+            }
+        };
+
+        _topJobTypesChartOptions = new
+        {
+            responsive = true,
+            maintainAspectRatio = false,
+            indexAxis = "y",
+            scales = new
+            {
+                x = new { beginAtZero = true }
+            },
+            plugins = new
+            {
+                legend = new { display = false }
+            }
+        };
+    }
+
+    private static string FormatCount(long count)
+    {
+        return count switch
+        {
+            >= 1_000_000 => $"{count / 1_000_000.0:F1}M",
+            >= 1_000 => $"{count / 1_000.0:F1}K",
+            _ => count.ToString("N0")
+        };
+    }
+
+    private static string FormatDuration(double ms)
+    {
+        if (ms <= 0) return "0 ms";
+        if (ms < 1000) return $"{ms:F0} ms";
+        if (ms < 60_000) return $"{ms / 1000:F1} s";
+        return $"{ms / 60_000:F1} min";
+    }
+
+    private static string ShortenJobType(string jobType)
+    {
+        if (string.IsNullOrEmpty(jobType)) return "Unknown";
+
+        // Extract class.method from fully qualified type name
+        // e.g., "Namespace.ClassName.MethodName" → "ClassName.MethodName"
+        var parts = jobType.Split('.');
+        if (parts.Length >= 2)
+            return $"{parts[^2]}.{parts[^1]}";
+        return jobType.Length > 40 ? jobType[..37] + "..." : jobType;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeHubConnectionAsync();
+    }
+}

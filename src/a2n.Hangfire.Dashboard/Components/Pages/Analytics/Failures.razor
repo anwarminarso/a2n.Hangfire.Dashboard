@@ -1,0 +1,451 @@
+@page "/analytics/failures"
+@using a2n.Hangfire.Dashboard.Interfaces
+@using a2n.Hangfire.Dashboard.Models
+@inject AnalyticsService Analytics
+@inject IStorageQueryProvider QueryProvider
+
+<PageTitle>Analytics — Failures</PageTitle>
+
+<h4 class="mb-3">Failure Analysis</h4>
+
+<TimeRangeSelector SelectedPreset="@_selectedPreset" OnRangeChanged="OnTimeRangeChanged" />
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else
+{
+    @* Stat Cards *@
+    <div class="row row-cols-2 row-cols-md-3 g-3 mb-4">
+        <div class="col">
+            <StatCard Title="Total Failures"
+                      Value="@FormatCount(_totalFailures)"
+                      TextClass="text-danger" />
+        </div>
+        <div class="col">
+            <StatCard Title="Failure Rate"
+                      Value="@($"{_failureRatePercent:F1}%")"
+                      TextClass="@(_failureRatePercent > 5 ? "text-danger" : _failureRatePercent > 1 ? "text-warning" : "text-success")" />
+        </div>
+        <div class="col">
+            <StatCard Title="Most Affected Job Type"
+                      Value="@(_mostAffectedJobType ?? "—")"
+                      Subtitle="@(_mostAffectedJobType != null ? $"{_mostAffectedFailures} failures" : "no failures")" />
+        </div>
+    </div>
+
+    @* Charts in 2-column grid *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-xl-6">
+            <AnalyticsChart Title="Failure Rate by Job Type"
+                            ChartType="bar"
+                            ChartData="@_failureRateByTypeChartData"
+                            ChartOptions="@_failureRateByTypeChartOptions"
+                            IsEmpty="@(_failureRateByTypeData.Count == 0)"
+                            EmptyMessage="No failures occurred in the selected period" />
+        </div>
+        <div class="col-12 col-xl-6">
+            <AnalyticsChart Title="Top Exceptions"
+                            ChartType="doughnut"
+                            ChartData="@_topExceptionsChartData"
+                            ChartOptions="@_topExceptionsChartOptions"
+                            IsEmpty="@(_topExceptionsData.Count == 0)"
+                            EmptyMessage="No exceptions recorded in the selected period" />
+        </div>
+        <div class="col-12">
+            <AnalyticsChart Title="Retry Distribution"
+                            ChartType="bar"
+                            ChartData="@_retryDistributionChartData"
+                            ChartOptions="@_retryDistributionChartOptions"
+                            IsEmpty="@(_retryDistributionData.Count == 0)"
+                            EmptyMessage="No retry data available for the selected period"
+                            Height="250px" />
+        </div>
+    </div>
+
+    @* Recent Failures Table *@
+    <div class="card">
+        <div class="card-body">
+            <h6 class="card-title mb-3">Recent Failures</h6>
+            @if (_recentFailures.Count == 0)
+            {
+                <EmptyState Message="No failures occurred in the selected period" />
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Job ID</th>
+                                <th>Job Type</th>
+                                <th>Exception Type</th>
+                                <th>Failed At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var failure in _recentFailures)
+                            {
+                                <tr>
+                                    <td class="font-monospace">
+                                        <a href="jobs/details/@failure.JobId">@ShortenId(failure.JobId)</a>
+                                    </td>
+                                    <td>@ShortenJobType(failure.JobName)</td>
+                                    <td><code>@ShortenExceptionType(failure.ExceptionType)</code></td>
+                                    <td>
+                                        @if (failure.LastStateChange.HasValue)
+                                        {
+                                            <RelativeTime UtcTime="@failure.LastStateChange.Value" />
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private TimeRangePreset _selectedPreset = TimeRangePreset.Last24h;
+    private DateTimeOffset _from;
+    private DateTimeOffset _to;
+    private bool _loading = true;
+
+    // Stat card values
+    private long _totalFailures;
+    private double _failureRatePercent;
+    private string _mostAffectedJobType;
+    private long _mostAffectedFailures;
+
+    // Chart data sources
+    private IReadOnlyList<JobTypeFailureRateDto> _failureRateByTypeData = Array.Empty<JobTypeFailureRateDto>();
+    private IReadOnlyList<ExceptionSummaryDto> _topExceptionsData = Array.Empty<ExceptionSummaryDto>();
+    private IReadOnlyList<RetryBucketDto> _retryDistributionData = Array.Empty<RetryBucketDto>();
+
+    // Recent failures table
+    private IReadOnlyList<JobSummaryDto> _recentFailures = Array.Empty<JobSummaryDto>();
+
+    // Chart.js data objects
+    private object _failureRateByTypeChartData;
+    private object _failureRateByTypeChartOptions;
+    private object _topExceptionsChartData;
+    private object _topExceptionsChartOptions;
+    private object _retryDistributionChartData;
+    private object _retryDistributionChartOptions;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var selection = TimeRangeSelection.FromPreset(TimeRangePreset.Last24h);
+        _from = selection.From;
+        _to = selection.To;
+
+        await LoadDataAsync();
+    }
+
+    private async Task OnTimeRangeChanged(TimeRangeSelection selection)
+    {
+        _selectedPreset = selection.Preset;
+        _from = selection.From;
+        _to = selection.To;
+        _loading = true;
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            // Load all data in parallel
+            var failureRateTask = Analytics.GetFailureRateByJobTypeAsync(_from, _to);
+            var topExceptionsTask = Analytics.GetTopExceptionsAsync(8, _from, _to);
+            var retryDistTask = Analytics.GetRetryDistributionAsync(_from, _to);
+            var throughputTask = Analytics.GetThroughputTimelineAsync(
+                _from, _to, AnalyticsService.SelectInterval(_from, _to));
+            var recentFailuresTask = QueryProvider.GetJobsByStateAsync("Failed", 1, 20, default);
+
+            await Task.WhenAll(failureRateTask, topExceptionsTask, retryDistTask, throughputTask, recentFailuresTask);
+
+            _failureRateByTypeData = failureRateTask.Result;
+            _topExceptionsData = topExceptionsTask.Result;
+            _retryDistributionData = retryDistTask.Result;
+            _recentFailures = recentFailuresTask.Result.Items.ToList();
+
+            // Compute stat cards from failure rate data and throughput
+            ComputeStatCards(failureRateTask.Result, throughputTask.Result);
+
+            // Build chart data objects
+            BuildFailureRateByTypeChart();
+            BuildTopExceptionsChart();
+            BuildRetryDistributionChart();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ComputeStatCards(
+        IReadOnlyList<JobTypeFailureRateDto> failureRates,
+        IReadOnlyList<ThroughputDataPoint> throughput)
+    {
+        // Total Failures from throughput data
+        _totalFailures = 0;
+        long totalProcessed = 0;
+        foreach (var dp in throughput)
+        {
+            _totalFailures += dp.Failed;
+            totalProcessed += dp.Succeeded + dp.Failed;
+        }
+
+        // Failure Rate percentage
+        _failureRatePercent = AnalyticsService.ComputeFailureRatePercent(_totalFailures, totalProcessed);
+
+        // Most Affected Job Type (highest failure count)
+        if (failureRates.Count > 0)
+        {
+            var mostAffected = failureRates.OrderByDescending(f => f.FailedCount).First();
+            _mostAffectedJobType = ShortenJobType(mostAffected.JobType);
+            _mostAffectedFailures = mostAffected.FailedCount;
+        }
+        else
+        {
+            _mostAffectedJobType = null;
+            _mostAffectedFailures = 0;
+        }
+    }
+
+    private void BuildFailureRateByTypeChart()
+    {
+        if (_failureRateByTypeData.Count == 0) return;
+
+        // Top 10 job types by total execution count
+        var top10 = _failureRateByTypeData
+            .OrderByDescending(r => r.TotalCount)
+            .Take(10)
+            .ToList();
+
+        var labels = top10.Select(r => ShortenJobType(r.JobType)).ToArray();
+        var successRates = top10.Select(r => Math.Round((1.0 - r.FailureRate) * 100, 1)).ToArray();
+        var failureRates = top10.Select(r => Math.Round(r.FailureRate * 100, 1)).ToArray();
+
+        _failureRateByTypeChartData = new
+        {
+            labels,
+            datasets = new object[]
+            {
+                new
+                {
+                    label = "Success %",
+                    data = successRates,
+                    backgroundColor = "rgba(25, 135, 84, 0.7)",
+                    borderColor = "rgba(25, 135, 84, 1)",
+                    borderWidth = 1
+                },
+                new
+                {
+                    label = "Failure %",
+                    data = failureRates,
+                    backgroundColor = "rgba(220, 53, 69, 0.7)",
+                    borderColor = "rgba(220, 53, 69, 1)",
+                    borderWidth = 1
+                }
+            }
+        };
+
+        _failureRateByTypeChartOptions = new
+        {
+            responsive = true,
+            maintainAspectRatio = false,
+            indexAxis = "y",
+            scales = new
+            {
+                x = new
+                {
+                    stacked = true,
+                    beginAtZero = true,
+                    max = 100,
+                    ticks = new { callback_suffix = "%" }
+                },
+                y = new { stacked = true }
+            },
+            plugins = new
+            {
+                legend = new { position = "bottom" }
+            }
+        };
+    }
+
+    private void BuildTopExceptionsChart()
+    {
+        if (_topExceptionsData.Count == 0) return;
+
+        // Top 8 + "Other" segment
+        var top8 = _topExceptionsData.Take(8).ToList();
+        var otherCount = _topExceptionsData.Skip(8).Sum(e => e.Count);
+
+        var labels = top8.Select(e => ShortenExceptionType(e.ExceptionType)).ToList();
+        var data = top8.Select(e => e.Count).ToList();
+
+        if (otherCount > 0)
+        {
+            labels.Add("Other");
+            data.Add(otherCount);
+        }
+
+        // Doughnut chart colors
+        var colors = new[]
+        {
+            "rgba(220, 53, 69, 0.8)",   // red
+            "rgba(255, 193, 7, 0.8)",    // yellow
+            "rgba(13, 110, 253, 0.8)",   // blue
+            "rgba(111, 66, 193, 0.8)",   // purple
+            "rgba(25, 135, 84, 0.8)",    // green
+            "rgba(253, 126, 20, 0.8)",   // orange
+            "rgba(13, 202, 240, 0.8)",   // cyan
+            "rgba(214, 51, 132, 0.8)",   // pink
+            "rgba(108, 117, 125, 0.8)"   // gray (Other)
+        };
+
+        _topExceptionsChartData = new
+        {
+            labels = labels.ToArray(),
+            datasets = new object[]
+            {
+                new
+                {
+                    data = data.ToArray(),
+                    backgroundColor = colors.Take(labels.Count).ToArray(),
+                    borderWidth = 2
+                }
+            }
+        };
+
+        _topExceptionsChartOptions = new
+        {
+            responsive = true,
+            maintainAspectRatio = false,
+            plugins = new
+            {
+                legend = new { position = "right" }
+            }
+        };
+    }
+
+    private void BuildRetryDistributionChart()
+    {
+        if (_retryDistributionData.Count == 0) return;
+
+        // Group into buckets: 0, 1, 2, 3, 4, 5+
+        var buckets = new long[6];
+        foreach (var bucket in _retryDistributionData)
+        {
+            var idx = Math.Min(bucket.RetryCount, 5);
+            buckets[idx] += bucket.JobCount;
+        }
+
+        var labels = new[] { "0", "1", "2", "3", "4", "5+" };
+
+        _retryDistributionChartData = new
+        {
+            labels,
+            datasets = new object[]
+            {
+                new
+                {
+                    label = "Jobs",
+                    data = buckets,
+                    backgroundColor = new[]
+                    {
+                        "rgba(25, 135, 84, 0.7)",   // 0 retries - green
+                        "rgba(13, 110, 253, 0.7)",   // 1 retry - blue
+                        "rgba(255, 193, 7, 0.7)",    // 2 retries - yellow
+                        "rgba(253, 126, 20, 0.7)",   // 3 retries - orange
+                        "rgba(220, 53, 69, 0.7)",    // 4 retries - red
+                        "rgba(111, 66, 193, 0.7)"    // 5+ retries - purple
+                    },
+                    borderColor = new[]
+                    {
+                        "rgba(25, 135, 84, 1)",
+                        "rgba(13, 110, 253, 1)",
+                        "rgba(255, 193, 7, 1)",
+                        "rgba(253, 126, 20, 1)",
+                        "rgba(220, 53, 69, 1)",
+                        "rgba(111, 66, 193, 1)"
+                    },
+                    borderWidth = 1
+                }
+            }
+        };
+
+        _retryDistributionChartOptions = new
+        {
+            responsive = true,
+            maintainAspectRatio = false,
+            scales = new
+            {
+                y = new { beginAtZero = true }
+            },
+            plugins = new
+            {
+                legend = new { display = false },
+                title = new
+                {
+                    display = true,
+                    text = "Retry Count",
+                    position = "bottom"
+                }
+            }
+        };
+    }
+
+    private static string FormatCount(long count)
+    {
+        return count switch
+        {
+            >= 1_000_000 => $"{count / 1_000_000.0:F1}M",
+            >= 1_000 => $"{count / 1_000.0:F1}K",
+            _ => count.ToString("N0")
+        };
+    }
+
+    private static string ShortenJobType(string jobType)
+    {
+        if (string.IsNullOrEmpty(jobType)) return "Unknown";
+
+        // Extract class.method from fully qualified type name
+        var parts = jobType.Split('.');
+        if (parts.Length >= 2)
+            return $"{parts[^2]}.{parts[^1]}";
+        return jobType.Length > 40 ? jobType[..37] + "..." : jobType;
+    }
+
+    private static string ShortenExceptionType(string exceptionType)
+    {
+        if (string.IsNullOrEmpty(exceptionType)) return "Unknown";
+
+        // Extract just the exception class name (e.g., "System.InvalidOperationException" → "InvalidOperationException")
+        var lastDot = exceptionType.LastIndexOf('.');
+        if (lastDot >= 0 && lastDot < exceptionType.Length - 1)
+            return exceptionType[(lastDot + 1)..];
+        return exceptionType.Length > 35 ? exceptionType[..32] + "..." : exceptionType;
+    }
+
+    private static string ShortenId(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return "—";
+        return Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+    }
+}
