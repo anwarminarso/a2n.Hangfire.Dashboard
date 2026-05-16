@@ -78,11 +78,14 @@ public class AnalyticsBroadcastService : BackgroundService
         }
 
         var now = DateTimeOffset.UtcNow;
-        var oneHourAgo = now.AddHours(-1);
+        var sixHoursAgo = now.AddHours(-6);
 
-        // Query last 1h throughput with OneMinute interval
+        // Query last 6h throughput with OneHour interval.
+        // Hangfire AggregatedCounter stores data at hourly granularity (stats:succeeded:yyyy-MM-dd-HH),
+        // so querying with OneMinute interval would return only 1-2 data points for a 1h window.
+        // Using 6h with OneHour gives meaningful chart data (up to 6 points).
         var throughput = await metricsProvider.GetThroughputTimelineAsync(
-            oneHourAgo, now, MetricsInterval.OneMinute, ct);
+            sixHoursAgo, now, MetricsInterval.OneHour, ct);
 
         // Query server utilization snapshot
         var serverUtilization = await metricsProvider.GetServerUtilizationSnapshotAsync(ct);

@@ -1,40 +1,38 @@
 @* Shared time range selector used on all analytics pages *@
 @using a2n.Hangfire.Dashboard.Models
 
-<div class="d-flex align-items-center gap-2 flex-wrap mb-3">
-    <div class="btn-group btn-group-sm" role="group" aria-label="Time range presets">
-        @foreach (var preset in _presets)
-        {
-            <button type="button"
-                    class="btn @(IsActive(preset.Value) ? "btn-primary" : "btn-outline-secondary")"
-                    @onclick="() => SelectPreset(preset.Value)">
-                @preset.Label
-            </button>
-        }
-    </div>
-    @if (_showCustomInputs)
+<div class="btn-group btn-group-sm" role="group" aria-label="Time range presets">
+    @foreach (var preset in _presets)
     {
-        <div class="d-flex align-items-center gap-2">
-            <input type="date" class="form-control form-control-sm" style="width:150px"
-                   value="@_customFromStr"
-                   @onchange="OnCustomFromChanged"
-                   max="@_todayStr" />
-            <span class="text-body-secondary">—</span>
-            <input type="date" class="form-control form-control-sm" style="width:150px"
-                   value="@_customToStr"
-                   @onchange="OnCustomToChanged"
-                   max="@_todayStr" />
-            <button class="btn btn-sm btn-primary" @onclick="ApplyCustomRange"
-                    disabled="@(!IsCustomRangeValid)">
-                Apply
-            </button>
-        </div>
-        @if (!string.IsNullOrEmpty(_validationMessage))
-        {
-            <small class="text-danger">@_validationMessage</small>
-        }
+        <button type="button"
+                class="btn @(IsActive(preset.Value) ? "btn-primary" : "btn-outline-secondary")"
+                @onclick="() => SelectPreset(preset.Value)">
+            @preset.Label
+        </button>
     }
 </div>
+@if (_showCustomInputs)
+{
+    <div class="d-flex align-items-center gap-2">
+        <input type="date" class="form-control form-control-sm" style="width:150px"
+               value="@_customFromStr"
+               @onchange="OnCustomFromChanged"
+               max="@_todayStr" />
+        <span class="text-body-secondary">—</span>
+        <input type="date" class="form-control form-control-sm" style="width:150px"
+               value="@_customToStr"
+               @onchange="OnCustomToChanged"
+               max="@_todayStr" />
+        <button class="btn btn-sm btn-primary" @onclick="ApplyCustomRange"
+                disabled="@(!IsCustomRangeValid)">
+            Apply
+        </button>
+    </div>
+    @if (!string.IsNullOrEmpty(_validationMessage))
+    {
+        <small class="text-danger">@_validationMessage</small>
+    }
+}
 
 @code {
     [Parameter] public TimeRangePreset SelectedPreset { get; set; } = TimeRangePreset.Last24h;

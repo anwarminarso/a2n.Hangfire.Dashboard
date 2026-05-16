@@ -5,6 +5,7 @@ using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
+using Microsoft.Extensions.Logging;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
@@ -29,14 +30,17 @@ public class SearchService
     private readonly TagsDataReader _tagsReader;
     private readonly IStorageQueryProvider _queryProvider;
     private readonly bool _hasDedicatedProvider;
+    private readonly ILogger<SearchService> _logger;
 
-    public SearchService(JobStorage storage, TagsDataReader tagsReader, IStorageQueryProvider queryProvider = null)
+    public SearchService(JobStorage storage, TagsDataReader tagsReader, IStorageQueryProvider queryProvider = null,
+        ILogger<SearchService> logger = null)
     {
         _storage = storage;
         _tagsReader = tagsReader;
         _queryProvider = queryProvider;
         // GenericQueryProvider does the same scan as SearchService, so no benefit in delegating to it
         _hasDedicatedProvider = queryProvider != null && queryProvider is not GenericQueryProvider;
+        _logger = logger;
     }
 
     /// <summary>
@@ -54,6 +58,12 @@ public class SearchService
         {
             mode = request.Mode;
             normalizedQuery = request.Query?.Trim() ?? "";
+        }
+
+        // Filter-only search: no text query but has active filters
+        if (mode == SearchMode.Auto && string.IsNullOrEmpty(normalizedQuery) && HasActiveSecondaryFilters(request))
+        {
+            return SearchByFiltersOnlyAsync(request, ct);
         }
 
         // Delegate to dedicated provider for supported modes
@@ -76,6 +86,7 @@ public class SearchService
     /// <summary>
     /// Delegates search to the dedicated IStorageQueryProvider for database-level queries.
     /// Converts PagedResult to SearchResult for compatibility with the existing UI.
+    /// Falls back to scan-based search if the dedicated provider throws an exception.
     /// </summary>
     private async Task<SearchResult> SearchViaDedicatedProviderAsync(
         SearchMode mode, string query, SearchRequest request, CancellationToken ct)
@@ -105,20 +116,141 @@ public class SearchService
                     result = ConvertPagedResult(exResult, SearchMatchSource.Exception);
                     break;
             }
+
+            // Apply secondary filters (date, state, duration, server, tags, queue, recurring job ID)
+            // that are not handled by the dedicated provider's query
+            if (result.Items.Count > 0 && HasActiveSecondaryFilters(request))
+            {
+                result.Items = ApplySecondaryFilters(result.Items, request, ct);
+                result.TotalCount = result.Items.Count;
+            }
         }
         catch (OperationCanceledException)
         {
             result.TimedOut = true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            result.HasError = true;
-            result.ErrorMessage = "The search could not be completed due to a storage error.";
+            // Log the actual exception for debugging
+            _logger?.LogError(ex, "Dedicated storage provider failed for search mode {Mode} with query '{Query}'. Falling back to scan-based search.", mode, query);
+
+            // Fallback to scan-based search instead of showing error
+            try
+            {
+                sw.Stop();
+                var fallbackResult = mode switch
+                {
+                    SearchMode.Name => await SearchByNameAsync(query, request, ct),
+                    SearchMode.Tag => await SearchByTagAsync(query, request, ct),
+                    SearchMode.Exception => await SearchByExceptionAsync(query, request, ct),
+                    _ => result
+                };
+                return fallbackResult;
+            }
+            catch (Exception fallbackEx)
+            {
+                _logger?.LogError(fallbackEx, "Fallback scan-based search also failed for mode {Mode}", mode);
+                result.HasError = true;
+                result.ErrorMessage = "The search could not be completed due to a storage error.";
+            }
         }
 
         sw.Stop();
         result.Elapsed = sw.Elapsed;
         return result;
+    }
+
+    /// <summary>
+    /// Handles filter-only search (no text query, but one or more filters are active).
+    /// Delegates to IStorageQueryProvider.GetJobsWithFilterAsync if a dedicated provider is available,
+    /// otherwise scans all states and applies secondary filters.
+    /// </summary>
+    private async Task<SearchResult> SearchByFiltersOnlyAsync(SearchRequest request, CancellationToken ct)
+    {
+        // Try dedicated provider first (database-level filtering)
+        if (_hasDedicatedProvider)
+        {
+            try
+            {
+                var sw = Stopwatch.StartNew();
+                var page = (request.From / Math.Max(request.PageSize, 1)) + 1;
+                var pageSize = Math.Min(request.PageSize, 50);
+
+                var criteria = new JobFilterCriteria
+                {
+                    State = request.States?.Count == 1 ? request.States[0] : null,
+                    DateFrom = request.DateFrom.HasValue ? new DateTimeOffset(request.DateFrom.Value) : null,
+                    DateTo = request.DateTo.HasValue ? new DateTimeOffset(request.DateTo.Value) : null,
+                    Queue = request.Queue,
+                    Server = request.Server,
+                    MinDuration = request.MinDurationSeconds.HasValue
+                        ? TimeSpan.FromSeconds(request.MinDurationSeconds.Value) : null,
+                    MaxDuration = request.MaxDurationSeconds.HasValue
+                        ? TimeSpan.FromSeconds(request.MaxDurationSeconds.Value) : null,
+                    Tags = request.Tags,
+                    RecurringJobId = request.RecurringJobId
+                };
+
+                var pagedResult = await _queryProvider.GetJobsWithFilterAsync(criteria, page, pageSize, ct);
+                var result = ConvertPagedResult(pagedResult, SearchMatchSource.Name);
+
+                // Apply state filter for multi-state case (provider only supports single state)
+                if (request.States?.Count > 1 && result.Items.Count > 0)
+                {
+                    var stateSet = new HashSet<string>(request.States, StringComparer.OrdinalIgnoreCase);
+                    result.Items = result.Items
+                        .Where(i => !string.IsNullOrEmpty(i.State) && stateSet.Contains(i.State))
+                        .ToList();
+                    result.TotalCount = result.Items.Count;
+                }
+
+                sw.Stop();
+                result.Elapsed = sw.Elapsed;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Dedicated provider GetJobsWithFilterAsync failed, falling back to scan-based filter search");
+            }
+        }
+
+        // Fallback: scan all states and apply filters
+        var fallbackSw = Stopwatch.StartNew();
+        var fallbackResult = new SearchResult();
+
+        try
+        {
+            var monitoringApi = _storage.GetMonitoringApi();
+            var candidates = new List<SearchResultItem>();
+
+            var statesToScan = request.States != null && request.States.Count > 0
+                ? request.States
+                : new List<string>(AllStates);
+
+            foreach (var state in statesToScan)
+            {
+                if (ct.IsCancellationRequested || candidates.Count >= SafetyCap)
+                    break;
+
+                ScanStateForNameMatch(monitoringApi, state, null, candidates, ct);
+            }
+
+            candidates = ApplySecondaryFilters(candidates, request, ct);
+            SortAndPaginate(candidates, fallbackResult, request.From, request.PageSize);
+        }
+        catch (OperationCanceledException)
+        {
+            fallbackResult.TimedOut = true;
+        }
+        catch (Exception)
+        {
+            fallbackResult.HasError = true;
+            fallbackResult.ErrorMessage = "The search could not be completed due to a storage error.";
+        }
+
+        fallbackSw.Stop();
+        fallbackResult.Elapsed = fallbackSw.Elapsed;
+        return fallbackResult;
     }
 
     /// <summary>
@@ -640,6 +772,23 @@ public class SearchService
     }
 
     /// <summary>
+    /// Checks whether any secondary filter is active on the request.
+    /// Used to skip expensive post-filtering when no filters are set.
+    /// </summary>
+    private static bool HasActiveSecondaryFilters(SearchRequest request)
+    {
+        return request.DateFrom.HasValue
+            || request.DateTo.HasValue
+            || (request.States != null && request.States.Count > 0)
+            || !string.IsNullOrEmpty(request.Server)
+            || request.MinDurationSeconds.HasValue
+            || request.MaxDurationSeconds.HasValue
+            || (request.Tags != null && request.Tags.Count > 0)
+            || !string.IsNullOrEmpty(request.Queue)
+            || !string.IsNullOrEmpty(request.RecurringJobId);
+    }
+
+    /// <summary>
     /// Applies secondary filters (AND logic between different filter types) to a list of candidates.
     /// Filters applied: date range, state, server, duration, tags, queue, recurring job ID.
     /// Only performs expensive lookups (server, tags, recurring job ID) when the respective filter is active.
@@ -1121,6 +1270,10 @@ public class SearchService
     /// </summary>
     private static bool MatchesNameQuery(Job job, string query)
     {
+        // If query is null or empty, match all jobs (filter-only mode)
+        if (string.IsNullOrEmpty(query))
+            return true;
+
         var typeName = job.Type?.Name;
         var methodName = job.Method?.Name;
 

@@ -57,17 +57,18 @@ public class PostgreSqlQueryProvider : IStorageQueryProvider
         var countSql = $@"
 SELECT COUNT(*)
 FROM {_jobTable} j
-WHERE j.invocationdata ILIKE @Pattern";
+WHERE j.invocationdata::text ILIKE @Pattern";
 
         var querySql = $@"
 SELECT j.id::text AS ""JobId"",
-       j.invocationdata AS ""InvocationData"",
+       j.invocationdata::text AS ""InvocationData"",
        j.statename AS ""State"",
        j.createdat AS ""CreatedAt"",
-       s.createdat AS ""LastStateChange""
+       s.createdat AS ""LastStateChange"",
+       s.data::json ->> 'PerformanceDuration' AS ""DurationMsRaw""
 FROM {_jobTable} j
 LEFT JOIN {_stateTable} s ON s.id = j.stateid
-WHERE j.invocationdata ILIKE @Pattern
+WHERE j.invocationdata::text ILIKE @Pattern
 ORDER BY j.createdat DESC
 LIMIT @PageSize OFFSET @Offset";
 
@@ -77,10 +78,18 @@ LIMIT @PageSize OFFSET @Offset";
         var totalCount = await connection.ExecuteScalarAsync<long>(
             new CommandDefinition(countSql, new { Pattern = pattern }, cancellationToken: ct));
 
-        var rows = await connection.QueryAsync<JobRawRow>(
+        var rows = await connection.QueryAsync<JobRawRowWithDuration>(
             new CommandDefinition(querySql, new { Pattern = pattern, PageSize = pageSize, Offset = offset }, cancellationToken: ct));
 
-        var items = rows.Select(MapToJobSummary).ToList();
+        var items = rows.Select(r => new JobSummaryDto
+        {
+            JobId = r.JobId,
+            JobName = ExtractJobName(r.InvocationData),
+            State = r.State,
+            CreatedAt = r.CreatedAt,
+            LastStateChange = r.LastStateChange,
+            DurationMs = ParseNullableDouble(r.DurationMsRaw)
+        }).ToList();
 
         return new PagedResult<JobSummaryDto>
         {
@@ -557,6 +566,16 @@ LIMIT @Count";
         public string State { get; set; }
         public DateTime? CreatedAt { get; set; }
         public DateTime? LastStateChange { get; set; }
+    }
+
+    private class JobRawRowWithDuration
+    {
+        public string JobId { get; set; }
+        public string InvocationData { get; set; }
+        public string State { get; set; }
+        public DateTime? CreatedAt { get; set; }
+        public DateTime? LastStateChange { get; set; }
+        public string DurationMsRaw { get; set; }
     }
 
     private class FailedJobRawRow

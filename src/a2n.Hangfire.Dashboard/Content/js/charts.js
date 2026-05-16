@@ -118,6 +118,12 @@
                     animation: { duration: 0 },
                     hover: { animationDuration: 0 },
                     plugins: {
+                        streaming: {
+                            duration: 60000,
+                            delay: this._pollInterval,
+                            frameRate: 30,
+                            refresh: 1000
+                        },
                         legend: { display: false },
                         tooltip: { mode: 'index', intersect: false }
                     }

@@ -3,6 +3,7 @@
 @using a2n.Hangfire.Dashboard.Services
 @inject SearchService SearchService
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Search</PageTitle>
 
@@ -237,7 +238,7 @@ else if (_result is not null)
     else
     {
         @* Top toolbar: page size selector *@
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div id="search-results" class="d-flex justify-content-between align-items-center mb-2">
             <small class="text-body-secondary">
                 Showing @(_from + 1)–@Math.Min(_from + _pageSize, _result.TotalCount) of @_result.TotalCount
             </small>
@@ -553,15 +554,30 @@ else if (_result is not null)
         StateHasChanged();
     }
 
-    private void HandlePageChanged((int From, int PageSize) args)
+    private async Task HandlePageChanged((int From, int PageSize) args)
     {
-        var page = (args.From / args.PageSize) + 1;
-        NavigateWithParams(_searchQuery, page, args.PageSize);
+        _from = args.From;
+        _pageSize = args.PageSize;
+        await ExecuteSearch();
+        await ScrollToResults();
     }
 
-    private void HandlePageSizeChanged(int newSize)
+    private async Task HandlePageSizeChanged(int newSize)
     {
-        NavigateWithParams(_searchQuery, 1, newSize);
+        _pageSize = newSize;
+        _from = 0;
+        await ExecuteSearch();
+        await ScrollToResults();
+    }
+
+    private async Task ScrollToResults()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "document.getElementById('search-results')?.scrollIntoView({behavior:'smooth',block:'start'})");
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 
     // ═══════════════════════════════════════════════════

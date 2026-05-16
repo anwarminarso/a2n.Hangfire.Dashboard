@@ -9,6 +9,7 @@ using Hangfire.Dashboard;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.Builder;
 
@@ -83,7 +84,8 @@ public static class HangfireDashboardUIExtensions
             var storage = sp.GetRequiredService<JobStorage>();
             var tagsReader = sp.GetRequiredService<TagsDataReader>();
             var queryProvider = sp.GetService<IStorageQueryProvider>();
-            return new SearchService(storage, tagsReader, queryProvider);
+            var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<SearchService>();
+            return new SearchService(storage, tagsReader, queryProvider, logger);
         });
 
         services.AddHostedService<MetricsBroadcastService>();

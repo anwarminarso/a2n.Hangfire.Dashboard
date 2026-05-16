@@ -1,4 +1,5 @@
 @page "/analytics"
+@using a2n.Hangfire.Dashboard.Interfaces
 @using a2n.Hangfire.Dashboard.Models
 @using Microsoft.AspNetCore.SignalR.Client
 @inject AnalyticsService Analytics
@@ -334,8 +335,19 @@ else
         {
             var interval = AnalyticsService.SelectInterval(_from, _to);
 
+            // For throughput chart: Hangfire AggregatedCounter stores data at hourly granularity.
+            // When timeframe is 1h, expand the query window to 6h with OneHour interval
+            // to get meaningful chart data (multiple data points).
+            var throughputFrom = _from;
+            var throughputInterval = interval;
+            if (_selectedPreset == TimeRangePreset.Last1h)
+            {
+                throughputFrom = _to.AddHours(-6);
+                throughputInterval = MetricsInterval.OneHour;
+            }
+
             // Load all data in parallel
-            var throughputTask = Analytics.GetThroughputTimelineAsync(_from, _to, interval);
+            var throughputTask = Analytics.GetThroughputTimelineAsync(throughputFrom, _to, throughputInterval);
             var durationStatsTask = Analytics.GetJobDurationStatsAsync(_from, _to);
             var latencyStatsTask = Analytics.GetQueueLatencyStatsAsync(_from, _to);
             var hourlyTask = Analytics.GetHourlyActivityPatternAsync(_from, _to);
