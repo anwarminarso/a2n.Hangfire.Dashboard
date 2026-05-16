@@ -3,6 +3,7 @@ using Hangfire;
 using Hangfire.Common;
 using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
+using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 
 namespace a2n.Hangfire.Dashboard.Services;
@@ -11,6 +12,8 @@ namespace a2n.Hangfire.Dashboard.Services;
 /// Orchestrates job search queries across Hangfire storage.
 /// Supports search by ID, name, queue, tag, and exception text,
 /// with advanced filtering and pagination.
+/// When a dedicated IStorageQueryProvider (non-GenericQueryProvider) is available,
+/// delegates to it for database-level optimized queries.
 /// </summary>
 public class SearchService
 {
@@ -24,16 +27,23 @@ public class SearchService
 
     private readonly JobStorage _storage;
     private readonly TagsDataReader _tagsReader;
+    private readonly IStorageQueryProvider _queryProvider;
+    private readonly bool _hasDedicatedProvider;
 
-    public SearchService(JobStorage storage, TagsDataReader tagsReader)
+    public SearchService(JobStorage storage, TagsDataReader tagsReader, IStorageQueryProvider queryProvider = null)
     {
         _storage = storage;
         _tagsReader = tagsReader;
+        _queryProvider = queryProvider;
+        // GenericQueryProvider does the same scan as SearchService, so no benefit in delegating to it
+        _hasDedicatedProvider = queryProvider != null && queryProvider is not GenericQueryProvider;
     }
 
     /// <summary>
     /// Executes a search with the given request parameters.
     /// Returns paginated results matching all criteria (AND logic between filters).
+    /// When a dedicated storage query provider is available, delegates to it for
+    /// database-level optimized queries (Name, Tag, Exception modes).
     /// </summary>
     public Task<SearchResult> SearchAsync(SearchRequest request, CancellationToken ct)
     {
@@ -46,6 +56,12 @@ public class SearchService
             normalizedQuery = request.Query?.Trim() ?? "";
         }
 
+        // Delegate to dedicated provider for supported modes
+        if (_hasDedicatedProvider && mode is SearchMode.Name or SearchMode.Tag or SearchMode.Exception)
+        {
+            return SearchViaDedicatedProviderAsync(mode, normalizedQuery, request, ct);
+        }
+
         return mode switch
         {
             SearchMode.Id => SearchByIdAsync(normalizedQuery, request, ct),
@@ -55,6 +71,84 @@ public class SearchService
             SearchMode.Exception => SearchByExceptionAsync(normalizedQuery, request, ct),
             _ => Task.FromResult(new SearchResult())
         };
+    }
+
+    /// <summary>
+    /// Delegates search to the dedicated IStorageQueryProvider for database-level queries.
+    /// Converts PagedResult to SearchResult for compatibility with the existing UI.
+    /// </summary>
+    private async Task<SearchResult> SearchViaDedicatedProviderAsync(
+        SearchMode mode, string query, SearchRequest request, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var result = new SearchResult();
+
+        try
+        {
+            var page = (request.From / Math.Max(request.PageSize, 1)) + 1;
+            var pageSize = Math.Min(request.PageSize, 50);
+
+            switch (mode)
+            {
+                case SearchMode.Name:
+                    var nameResult = await _queryProvider.SearchJobsByNameAsync(query, page, pageSize, ct);
+                    result = ConvertPagedResult(nameResult, SearchMatchSource.Name);
+                    break;
+
+                case SearchMode.Tag:
+                    var tagResult = await _queryProvider.GetJobsByTagAsync(query, page, pageSize, ct);
+                    result = ConvertPagedResult(tagResult, SearchMatchSource.Tag);
+                    break;
+
+                case SearchMode.Exception:
+                    var exResult = await _queryProvider.SearchFailedByExceptionAsync(query, page, pageSize, ct);
+                    result = ConvertPagedResult(exResult, SearchMatchSource.Exception);
+                    break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            result.TimedOut = true;
+        }
+        catch (Exception)
+        {
+            result.HasError = true;
+            result.ErrorMessage = "The search could not be completed due to a storage error.";
+        }
+
+        sw.Stop();
+        result.Elapsed = sw.Elapsed;
+        return result;
+    }
+
+    /// <summary>
+    /// Converts a PagedResult&lt;JobSummaryDto&gt; from IStorageQueryProvider to a SearchResult.
+    /// </summary>
+    private static SearchResult ConvertPagedResult(PagedResult<JobSummaryDto> pagedResult, SearchMatchSource matchSource)
+    {
+        var result = new SearchResult
+        {
+            TotalCount = (int)Math.Min(pagedResult.TotalCount, int.MaxValue)
+        };
+
+        foreach (var dto in pagedResult.Items)
+        {
+            result.Items.Add(new SearchResultItem
+            {
+                JobId = dto.JobId,
+                JobName = dto.JobName ?? "Unknown",
+                State = dto.State ?? "Unknown",
+                Queue = dto.Queue,
+                CreatedAt = dto.CreatedAt,
+                LastStateChange = dto.LastStateChange,
+                DurationMs = dto.DurationMs,
+                Tags = dto.Tags,
+                ExceptionExcerpt = dto.ExceptionMessage,
+                MatchSource = matchSource
+            });
+        }
+
+        return result;
     }
 
     /// <summary>

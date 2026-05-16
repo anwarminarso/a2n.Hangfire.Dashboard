@@ -1,0 +1,107 @@
+@page "/analytics/{*SubPage}"
+@inject AnalyticsService Analytics
+@inject NavigationManager Navigation
+
+@if (Analytics.IsAvailable)
+{
+    @* Provider is registered — redirect to the main analytics overview *@
+    <PageTitle>Analytics</PageTitle>
+}
+else
+{
+    <PageTitle>Analytics Not Available</PageTitle>
+
+    <div class="container-fluid py-4">
+        <div class="row justify-content-center">
+            <div class="col-12 col-lg-8">
+                <div class="card border-warning">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-exclamation-triangle-fill text-warning fs-3 me-3"></i>
+                            <h4 class="card-title mb-0">Analytics Requires a Storage Adapter</h4>
+                        </div>
+
+                        <p class="text-body-secondary">
+                            The analytics dashboard provides detailed metrics, performance insights, and failure analysis
+                            for your Hangfire jobs. To enable analytics, install one of the available storage adapter packages
+                            and configure it during service registration.
+                        </p>
+
+                        <hr />
+
+                        <h5 class="mb-3">Available Adapter Packages</h5>
+
+                        <div class="row g-3 mb-4">
+                            <div class="col-12 col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="bi bi-database me-2"></i>SQL Server
+                                        </h6>
+                                        <code class="d-block mb-2">a2n.Hangfire.Dashboard.SqlServer</code>
+                                        <small class="text-body-secondary">
+                                            For Hangfire installations using SQL Server storage.
+                                            Uses Dapper with optimized T-SQL queries.
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="bi bi-database me-2"></i>PostgreSQL
+                                        </h6>
+                                        <code class="d-block mb-2">a2n.Hangfire.Dashboard.PostgreSql</code>
+                                        <small class="text-body-secondary">
+                                            For Hangfire installations using PostgreSQL storage.
+                                            Uses Dapper with Npgsql.
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h5 class="mb-3">Configuration</h5>
+
+                        <div class="mb-3">
+                            <h6>SQL Server</h6>
+                            <pre class="bg-body-tertiary p-3 rounded"><code>builder.Services.AddHangfireDashboardUI(options =>
+{
+    options.UseSqlServerStorage(connectionString);
+});</code></pre>
+                        </div>
+
+                        <div class="mb-3">
+                            <h6>PostgreSQL</h6>
+                            <pre class="bg-body-tertiary p-3 rounded"><code>builder.Services.AddHangfireDashboardUI(options =>
+{
+    options.UsePostgreSqlStorage(connectionString);
+});</code></pre>
+                        </div>
+
+                        <div class="alert alert-info mb-0">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Without a storage adapter, the dashboard still provides full job management functionality.
+                            Only the analytics section requires a dedicated adapter for database-level metrics queries.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string SubPage { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Analytics.IsAvailable)
+        {
+            // Provider is registered — redirect to the analytics overview
+            Navigation.NavigateTo("analytics", replace: true);
+        }
+    }
+}

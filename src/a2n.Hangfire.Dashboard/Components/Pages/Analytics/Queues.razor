@@ -1,0 +1,387 @@
+@page "/analytics/queues"
+@rendermode InteractiveServer
+@inject AnalyticsService Analytics
+@using a2n.Hangfire.Dashboard.Models
+
+<PageTitle>Analytics — Queues</PageTitle>
+
+<div class="container-fluid">
+    <h4 class="mb-3">Queue Analytics</h4>
+
+    <TimeRangeSelector SelectedPreset="@_selectedPreset" OnRangeChanged="OnTimeRangeChanged" />
+
+    @if (_loading)
+    {
+        <div class="d-flex justify-content-center py-5">
+            <div class="spinner-border text-secondary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (!Analytics.IsAvailable)
+    {
+        <div class="text-center py-5">
+            <i class="bi bi-graph-up display-1 text-muted opacity-25"></i>
+            <h5 class="mt-3">Analytics requires a storage adapter</h5>
+            <p class="text-muted">Install a storage adapter package to enable analytics.</p>
+        </div>
+    }
+    else
+    {
+        @* Queue Throughput Multi-Line Chart *@
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <AnalyticsChart Title="Queue Throughput"
+                                ChartType="line"
+                                ChartData="@_queueThroughputChartData"
+                                ChartOptions="@_queueThroughputChartOptions"
+                                IsEmpty="@(_queueThroughputData == null || _queueThroughputData.Count == 0)"
+                                EmptyMessage="No queue activity was recorded in the selected period"
+                                Height="350px" />
+            </div>
+        </div>
+
+        @* Current Queue Status Table *@
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <h6 class="card-title mb-0">Current Queue Status</h6>
+                            @if (_queueDepthSnapshot != null)
+                            {
+                                <SnapshotLabel Timestamp="@_queueDepthSnapshot.CapturedAt" />
+                            }
+                        </div>
+
+                        @if (_queueStatusRows == null || _queueStatusRows.Count == 0)
+                        {
+                            <EmptyState Message="No queue data available" />
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Queue Name</th>
+                                            <th class="text-end">Enqueued</th>
+                                            <th class="text-end">Fetched</th>
+                                            <th class="text-end">Avg Wait</th>
+                                            <th style="min-width: 200px;">Throughput/hr</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in _queueStatusRows)
+                                        {
+                                            <tr>
+                                                <td><code>@row.QueueName</code></td>
+                                                <td class="text-end">@row.EnqueuedCount.ToString("N0")</td>
+                                                <td class="text-end">@row.FetchedCount.ToString("N0")</td>
+                                                <td class="text-end">@FormatDuration(row.AvgWaitMs)</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="progress flex-grow-1" style="height: 8px;" role="progressbar"
+                                                             aria-valuenow="@row.ThroughputPerHour" aria-valuemin="0" aria-valuemax="@_maxThroughput">
+                                                            <div class="progress-bar bg-primary"
+                                                                 style="width: @GetThroughputBarWidth(row.ThroughputPerHour)%"></div>
+                                                        </div>
+                                                        <small class="text-muted" style="min-width: 50px; text-align: right;">@row.ThroughputPerHour.ToString("N0")</small>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Server Utilization Table *@
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <h6 class="card-title mb-0">Server Utilization</h6>
+                            @if (_serverUtilizationSnapshot != null)
+                            {
+                                <SnapshotLabel Timestamp="@_serverUtilizationSnapshot.CapturedAt" />
+                            }
+                        </div>
+
+                        @if (_serverUtilizationSnapshot?.Data == null || _serverUtilizationSnapshot.Data.Count == 0)
+                        {
+                            <EmptyState Message="No server utilization data available" />
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Server Name</th>
+                                            <th class="text-end">Total Workers</th>
+                                            <th class="text-end">Busy Workers</th>
+                                            <th style="min-width: 200px;">Utilization %</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var server in _serverUtilizationSnapshot.Data)
+                                        {
+                                            <tr>
+                                                <td><code>@server.ServerName</code></td>
+                                                <td class="text-end">@server.TotalWorkers</td>
+                                                <td class="text-end">@server.BusyWorkers</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="progress flex-grow-1" style="height: 8px;" role="progressbar"
+                                                             aria-valuenow="@((int)server.UtilizationPercent)" aria-valuemin="0" aria-valuemax="100">
+                                                            <div class="progress-bar @GetUtilizationBarClass(server.UtilizationPercent)"
+                                                                 style="width: @server.UtilizationPercent.ToString("F0")%"></div>
+                                                        </div>
+                                                        <small class="text-muted" style="min-width: 45px; text-align: right;">@server.UtilizationPercent.ToString("F1")%</small>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private TimeRangePreset _selectedPreset = TimeRangePreset.Last24h;
+    private DateTimeOffset _from;
+    private DateTimeOffset _to;
+    private bool _loading = true;
+
+    // Queue throughput chart data
+    private IReadOnlyList<QueueThroughputDataPoint> _queueThroughputData;
+    private object _queueThroughputChartData;
+    private object _queueThroughputChartOptions;
+
+    // Queue status table data
+    private SnapshotResult<IReadOnlyList<QueueDepthDto>> _queueDepthSnapshot;
+    private List<QueueStatusRow> _queueStatusRows;
+    private double _maxThroughput;
+
+    // Server utilization data
+    private SnapshotResult<IReadOnlyList<ServerUtilizationDto>> _serverUtilizationSnapshot;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var selection = TimeRangeSelection.FromPreset(TimeRangePreset.Last24h);
+        _from = selection.From;
+        _to = selection.To;
+        await LoadDataAsync();
+    }
+
+    private async Task OnTimeRangeChanged(TimeRangeSelection selection)
+    {
+        _selectedPreset = selection.Preset;
+        _from = selection.From;
+        _to = selection.To;
+        _loading = true;
+        StateHasChanged();
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            var interval = AnalyticsService.SelectInterval(_from, _to);
+
+            // Load all data in parallel
+            var throughputTask = Analytics.GetQueueThroughputAsync(_from, _to, interval);
+            var queueDepthTask = Analytics.GetQueueDepthSnapshotAsync();
+            var serverUtilTask = Analytics.GetServerUtilizationSnapshotAsync();
+            var latencyTask = Analytics.GetQueueLatencyStatsAsync(_from, _to);
+
+            await Task.WhenAll(throughputTask, queueDepthTask, serverUtilTask, latencyTask);
+
+            _queueThroughputData = await throughputTask;
+            _queueDepthSnapshot = await queueDepthTask;
+            _serverUtilizationSnapshot = await serverUtilTask;
+
+            var latencyStats = await latencyTask;
+
+            // Build queue status rows combining depth + throughput + latency
+            BuildQueueStatusRows(latencyStats);
+
+            // Build chart data
+            BuildQueueThroughputChart();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void BuildQueueStatusRows(IReadOnlyList<QueueLatencyStatsDto> latencyStats)
+    {
+        _queueStatusRows = new List<QueueStatusRow>();
+
+        if (_queueDepthSnapshot?.Data == null || _queueDepthSnapshot.Data.Count == 0)
+            return;
+
+        // Calculate throughput per hour from the throughput data
+        var throughputByQueue = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        if (_queueThroughputData != null && _queueThroughputData.Count > 0)
+        {
+            foreach (var dp in _queueThroughputData)
+            {
+                if (!throughputByQueue.ContainsKey(dp.QueueName))
+                    throughputByQueue[dp.QueueName] = 0;
+                throughputByQueue[dp.QueueName] += dp.SucceededCount;
+            }
+        }
+
+        var totalHours = Math.Max(1, (_to - _from).TotalHours);
+
+        // Build latency lookup
+        var latencyByQueue = latencyStats?.ToDictionary(l => l.QueueName, l => l.AverageMs, StringComparer.OrdinalIgnoreCase)
+                             ?? new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var queue in _queueDepthSnapshot.Data)
+        {
+            var totalThroughput = throughputByQueue.GetValueOrDefault(queue.QueueName, 0);
+            var throughputPerHour = (double)totalThroughput / totalHours;
+            var avgWaitMs = latencyByQueue.GetValueOrDefault(queue.QueueName, 0);
+
+            _queueStatusRows.Add(new QueueStatusRow
+            {
+                QueueName = queue.QueueName,
+                EnqueuedCount = queue.EnqueuedCount,
+                FetchedCount = queue.FetchedCount,
+                AvgWaitMs = avgWaitMs,
+                ThroughputPerHour = throughputPerHour
+            });
+        }
+
+        // Sort by throughput descending
+        _queueStatusRows.Sort((a, b) => b.ThroughputPerHour.CompareTo(a.ThroughputPerHour));
+
+        // Calculate max throughput for bar scaling
+        _maxThroughput = _queueStatusRows.Count > 0
+            ? _queueStatusRows.Max(r => r.ThroughputPerHour)
+            : 1;
+    }
+
+    private void BuildQueueThroughputChart()
+    {
+        if (_queueThroughputData == null || _queueThroughputData.Count == 0)
+        {
+            _queueThroughputChartData = null;
+            _queueThroughputChartOptions = null;
+            return;
+        }
+
+        // Group by queue, take top 10 by total throughput
+        var groupedByQueue = _queueThroughputData
+            .GroupBy(d => d.QueueName)
+            .Select(g => new { QueueName = g.Key, Points = g.OrderBy(p => p.Timestamp).ToList(), Total = g.Sum(p => p.SucceededCount) })
+            .OrderByDescending(g => g.Total)
+            .Take(10)
+            .ToList();
+
+        // Get all unique timestamps sorted
+        var allTimestamps = _queueThroughputData
+            .Select(d => d.Timestamp)
+            .Distinct()
+            .OrderBy(t => t)
+            .ToList();
+
+        var labels = allTimestamps.Select(t => t.LocalDateTime.ToString("MM/dd HH:mm")).ToArray();
+
+        // Color palette for up to 10 lines
+        var colors = new[]
+        {
+            "#0d6efd", "#198754", "#dc3545", "#ffc107", "#0dcaf0",
+            "#6f42c1", "#fd7e14", "#20c997", "#d63384", "#6c757d"
+        };
+
+        var datasets = groupedByQueue.Select((g, idx) =>
+        {
+            // Build data array aligned to all timestamps
+            var pointLookup = g.Points.ToDictionary(p => p.Timestamp, p => p.SucceededCount);
+            var data = allTimestamps.Select(t => pointLookup.GetValueOrDefault(t, 0)).ToArray();
+
+            return new
+            {
+                label = g.QueueName,
+                data = data,
+                borderColor = colors[idx % colors.Length],
+                backgroundColor = colors[idx % colors.Length] + "20",
+                borderWidth = 2,
+                tension = 0.3,
+                fill = false,
+                pointRadius = 1
+            };
+        }).ToArray();
+
+        _queueThroughputChartData = new
+        {
+            labels = labels,
+            datasets = datasets
+        };
+
+        _queueThroughputChartOptions = new
+        {
+            responsive = true,
+            maintainAspectRatio = false,
+            interaction = new { mode = "index", intersect = false },
+            plugins = new
+            {
+                legend = new { position = "top" },
+                tooltip = new { mode = "index", intersect = false }
+            },
+            scales = new
+            {
+                x = new { display = true, title = new { display = true, text = "Time" } },
+                y = new { display = true, title = new { display = true, text = "Succeeded Jobs" }, beginAtZero = true }
+            }
+        };
+    }
+
+    private double GetThroughputBarWidth(double throughput)
+    {
+        if (_maxThroughput <= 0) return 0;
+        return Math.Min(100, (throughput / _maxThroughput) * 100);
+    }
+
+    private static string GetUtilizationBarClass(double percent) => percent switch
+    {
+        >= 90 => "bg-danger",
+        >= 70 => "bg-warning",
+        _ => "bg-success"
+    };
+
+    private static string FormatDuration(double ms) => ms switch
+    {
+        < 1 => "< 1 ms",
+        < 1000 => $"{ms:F0} ms",
+        < 60000 => $"{ms / 1000:F1} s",
+        _ => $"{ms / 60000:F1} min"
+    };
+
+    private class QueueStatusRow
+    {
+        public string QueueName { get; set; }
+        public long EnqueuedCount { get; set; }
+        public long FetchedCount { get; set; }
+        public double AvgWaitMs { get; set; }
+        public double ThroughputPerHour { get; set; }
+    }
+}

@@ -13,10 +13,14 @@
 
   <ItemGroup>
     <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+    <PackageReference Include="Hangfire.SqlServer" Version="1.8.*" />
+    <PackageReference Include="Hangfire.PostgreSql" Version="1.20.*" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
+    <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard.SqlServer\a2n.Hangfire.Dashboard.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard.PostgreSql\a2n.Hangfire.Dashboard.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\a2n.Hangfire.Console\a2n.Hangfire.Console.csproj" />
     <ProjectReference Include="..\..\src\a2n.Hangfire.Tags\a2n.Hangfire.Tags.csproj" />
   </ItemGroup>

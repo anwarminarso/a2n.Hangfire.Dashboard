@@ -38,6 +38,8 @@ This project replaces all of that with a single package:
 | Job tagging & search | ❌ (plugin) | ✅ Built-in |
 | Global search & advanced filters | ❌ | ✅ **Search by ID, name, queue, tag, exception** |
 | Filter presets (save & reuse) | ❌ | ✅ Built-in |
+| Analytics dashboard | ❌ (Pro only) | ✅ **5 pages: Overview, Performance, Failures, Queues, Recurring** |
+| Storage-optimized queries | ❌ | ✅ **SQL Server & PostgreSQL adapters** |
 | Dark mode | Auto only (system theme) | ✅ Auto / Light / Dark toggle |
 | Mobile responsive | Partial | ✅ Full responsive |
 | Modern UI framework | jQuery + Bootstrap 3 | Blazor + Bootstrap 5 |
@@ -107,14 +109,22 @@ using Hangfire.Tags;     // Built-in — same namespace, same API
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHangfire(config => config
-    .UseYourStorage()    // SQL Server, Redis, etc.
+    .UseYourStorage()    // SQL Server, PostgreSQL, etc.
     .UseConsole()        // Enable console output
     .UseTags());         // Enable job tagging
 
 builder.Services.AddHangfireServer();
 
 // Add the dashboard UI services (Blazor, SignalR, internal services)
+// Without storage adapter: basic search works, analytics hidden
 builder.Services.AddHangfireDashboardUI();
+
+// OR: With storage adapter for optimized queries + full analytics
+// builder.Services.AddHangfireDashboardUI(options =>
+// {
+//     options.UseSqlServerStorage(connectionString);       // SQL Server
+//     // options.UsePostgreSqlStorage(connectionString);   // PostgreSQL
+// });
 
 var app = builder.Build();
 
@@ -199,9 +209,11 @@ This dashboard reads the same storage format as the original plugins. Your histo
 
 ```
 src/
-├── a2n.Hangfire.Dashboard/     # Main dashboard (Blazor Server + SignalR)
-├── a2n.Hangfire.Console/       # Console integration (drop-in replacement)
-└── a2n.Hangfire.Tags/          # Tags integration (drop-in replacement)
+├── a2n.Hangfire.Dashboard/           # Main dashboard (Blazor Server + SignalR + Analytics)
+├── a2n.Hangfire.Dashboard.SqlServer/  # SQL Server storage adapter (Dapper + T-SQL)
+├── a2n.Hangfire.Dashboard.PostgreSql/ # PostgreSQL storage adapter (Dapper + Npgsql)
+├── a2n.Hangfire.Console/             # Console integration (drop-in replacement)
+└── a2n.Hangfire.Tags/                # Tags integration (drop-in replacement)
 
 tests/
 ├── a2n.Hangfire.Dashboard.Tests/
@@ -209,7 +221,8 @@ tests/
 └── a2n.Hangfire.Tags.Tests/
 
 samples/
-└── SampleApp/                  # Working demo with all features
+├── SampleApp/                        # Demo with all features (InMemory/SqlServer/PostgreSql)
+└── SampleAppOrig/                    # Original Hangfire dashboard for comparison
 ```
 
 ## Running the Sample
@@ -233,11 +246,17 @@ Global search across all job states, advanced filters (date range, state, server
 ### ✅ v1.2 — Razor Class Library
 Converted to NuGet-distributable Razor Class Library with custom middleware pipeline. True drop-in replacement via package reference.
 
-### 🔜 v1.3 — Performance Insights
-Top N slowest jobs, queue throughput, server utilization, job duration trends.
+### ✅ v1.3–v1.6 — Storage Adapters & Analytics
+- Storage abstraction layer (`IStorageQueryProvider`, `IStorageMetricsProvider`)
+- SQL Server adapter with optimized T-SQL queries (Dapper)
+- PostgreSQL adapter with optimized queries (Dapper + Npgsql)
+- GenericQueryProvider fallback for InMemory/Redis/other storages
+- Full analytics dashboard: Overview, Performance, Failures, Queues, Recurring Health
+- Realtime analytics via SignalR (auto-update when viewing last 1h)
+- Graceful degradation (analytics hidden without storage adapter)
 
-### 📋 v2.0 — Differentiation
-Performance insights, enhanced job details.
+### ✅ v2.0 — Phase 2 Complete
+All differentiation features implemented. Dashboard now offers capabilities beyond the built-in + Pro dashboard.
 
 ### 🏢 v3.0 — Extensibility & Integration
 Notifications & alerts, REST API, Prometheus metrics, theming & customization.

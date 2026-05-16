@@ -1,0 +1,408 @@
+@page "/analytics/performance"
+@using a2n.Hangfire.Dashboard.Models
+@inject AnalyticsService Analytics
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>Performance — Analytics</PageTitle>
+
+<h4 class="mb-3">
+    <i class="bi bi-speedometer2 me-2"></i>Performance
+</h4>
+
+<TimeRangeSelector SelectedPreset="@_selectedPreset" OnRangeChanged="OnTimeRangeChanged" />
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else
+{
+    @* Duration Trend Chart (p50, p95, p99) *@
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <AnalyticsChart Title="Duration Trend (ms)"
+                           ChartType="line"
+                           ChartData="@_durationTrendData"
+                           ChartOptions="@_durationTrendOptions"
+                           IsEmpty="@(_durationTrendLabels.Length == 0)"
+                           EmptyMessage="No duration data available for the selected period"
+                           Height="300px" />
+        </div>
+    </div>
+
+    @* Duration by Job Type Table + Queue Latency Chart *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title mb-3">Duration by Job Type (Top 20 by p95)</h6>
+                    @if (_durationStats.Count == 0)
+                    {
+                        <EmptyState Message="No duration statistics available for the selected period" />
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Job Type</th>
+                                        <th class="text-end">Avg (ms)</th>
+                                        <th class="text-end">p50</th>
+                                        <th class="text-end">p95</th>
+                                        <th class="text-end">p99</th>
+                                        <th class="text-end">Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var stat in _durationStats.OrderByDescending(s => s.P95Ms).Take(20))
+                                    {
+                                        <tr>
+                                            <td class="text-truncate" style="max-width: 250px;" title="@stat.JobType">
+                                                @GetShortTypeName(stat.JobType)
+                                            </td>
+                                            <td class="text-end">@stat.AverageMs.ToString("N0")</td>
+                                            <td class="text-end">@stat.P50Ms.ToString("N0")</td>
+                                            <td class="text-end fw-semibold">@stat.P95Ms.ToString("N0")</td>
+                                            <td class="text-end">@stat.P99Ms.ToString("N0")</td>
+                                            <td class="text-end">@stat.Count.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <AnalyticsChart Title="Queue Latency (ms)"
+                           ChartType="bar"
+                           ChartData="@_queueLatencyData"
+                           ChartOptions="@_queueLatencyOptions"
+                           IsEmpty="@(_queueLatencyStats.Count == 0)"
+                           EmptyMessage="No queue latency data available for the selected period"
+                           Height="300px" />
+        </div>
+    </div>
+
+    @* Slowest Jobs Table + Average State Timings *@
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-xl-8">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title mb-3">Slowest Jobs (Top 10)</h6>
+                    @if (_slowestJobs.Count == 0)
+                    {
+                        <EmptyState Message="No completed jobs found in the selected period" />
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Job ID</th>
+                                        <th>Job Type</th>
+                                        <th class="text-end">Duration (ms)</th>
+                                        <th>Completed</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var job in _slowestJobs)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <a href="jobs/details/@job.JobId" class="text-decoration-none">
+                                                    @job.JobId
+                                                </a>
+                                            </td>
+                                            <td class="text-truncate" style="max-width: 200px;" title="@job.JobName">
+                                                @GetShortTypeName(job.JobName)
+                                            </td>
+                                            <td class="text-end fw-semibold">@job.DurationMs.ToString("N0")</td>
+                                            <td>
+                                                @if (job.CompletedAt.HasValue)
+                                                {
+                                                    <RelativeTime UtcTime="@job.CompletedAt.Value" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title mb-3">Average State Timings</h6>
+                    @if (_stateTimings is null || (_stateTimings.AvgScheduledMs == 0 && _stateTimings.AvgEnqueuedMs == 0 && _stateTimings.AvgProcessingMs == 0))
+                    {
+                        <EmptyState Message="No state timing data available for the selected period" />
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column gap-3">
+                            <div class="d-flex align-items-center justify-content-between p-3 rounded bg-body-secondary">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-clock text-info"></i>
+                                    <span>Scheduled</span>
+                                </div>
+                                <span class="fw-semibold">@FormatDuration(_stateTimings.AvgScheduledMs)</span>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between p-3 rounded bg-body-secondary">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-hourglass-split text-warning"></i>
+                                    <span>Enqueued</span>
+                                </div>
+                                <span class="fw-semibold">@FormatDuration(_stateTimings.AvgEnqueuedMs)</span>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between p-3 rounded bg-body-secondary">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-gear text-success"></i>
+                                    <span>Processing</span>
+                                </div>
+                                <span class="fw-semibold">@FormatDuration(_stateTimings.AvgProcessingMs)</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private TimeRangePreset _selectedPreset = TimeRangePreset.Last24h;
+    private DateTimeOffset _from;
+    private DateTimeOffset _to;
+    private bool _loading = true;
+
+    // Duration trend chart
+    private string[] _durationTrendLabels = Array.Empty<string>();
+    private object _durationTrendData;
+    private object _durationTrendOptions;
+    private readonly string _durationTrendCanvasId = $"perf-duration-trend-{Guid.NewGuid():N}";
+
+    // Duration stats table
+    private IReadOnlyList<JobDurationStatsDto> _durationStats = Array.Empty<JobDurationStatsDto>();
+
+    // Queue latency chart
+    private IReadOnlyList<QueueLatencyStatsDto> _queueLatencyStats = Array.Empty<QueueLatencyStatsDto>();
+    private object _queueLatencyData;
+    private object _queueLatencyOptions;
+
+    // Slowest jobs table
+    private IReadOnlyList<SlowestJobDto> _slowestJobs = Array.Empty<SlowestJobDto>();
+
+    // Average state timings
+    private AverageStateTimingsDto _stateTimings;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var selection = TimeRangeSelection.FromPreset(TimeRangePreset.Last24h);
+        _from = selection.From;
+        _to = selection.To;
+
+        await LoadDataAsync();
+    }
+
+    private async Task OnTimeRangeChanged(TimeRangeSelection selection)
+    {
+        _selectedPreset = selection.Preset;
+        _from = selection.From;
+        _to = selection.To;
+        _loading = true;
+        StateHasChanged();
+
+        await LoadDataAsync();
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+
+        var interval = AnalyticsService.SelectInterval(_from, _to);
+
+        // Load all data in parallel
+        var durationStatsTask = Analytics.GetJobDurationStatsAsync(_from, _to);
+        var queueLatencyTask = Analytics.GetQueueLatencyStatsAsync(_from, _to);
+        var slowestJobsTask = Analytics.GetSlowestJobsAsync(10, _from, _to);
+        var stateTimingsTask = Analytics.GetAverageStateTimingsAsync(_from, _to);
+        var stateTransitionsTask = Analytics.GetStateTransitionsAsync(_from, _to, interval);
+
+        await Task.WhenAll(durationStatsTask, queueLatencyTask, slowestJobsTask, stateTimingsTask, stateTransitionsTask);
+
+        _durationStats = await durationStatsTask;
+        _queueLatencyStats = await queueLatencyTask;
+        _slowestJobs = await slowestJobsTask;
+        _stateTimings = await stateTimingsTask;
+
+        var stateTransitions = await stateTransitionsTask;
+
+        // Build duration trend chart data from state transitions (processing duration over time)
+        BuildDurationTrendChart(stateTransitions);
+
+        // Build queue latency chart data
+        BuildQueueLatencyChart();
+
+        _loading = false;
+    }
+
+    private void BuildDurationTrendChart(IReadOnlyList<StateTransitionDataPoint> transitions)
+    {
+        if (_durationStats.Count == 0)
+        {
+            _durationTrendLabels = Array.Empty<string>();
+            _durationTrendData = null;
+            return;
+        }
+
+        // Use duration stats to build a summary view
+        // For the trend chart, we show the overall p50/p95/p99 per job type as a line chart
+        // Since we have aggregate stats, we'll display them as labels on x-axis
+        var topTypes = _durationStats
+            .OrderByDescending(s => s.P95Ms)
+            .Take(10)
+            .ToList();
+
+        _durationTrendLabels = topTypes.Select(t => GetShortTypeName(t.JobType)).ToArray();
+
+        _durationTrendData = new
+        {
+            labels = _durationTrendLabels,
+            datasets = new object[]
+            {
+                new { label = "P50", data = topTypes.Select(t => t.P50Ms).ToArray() },
+                new { label = "P95", data = topTypes.Select(t => t.P95Ms).ToArray() },
+                new { label = "P99", data = topTypes.Select(t => t.P99Ms).ToArray() }
+            }
+        };
+
+        _durationTrendOptions = new
+        {
+            plugins = new
+            {
+                legend = new { display = true, position = "top" },
+                tooltip = new { mode = "index", intersect = false }
+            },
+            scales = new
+            {
+                y = new
+                {
+                    title = new { display = true, text = "ms" },
+                    beginAtZero = true
+                }
+            },
+            interaction = new { mode = "index", intersect = false }
+        };
+    }
+
+    private void BuildQueueLatencyChart()
+    {
+        if (_queueLatencyStats.Count == 0)
+        {
+            _queueLatencyData = null;
+            return;
+        }
+
+        var labels = _queueLatencyStats.Select(q => q.QueueName).ToArray();
+
+        _queueLatencyData = new
+        {
+            labels = labels,
+            datasets = new object[]
+            {
+                new
+                {
+                    label = "Average",
+                    data = _queueLatencyStats.Select(q => q.AverageMs).ToArray(),
+                    backgroundColor = "rgba(13, 110, 253, 0.7)",
+                    borderColor = "rgba(13, 110, 253, 1)",
+                    borderWidth = 1,
+                    borderRadius = 3
+                },
+                new
+                {
+                    label = "P95",
+                    data = _queueLatencyStats.Select(q => q.P95Ms).ToArray(),
+                    backgroundColor = "rgba(255, 193, 7, 0.7)",
+                    borderColor = "rgba(255, 193, 7, 1)",
+                    borderWidth = 1,
+                    borderRadius = 3
+                }
+            }
+        };
+
+        _queueLatencyOptions = new
+        {
+            plugins = new
+            {
+                legend = new { display = true, position = "top" },
+                tooltip = new { mode = "index", intersect = false }
+            },
+            scales = new
+            {
+                y = new
+                {
+                    title = new { display = true, text = "ms" },
+                    beginAtZero = true
+                }
+            }
+        };
+    }
+
+    private static string GetShortTypeName(string fullTypeName)
+    {
+        if (string.IsNullOrEmpty(fullTypeName))
+            return "Unknown";
+
+        // Try to extract just the class.method from fully qualified name
+        // Format: "Namespace.Class.Method" or JSON invocation data
+        var name = fullTypeName;
+
+        // If it contains comma (assembly info), take only the type part
+        var commaIdx = name.IndexOf(',');
+        if (commaIdx > 0)
+            name = name[..commaIdx];
+
+        // Get last two segments (Class.Method or just Class)
+        var parts = name.Split('.');
+        if (parts.Length >= 2)
+            return $"{parts[^2]}.{parts[^1]}";
+
+        return parts.Length > 0 ? parts[^1] : name;
+    }
+
+    private static string FormatDuration(double ms)
+    {
+        if (ms < 1)
+            return "< 1 ms";
+        if (ms < 1000)
+            return $"{ms:N0} ms";
+        if (ms < 60000)
+            return $"{ms / 1000:N1} s";
+
+        return $"{ms / 60000:N1} min";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Chart cleanup is handled by AnalyticsChart component's own DisposeAsync
+    }
+}

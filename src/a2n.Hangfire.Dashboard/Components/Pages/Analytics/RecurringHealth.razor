@@ -1,0 +1,248 @@
+@page "/analytics/recurring"
+@rendermode InteractiveServer
+@inject AnalyticsService Analytics
+@inject IJSRuntime JS
+@using a2n.Hangfire.Dashboard.Models
+
+<PageTitle>Analytics — Recurring Health</PageTitle>
+
+<h4 class="mb-3">Recurring Job Health</h4>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-secondary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_healthData is null || _healthData.Count == 0)
+{
+    <EmptyState Message="No recurring jobs found" />
+}
+else
+{
+    @* Stat Cards *@
+    <div class="row row-cols-2 row-cols-md-3 g-3 mb-4">
+        <div class="col">
+            <StatCard Title="Total Recurring Jobs"
+                      Value="@_totalCount.ToString("N0")" />
+        </div>
+        <div class="col">
+            <StatCard Title="Healthy"
+                      Value="@_healthyCount.ToString("N0")"
+                      TextClass="text-success" />
+        </div>
+        <div class="col">
+            <StatCard Title="Problems"
+                      Value="@_problemsCount.ToString("N0")"
+                      TextClass="@(_problemsCount > 0 ? "text-danger" : "")" />
+        </div>
+    </div>
+
+    @* Health Status Table *@
+    <div class="card mb-4">
+        <div class="card-body">
+            <h6 class="card-title mb-3">Health Status</h6>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Job ID</th>
+                            <th>Status</th>
+                            <th>Last Run</th>
+                            <th>Avg Duration</th>
+                            <th>Last 5 Results</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var job in _healthData)
+                        {
+                            <tr>
+                                <td class="font-monospace small">@job.JobId</td>
+                                <td>
+                                    <span class="d-inline-block rounded-circle me-1 @GetStatusDotClass(job.Status)"
+                                          style="width:10px;height:10px;"
+                                          title="@job.Status.ToString()"></span>
+                                    <span class="small">@job.Status.ToString()</span>
+                                </td>
+                                <td class="small">
+                                    @if (job.LastRunTime.HasValue)
+                                    {
+                                        @FormatRelativeTime(job.LastRunTime.Value)
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Never</span>
+                                    }
+                                </td>
+                                <td class="small">
+                                    @if (job.AverageDurationMs > 0)
+                                    {
+                                        @FormatDuration(job.AverageDurationMs)
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (job.LastExecutionResults is not null && job.LastExecutionResults.Count > 0)
+                                    {
+                                        @foreach (var result in job.LastExecutionResults.Take(5))
+                                        {
+                                            if (result)
+                                            {
+                                                <span class="text-success me-1" title="Succeeded">✓</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-danger me-1" title="Failed">✗</span>
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* Execution History Sparklines *@
+    <div class="card">
+        <div class="card-body">
+            <h6 class="card-title mb-3">Execution History</h6>
+            @if (_executionHistories.Count == 0)
+            {
+                <EmptyState Message="No execution history available" />
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width:200px;">Job ID</th>
+                                <th>Last 20 Executions (duration trend + result)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in _executionHistories)
+                            {
+                                <tr>
+                                    <td class="font-monospace small align-middle">@entry.Key</td>
+                                    <td>
+                                        <div class="d-flex align-items-end gap-1" style="height:32px;">
+                                            @if (entry.Value.Count > 0)
+                                            {
+                                                var maxDuration = entry.Value.Max(e => e.DurationMs);
+                                                var scale = maxDuration > 0 ? 28.0 / maxDuration : 0;
+
+                                                @foreach (var exec in entry.Value)
+                                                {
+                                                    var barHeight = Math.Max(4, (int)(exec.DurationMs * scale));
+                                                    var barClass = exec.Succeeded ? "bg-success" : "bg-danger";
+                                                    var tooltip = $"{(exec.Succeeded ? "✓" : "✗")} {FormatDuration(exec.DurationMs)} — {exec.ExecutedAt.ToLocalTime():g}";
+
+                                                    <div class="@barClass rounded-top"
+                                                         style="width:8px;height:@(barHeight)px;min-height:4px;"
+                                                         title="@tooltip"></div>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small">No executions</span>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private IReadOnlyList<RecurringJobHealthDto> _healthData;
+    private Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>> _executionHistories = new();
+
+    private int _totalCount;
+    private int _healthyCount;
+    private int _problemsCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            _healthData = await Analytics.GetRecurringJobHealthAsync();
+
+            if (_healthData is not null && _healthData.Count > 0)
+            {
+                _totalCount = _healthData.Count;
+                _healthyCount = _healthData.Count(j => j.Status == RecurringJobHealthStatus.Healthy);
+                _problemsCount = _healthData.Count(j => j.Status != RecurringJobHealthStatus.Healthy);
+
+                // Load execution history for each recurring job (last 20 executions)
+                var histories = new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>();
+                foreach (var job in _healthData)
+                {
+                    var executions = await Analytics.GetRecurringJobExecutionsAsync(job.JobId, 20);
+                    if (executions is not null && executions.Count > 0)
+                    {
+                        histories[job.JobId] = executions;
+                    }
+                }
+                _executionHistories = histories;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string GetStatusDotClass(RecurringJobHealthStatus status) => status switch
+    {
+        RecurringJobHealthStatus.Healthy => "bg-success",
+        RecurringJobHealthStatus.Warning => "bg-warning",
+        RecurringJobHealthStatus.Error => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string FormatRelativeTime(DateTimeOffset time)
+    {
+        var diff = DateTimeOffset.UtcNow - time;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+
+    private static string FormatDuration(double ms) => ms switch
+    {
+        < 1 => $"{ms:F2} ms",
+        < 1000 => $"{ms:F0} ms",
+        < 60000 => $"{ms / 1000.0:F1} s",
+        _ => $"{ms / 60000.0:F1} min"
+    };
+}

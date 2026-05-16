@@ -328,6 +328,18 @@ else
     public async ValueTask DisposeAsync()
     {
         _refreshTimer?.Dispose();
+
+        // Destroy Chart.js instances to stop streaming plugin from updating removed canvases
+        if (_chartsInitialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("dashboardCharts.destroyCharts");
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+
         if (_hubConnection is not null)
         {
             try

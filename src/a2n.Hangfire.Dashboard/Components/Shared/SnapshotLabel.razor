@@ -1,0 +1,16 @@
+@*
+    Renders a "Snapshot" badge with the retrieval timestamp in the user's local time format.
+    Used to indicate that server utilization and queue depth data are point-in-time values.
+*@
+
+<span class="badge bg-secondary-subtle text-secondary-emphasis me-2">
+    <i class="bi bi-camera me-1"></i>Snapshot
+</span>
+<small class="text-muted">@Timestamp.ToLocalTime().ToString("g")</small>
+
+@code {
+    /// <summary>
+    /// The timestamp when the snapshot data was captured.
+    /// </summary>
+    [Parameter, EditorRequired] public DateTimeOffset Timestamp { get; set; }
+}

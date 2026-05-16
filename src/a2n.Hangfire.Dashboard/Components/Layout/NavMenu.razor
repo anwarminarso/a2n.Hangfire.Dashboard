@@ -1,5 +1,8 @@
+@using a2n.Hangfire.Dashboard.Interfaces
+@using Microsoft.Extensions.DependencyInjection
 @inject HangfireMonitorService Monitor
 @inject TagsDataReader TagsReader
+@inject IServiceProvider ServiceProvider
 @implements IDisposable
 
 <nav class="hf-nav">
@@ -102,15 +105,46 @@
             <span>Search</span>
         </NavLink>
     </div>
+
+    <!-- Analytics group (only shown when IStorageMetricsProvider is registered) -->
+    @if (_analyticsAvailable)
+    {
+        <div class="hf-nav-section">
+            <div class="hf-nav-section-header">Analytics</div>
+            <NavLink class="hf-nav-item" href="analytics" Match="NavLinkMatch.All">
+                <i class="bi bi-graph-up hf-nav-icon"></i>
+                <span>Overview</span>
+            </NavLink>
+            <NavLink class="hf-nav-item" href="analytics/performance">
+                <i class="bi bi-speedometer2 hf-nav-icon"></i>
+                <span>Performance</span>
+            </NavLink>
+            <NavLink class="hf-nav-item" href="analytics/failures">
+                <i class="bi bi-x-circle hf-nav-icon"></i>
+                <span>Failures</span>
+            </NavLink>
+            <NavLink class="hf-nav-item" href="analytics/queues">
+                <i class="bi bi-inbox hf-nav-icon"></i>
+                <span>Queues</span>
+            </NavLink>
+            <NavLink class="hf-nav-item" href="analytics/recurring">
+                <i class="bi bi-arrow-repeat hf-nav-icon"></i>
+                <span>Recurring</span>
+            </NavLink>
+        </div>
+    }
 </nav>
 
 @code {
     private StatisticsDto _stats;
     private long _tagsCount;
+    private bool _analyticsAvailable;
     private Timer _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
+        _analyticsAvailable = ServiceProvider.GetService<IStorageMetricsProvider>() != null;
+
         await LoadStats();
 
         _refreshTimer = new Timer(async _ =>

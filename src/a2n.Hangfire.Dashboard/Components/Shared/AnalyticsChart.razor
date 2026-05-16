@@ -1,0 +1,131 @@
+@*
+    Generic Chart.js wrapper component for analytics pages.
+    Renders a canvas element with a unique ID and manages Chart.js lifecycle via JS interop.
+    Shows EmptyState when no data is available, and SnapshotLabel for point-in-time metrics.
+*@
+
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="card h-100">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="card-title mb-0">@Title</h6>
+            @if (SnapshotTimestamp.HasValue)
+            {
+                <SnapshotLabel Timestamp="@SnapshotTimestamp.Value" />
+            }
+        </div>
+
+        @if (IsEmpty)
+        {
+            <div style="height: @Height;">
+                <EmptyState Message="@EmptyMessage" />
+            </div>
+        }
+        else
+        {
+            <div style="position: relative; height: @Height;">
+                <canvas id="@_canvasId"></canvas>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string _canvasId;
+    private bool _chartRendered;
+
+    /// <summary>
+    /// Title displayed above the chart as a card-title heading.
+    /// </summary>
+    [Parameter, EditorRequired] public string Title { get; set; }
+
+    /// <summary>
+    /// Chart.js chart type (e.g., "line", "bar", "doughnut", "polarArea").
+    /// </summary>
+    [Parameter, EditorRequired] public string ChartType { get; set; }
+
+    /// <summary>
+    /// Optional fixed canvas ID. If not set, a random GUID-based ID is generated.
+    /// Use a fixed ID when you need to target this chart for realtime updates via JS interop.
+    /// </summary>
+    [Parameter] public string ChartId { get; set; }
+
+    /// <summary>
+    /// Chart.js data object passed as-is to the JS interop render call.
+    /// </summary>
+    [Parameter] public object ChartData { get; set; }
+
+    /// <summary>
+    /// Chart.js options object passed as-is to the JS interop render call.
+    /// </summary>
+    [Parameter] public object ChartOptions { get; set; }
+
+    /// <summary>
+    /// When true, renders EmptyState instead of the chart canvas.
+    /// </summary>
+    [Parameter] public bool IsEmpty { get; set; }
+
+    /// <summary>
+    /// Message displayed in the EmptyState component when IsEmpty is true.
+    /// </summary>
+    [Parameter] public string EmptyMessage { get; set; } = "No data available for the selected period";
+
+    /// <summary>
+    /// Height of the chart container (CSS value). Default: "300px".
+    /// </summary>
+    [Parameter] public string Height { get; set; } = "300px";
+
+    /// <summary>
+    /// When not null, renders a SnapshotLabel indicating point-in-time data with this timestamp.
+    /// </summary>
+    [Parameter] public DateTimeOffset? SnapshotTimestamp { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _canvasId = string.IsNullOrEmpty(ChartId)
+            ? $"analytics-chart-{Guid.NewGuid():N}"
+            : ChartId;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsEmpty && ChartData is not null)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("analyticsCharts.renderChart",
+                    _canvasId, ChartType, ChartData, ChartOptions);
+                _chartRendered = true;
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, ignore
+            }
+            catch (ObjectDisposedException)
+            {
+                // Component disposed during render, ignore
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_chartRendered)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("analyticsCharts.destroyChart", _canvasId);
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit already disconnected, ignore
+            }
+            catch (ObjectDisposedException)
+            {
+                // JS runtime disposed, ignore
+            }
+        }
+    }
+}
