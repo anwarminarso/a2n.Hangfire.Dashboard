@@ -3,6 +3,7 @@
 @inject HangfireMonitorService Monitor
 @inject TagsDataReader TagsReader
 @inject IServiceProvider ServiceProvider
+@inject DashboardUIOptions Options
 @implements IDisposable
 
 <nav class="hf-nav">
@@ -11,7 +12,7 @@
         <div class="hf-nav-brand-icon">
             <i class="bi bi-fire"></i>
         </div>
-        <span class="hf-nav-brand-text">Hangfire</span>
+        <span class="hf-nav-brand-text">@Options.DashboardTitle</span>
     </div>
 
     <!-- Dashboard (standalone, no group label) -->

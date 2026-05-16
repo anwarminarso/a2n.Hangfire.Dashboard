@@ -230,13 +230,9 @@ else if (_result is not null)
 
     @if (_result.TotalCount == 0)
     {
-        <div class="card text-center py-5">
-            <div class="card-body">
-                <i class="bi bi-inbox fs-1 text-muted"></i>
-                <h5 class="mt-2">No Results Found</h5>
-                <p class="text-muted mb-0">@GetEmptyStateMessage()</p>
-            </div>
-        </div>
+        <EmptyState Icon="search" Color="secondary"
+                    Message="No results found."
+                    Subtitle="@GetEmptyStateMessage()" />
     }
     else
     {
@@ -276,7 +272,7 @@ else if (_result is not null)
                                             <div class="d-flex flex-wrap gap-1 mt-1">
                                                 @foreach (var tag in item.Tags)
                                                 {
-                                                    <span class="badge @GetTagBadgeClass(tag)">@tag</span>
+                                                    <span class="badge rounded-pill" style="@GetTagStyle(tag)">@tag</span>
                                                 }
                                             </div>
                                         }
@@ -709,8 +705,9 @@ else if (_result is not null)
         };
     }
 
-    private string GetTagBadgeClass(string tag)
+    private string GetTagStyle(string tag)
     {
+        // Highlight the searched tag with a distinct style
         if (!string.IsNullOrEmpty(_lastSearchedQuery))
         {
             var q = _lastSearchedQuery.Trim();
@@ -718,10 +715,13 @@ else if (_result is not null)
             {
                 var searchedTag = q[4..].Trim();
                 if (string.Equals(tag, searchedTag, StringComparison.OrdinalIgnoreCase))
-                    return "bg-warning text-dark";
+                    return "background-color: hsl(45, 90%, 75%); color: hsl(45, 90%, 20%); border: 1px solid hsl(45, 80%, 60%);";
             }
         }
-        return "bg-primary";
+
+        var hash = (uint)tag.GetHashCode(StringComparison.OrdinalIgnoreCase);
+        var hue = hash % 360;
+        return $"background-color: hsl({hue}, 55%, 82%); color: hsl({hue}, 70%, 25%); border: 1px solid hsl({hue}, 45%, 72%);";
     }
 
     private string GetEmptyStateMessage()

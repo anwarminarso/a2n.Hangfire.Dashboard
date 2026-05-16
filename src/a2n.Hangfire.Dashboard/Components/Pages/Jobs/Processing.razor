@@ -13,10 +13,8 @@
     }
     else if (_jobs.Count == 0)
     {
-        <div class="card text-center py-5">
-            <span class="fs-1">⚙️</span>
-            <p class="mt-2 mb-0">No jobs are being processed right now.</p>
-        </div>
+        <EmptyState Icon="cpu" Color="secondary"
+                    Message="No jobs are being processed right now." />
     }
     else
     {

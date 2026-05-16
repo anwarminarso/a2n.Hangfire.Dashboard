@@ -78,12 +78,8 @@ else
 
     @if (_jobs.Count == 0 && _stoppedJobs.Count == 0)
     {
-        <div class="card text-center py-5">
-            <div class="card-body">
-                <i class="bi bi-arrow-repeat fs-1 text-body-secondary"></i>
-                <p class="mt-2 text-body-secondary">No recurring jobs configured.</p>
-            </div>
-        </div>
+        <EmptyState Icon="arrow-repeat" Color="secondary"
+                    Message="No recurring jobs configured." />
     }
     else if (_jobs.Count > 0)
     {

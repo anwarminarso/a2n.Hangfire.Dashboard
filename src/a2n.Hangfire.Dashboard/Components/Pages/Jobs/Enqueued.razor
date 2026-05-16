@@ -13,12 +13,8 @@
 }
 else if (_queues.Count == 0)
 {
-    <div class="card text-center py-5">
-        <div class="card-body">
-            <span class="fs-1">📥</span>
-            <p class="text-body-secondary mt-2 mb-0">No queues found.</p>
-        </div>
-    </div>
+    <EmptyState Icon="inbox" Color="secondary"
+                Message="No queues found." />
 }
 else
 {
@@ -38,12 +34,8 @@ else
     {
         @if (_jobs.Count == 0)
         {
-            <div class="card text-center py-5">
-                <div class="card-body">
-                    <span class="fs-1">📭</span>
-                    <p class="text-body-secondary mt-2 mb-0">No enqueued jobs in "@_activeQueue" queue.</p>
-                </div>
-            </div>
+            <EmptyState Icon="inbox" Color="secondary"
+                        Message="@($"No enqueued jobs in \"{_activeQueue}\" queue.")" />
         }
         else
         {

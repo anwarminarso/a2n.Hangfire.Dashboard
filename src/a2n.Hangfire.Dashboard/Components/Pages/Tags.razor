@@ -15,20 +15,17 @@ else if (string.IsNullOrEmpty(SearchTag))
     @* Tag Cloud / Search *@
     @if (_allTags.Length == 0)
     {
-        <div class="card text-center py-5">
-            <div class="card-body">
-                <span style="font-size: 2rem;">🏷️</span>
-                <p class="mt-2 mb-1">No tags found yet.</p>
-                <p class="text-body-secondary">Tags will appear here when jobs are tagged.</p>
-            </div>
-        </div>
+        <EmptyState Icon="tags" Color="secondary"
+                    Message="No tags found yet."
+                    Subtitle="Tags will appear here when jobs are tagged." />
     }
     else
     {
-        <div class="d-flex flex-wrap gap-1">
+        <div class="d-flex flex-wrap gap-2">
             @foreach (var tag in _allTags)
             {
-                <a class="badge bg-primary text-decoration-none" href="@GetTagUrl(tag)">@tag</a>
+                <a class="badge text-decoration-none px-3 py-2 fs-6 rounded-pill"
+                   style="@GetTagStyle(tag)" href="@GetTagUrl(tag)">@tag</a>
             }
         </div>
     }
@@ -37,18 +34,15 @@ else
 {
     @* Jobs filtered by tag *@
     <div class="d-flex gap-2 mb-2 align-items-center">
-        <a class="badge bg-primary text-decoration-none" href="@GetTagUrl(SearchTag!)">@SearchTag</a>
+        <a class="badge text-decoration-none px-3 py-2 fs-6 rounded-pill"
+           style="@GetTagStyle(SearchTag!)" href="@GetTagUrl(SearchTag!)">@SearchTag</a>
         <a class="btn btn-sm btn-outline-secondary" href="@GetTagsBaseUrl()">← All Tags</a>
     </div>
 
     @if (_taggedJobs is null || _taggedJobs.Count == 0)
     {
-        <div class="card text-center py-5">
-            <div class="card-body">
-                <span style="font-size: 2rem;">📭</span>
-                <p class="mt-2 mb-1">No jobs found with tag "@SearchTag".</p>
-            </div>
-        </div>
+        <EmptyState Icon="tag" Color="secondary"
+                    Message="@($"No jobs found with tag \"{SearchTag}\".")" />
     }
     else
     {
@@ -143,4 +137,22 @@ else
 
     private string GetTagUrl(string tag) => Navigation.ToAbsoluteUri($"tags/{tag}").PathAndQuery;
     private string GetTagsBaseUrl() => Navigation.ToAbsoluteUri("tags").PathAndQuery;
+
+    /// <summary>
+    /// Generates a unique pastel color style for each tag using HSL hashing.
+    /// Same tag always gets the same hue. Colors are soft and readable in both light/dark mode.
+    /// </summary>
+    private static string GetTagStyle(string tag)
+    {
+        // Generate a stable hue (0-360) from the tag name
+        var hash = (uint)tag.GetHashCode(StringComparison.OrdinalIgnoreCase);
+        var hue = hash % 360;
+
+        // Pastel palette: moderate saturation, high lightness for bg, low lightness for text
+        // Light mode: bg hsl(h, 55%, 88%), text hsl(h, 60%, 30%)
+        // We use CSS variables approach but since we can't detect theme in C#,
+        // use a middle-ground that works well in both modes:
+        // Semi-transparent background + solid text
+        return $"background-color: hsl({hue}, 55%, 82%); color: hsl({hue}, 70%, 25%); border: 1px solid hsl({hue}, 45%, 72%);";
+    }
 }

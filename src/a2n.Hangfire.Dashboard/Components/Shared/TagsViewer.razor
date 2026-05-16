@@ -4,10 +4,11 @@
 
 @if (_tags is not null && _tags.Length > 0)
 {
-    <div class="d-flex flex-wrap gap-1 mb-3">
+    <div class="d-flex flex-wrap gap-2 mb-3">
         @foreach (var tag in _tags)
         {
-            <a href="@GetTagUrl(tag)" class="badge bg-primary text-decoration-none">@tag</a>
+            <a href="@GetTagUrl(tag)" class="badge text-decoration-none rounded-pill px-3 py-2 fs-6"
+               style="@GetTagStyle(tag)">@tag</a>
         }
     </div>
 }
@@ -28,5 +29,12 @@
     private string GetTagUrl(string tag)
     {
         return Navigation.ToAbsoluteUri($"tags/{tag}").PathAndQuery;
+    }
+
+    private static string GetTagStyle(string tag)
+    {
+        var hash = (uint)tag.GetHashCode(StringComparison.OrdinalIgnoreCase);
+        var hue = hash % 360;
+        return $"background-color: hsl({hue}, 55%, 82%); color: hsl({hue}, 70%, 25%); border: 1px solid hsl({hue}, 45%, 72%);";
     }
 }

@@ -1,16 +1,39 @@
 @*
-    Renders a placeholder message within a chart or data area indicating no data is available.
-    Used when a chart receives an empty dataset from the Storage Metrics Provider.
+    Empty state component with Bootstrap Icon watermark.
+    Displays a large, low-opacity icon as visual background with a message below.
+    Used across all grid/list pages when no data is available.
 *@
 
-<div class="d-flex flex-column align-items-center justify-content-center text-muted py-5">
-    <i class="bi bi-bar-chart fs-1 mb-2"></i>
-    <p class="mb-0">@Message</p>
+<div class="card text-center py-4">
+    <div class="card-body">
+        <i class="bi bi-@Icon" style="font-size: 3rem; opacity: 0.5; color: var(--bs-@Color);"></i>
+        <p class="mt-2 mb-0 text-body-secondary">@Message</p>
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <p class="small text-body-tertiary mt-1 mb-0">@Subtitle</p>
+        }
+    </div>
 </div>
 
 @code {
     /// <summary>
-    /// The message to display when no data is available (e.g., "No data available for the selected period").
+    /// Bootstrap Icon name (without "bi-" prefix). E.g., "check-circle", "inbox".
     /// </summary>
-    [Parameter] public string Message { get; set; } = "No data available for the selected period";
+    [Parameter] public string Icon { get; set; } = "inbox";
+
+    /// <summary>
+    /// Primary message displayed below the icon.
+    /// </summary>
+    [Parameter] public string Message { get; set; } = "";
+
+    /// <summary>
+    /// Optional secondary description in smaller, muted text.
+    /// </summary>
+    [Parameter] public string Subtitle { get; set; }
+
+    /// <summary>
+    /// Bootstrap color name for the icon (e.g., "success", "secondary", "warning").
+    /// Default: "secondary".
+    /// </summary>
+    [Parameter] public string Color { get; set; } = "secondary";
 }

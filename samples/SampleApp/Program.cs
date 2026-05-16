@@ -73,7 +73,10 @@ if (!app.Environment.IsDevelopment())
 }
 
 // Use Hangfire Dashboard UI at /hangfire
-app.UseHangfireDashboardUI("/hangfire");
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions()
+{
+     DashboardTitle = "My Dashboard"
+});
 
 // Seed sample recurring jobs
 app.Lifetime.ApplicationStarted.Register(() =>

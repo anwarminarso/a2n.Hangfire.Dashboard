@@ -1,0 +1,97 @@
+@using System.Reflection
+@inject HangfireMonitorService Monitor
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<footer class="hf-footer border-top px-3 py-2 flex-shrink-0">
+    <div class="d-flex flex-wrap align-items-center gap-3 small text-muted">
+        <span>
+            <a href="https://www.hangfire.io/" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+                Hangfire @_hangfireVersion
+            </a>
+        </span>
+        @if (!string.IsNullOrEmpty(_storageInfo))
+        {
+            <span>@_storageInfo</span>
+        }
+        <span>Application Time: @_applicationTime</span>
+        <span>Generated: @_generatedTime</span>
+    </div>
+</footer>
+
+@code {
+    private string _hangfireVersion = "";
+    private string _storageInfo = "";
+    private string _applicationTime = "";
+    private string _generatedTime = "";
+    private System.Diagnostics.Stopwatch _sw = new();
+
+    protected override void OnInitialized()
+    {
+        _sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // Get Hangfire.Core version (static, only once)
+        var hangfireAssembly = typeof(global::Hangfire.JobStorage).Assembly;
+        var version = hangfireAssembly.GetName().Version;
+        if (version != null)
+        {
+            _hangfireVersion = $"{version.Major}.{version.Minor}.{version.Build}";
+        }
+
+        // Get storage info (static, only once)
+        try
+        {
+            var storage = Monitor.GetStorage();
+            var storageType = storage.GetType();
+            var storageVersion = storageType.Assembly.GetName().Version;
+            var storageName = storageType.Name
+                .Replace("Storage", "")
+                .Replace("JobStorage", "");
+
+            var storageString = storage.ToString();
+            if (!string.IsNullOrEmpty(storageString) && storageString != storageType.FullName)
+            {
+                _storageInfo = $"{storageName} {storageString}";
+            }
+            else if (storageVersion != null)
+            {
+                _storageInfo = $"{storageName} {storageVersion.Major}.{storageVersion.Minor}.{storageVersion.Build}";
+            }
+            else
+            {
+                _storageInfo = storageName;
+            }
+        }
+        catch
+        {
+            // Gracefully degrade if storage info is unavailable
+        }
+
+        UpdateTimestamps();
+
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object sender, LocationChangedEventArgs e)
+    {
+        UpdateTimestamps();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateTimestamps()
+    {
+        _applicationTime = DateTime.Now.ToString("M/d/yyyy h:mm:ss tt");
+        _sw.Restart();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Capture generated time after render completes
+        _generatedTime = $"{_sw.Elapsed.TotalMilliseconds:N2}ms";
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

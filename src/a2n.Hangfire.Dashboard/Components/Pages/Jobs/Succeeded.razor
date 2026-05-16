@@ -13,10 +13,8 @@
     }
     else if (_jobs.Count == 0)
     {
-        <div class="card text-center py-5">
-            <span class="fs-1">✅</span>
-            <p class="mt-2 mb-0">No succeeded jobs recorded yet.</p>
-        </div>
+        <EmptyState Icon="trophy" Color="secondary"
+                    Message="No succeeded jobs recorded yet." />
     }
     else
     {

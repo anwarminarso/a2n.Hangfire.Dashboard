@@ -197,9 +197,10 @@
                                 <div class="d-flex flex-wrap gap-1 mt-1">
                                     @foreach (var tag in _selectedTags)
                                     {
-                                        <span class="badge bg-primary d-inline-flex align-items-center gap-1">
+                                        <span class="badge rounded-pill d-inline-flex align-items-center gap-1"
+                                              style="@GetTagStyle(tag)">
                                             @tag
-                                            <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
+                                            <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
                                                     @onclick="() => RemoveTag(tag)" aria-label="Remove tag @tag"></button>
                                         </span>
                                     }
@@ -571,5 +572,12 @@
     private bool HasValidationErrors()
     {
         return _dateRangeError is not null || _durationError is not null;
+    }
+
+    private static string GetTagStyle(string tag)
+    {
+        var hash = (uint)tag.GetHashCode(StringComparison.OrdinalIgnoreCase);
+        var hue = hash % 360;
+        return $"background-color: hsl({hue}, 55%, 82%); color: hsl({hue}, 70%, 25%); border: 1px solid hsl({hue}, 45%, 72%);";
     }
 }

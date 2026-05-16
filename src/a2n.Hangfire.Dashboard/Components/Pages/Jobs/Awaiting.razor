@@ -13,11 +13,9 @@
     }
     else if (_jobIds.Count == 0)
     {
-        <div class="card text-center py-5">
-            <span class="fs-1">⏳</span>
-            <p class="mt-2 mb-0">No awaiting jobs.</p>
-            <p class="text-body-secondary">Jobs waiting for parent continuations to complete.</p>
-        </div>
+        <EmptyState Icon="hourglass" Color="secondary"
+                    Message="No awaiting jobs."
+                    Subtitle="Jobs waiting for parent continuations to complete." />
     }
     else
     {

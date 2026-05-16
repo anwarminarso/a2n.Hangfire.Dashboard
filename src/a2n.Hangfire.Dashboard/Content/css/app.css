@@ -338,3 +338,45 @@ header.navbar h1 { border: none; outline: none; }
     background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
     border: 1px solid #4b5563;
 }
+
+/* ===== Footer ===== */
+.hf-footer {
+    background-color: var(--hf-sidebar-bg, #1e1e2e);
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.hf-footer a {
+    color: #60a5fa;
+    text-decoration: none;
+}
+
+.hf-footer a:hover {
+    color: #93c5fd;
+    text-decoration: underline;
+}
+
+[data-bs-theme="light"] .hf-footer {
+    background-color: #f1f5f9;
+    color: #64748b;
+    border-top-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-bs-theme="light"] .hf-footer a {
+    color: #2563eb;
+}
+
+/* ===== Table Header Background ===== */
+.table thead th {
+    background-color: var(--bs-tertiary-bg);
+}
+
+/* ===== Table Link Style ===== */
+.table td a {
+    text-decoration: none;
+}
+
+.table td a:hover {
+    text-decoration: none;
+    opacity: 0.7;
+}

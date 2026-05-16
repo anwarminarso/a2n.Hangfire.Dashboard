@@ -17,6 +17,11 @@ public class HangfireMonitorService
         _storage = storage;
     }
 
+    /// <summary>
+    /// Gets the underlying JobStorage instance for metadata access (version, connection info).
+    /// </summary>
+    public JobStorage GetStorage() => _storage;
+
     private IMonitoringApi GetMonitoringApi() => _storage.GetMonitoringApi();
 
     public StatisticsDto GetStatistics() => GetMonitoringApi().GetStatistics();

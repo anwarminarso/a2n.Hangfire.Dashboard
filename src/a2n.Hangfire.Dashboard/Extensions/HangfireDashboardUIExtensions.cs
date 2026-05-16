@@ -131,6 +131,19 @@ public static class HangfireDashboardUIExtensions
     {
         options ??= app.ApplicationServices.GetService<DashboardUIOptions>() ?? new DashboardUIOptions();
 
+        // Update the DI-registered singleton so Blazor components receive the same options
+        var registered = app.ApplicationServices.GetService<DashboardUIOptions>();
+        if (registered != null && !ReferenceEquals(registered, options))
+        {
+            registered.DashboardTitle = options.DashboardTitle;
+            registered.AppPath = options.AppPath;
+            registered.StatsPollingInterval = options.StatsPollingInterval;
+            registered.IsReadOnly = options.IsReadOnly;
+            registered.DefaultRecordsPerPage = options.DefaultRecordsPerPage;
+            registered.DefaultTheme = options.DefaultTheme;
+            registered.Authorization = options.Authorization;
+        }
+
         // Normalize pathMatch to ensure it starts with / and has no trailing slash
         pathMatch = "/" + pathMatch.Trim('/');
 

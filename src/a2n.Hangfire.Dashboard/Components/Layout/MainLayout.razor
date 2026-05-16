@@ -13,7 +13,7 @@
     <!-- Offcanvas sidebar untuk mobile -->
     <div class="offcanvas offcanvas-start hf-sidebar" tabindex="-1" id="mobileSidebar">
         <div class="offcanvas-header">
-            <h5 class="offcanvas-title" style="color: var(--hf-nav-brand-color);">Hangfire</h5>
+            <h5 class="offcanvas-title" style="color: var(--hf-nav-brand-color);">@Options.DashboardTitle</h5>
             <button type="button" class="btn-close btn-close-white"
                     data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>
@@ -54,6 +54,8 @@
         <main class="flex-grow-1 overflow-auto p-3 p-lg-4">
             @Body
         </main>
+
+        <FooterInfo />
     </div>
 </div>
 
