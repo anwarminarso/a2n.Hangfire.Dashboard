@@ -1,0 +1,53 @@
+name: Publish to NuGet
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore "src/Hangfire Dashboard.slnx"
+
+      - name: Build
+        run: dotnet build "src/Hangfire Dashboard.slnx" -c Release --no-restore
+
+      - name: Pack
+        run: |
+          dotnet pack src/a2n.Hangfire.Dashboard/a2n.Hangfire.Dashboard.csproj -c Release --no-build -o ./nupkgs
+          dotnet pack src/a2n.Hangfire.Console/a2n.Hangfire.Console.csproj -c Release --no-build -o ./nupkgs
+          dotnet pack src/a2n.Hangfire.Tags/a2n.Hangfire.Tags.csproj -c Release --no-build -o ./nupkgs
+          dotnet pack src/a2n.Hangfire.Dashboard.SqlServer/a2n.Hangfire.Dashboard.SqlServer.csproj -c Release --no-build -o ./nupkgs
+          dotnet pack src/a2n.Hangfire.Dashboard.PostgreSql/a2n.Hangfire.Dashboard.PostgreSql.csproj -c Release --no-build -o ./nupkgs
+
+      - name: NuGet Login (Trusted Publishing)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to NuGet
+        run: |
+          for pkg in ./nupkgs/*.nupkg; do
+            dotnet nuget push "$pkg" \
+              --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done

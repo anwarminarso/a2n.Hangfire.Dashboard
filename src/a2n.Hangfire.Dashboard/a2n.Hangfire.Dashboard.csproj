@@ -6,19 +6,13 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>a2n.Hangfire.Dashboard</RootNamespace>
-    <Version>1.2.0-alpha.1</Version>
-
     <StaticWebAssetsEnabled>true</StaticWebAssetsEnabled>
 
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- NuGet metadata -->
     <PackageId>a2n.Hangfire.Dashboard</PackageId>
     <Description>A modern, open-source alternative dashboard for Hangfire. Built with Blazor Server, Bootstrap 5, Chart.js, and SignalR. Features realtime monitoring, global search with advanced filters, console log viewer, tag management, recurring job CRUD, dark/light theme, and responsive design. Drop-in replacement — zero code changes required.</Description>
-    <Authors>a2n</Authors>
     <PackageTags>hangfire;dashboard;blazor;monitoring;background-jobs;realtime;signalr;search;console;tags;recurring-jobs;bootstrap;chartjs;dark-mode;aspnetcore;dotnet</PackageTags>
-    <RepositoryUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</PackageProjectUrl>
-    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
@@ -53,6 +47,7 @@
     <None Include="build\a2n.Hangfire.Dashboard.props" Pack="true" PackagePath="build\" />
     <None Include="build\a2n.Hangfire.Dashboard.props" Pack="true" PackagePath="buildTransitive\" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

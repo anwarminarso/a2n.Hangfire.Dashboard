@@ -219,6 +219,7 @@ else
         {
             _prevSucceeded = _stats.Succeeded;
             _prevFailed = _stats.Failed;
+            _prevDeleted = _stats.Deleted;
         }
 
         // Connect to SignalR hub using a URL relative to the Path_Prefix.
@@ -235,9 +236,9 @@ else
             {
                 try
                 {
-                    var succeeded = Convert.ToInt64(metrics.GetValueOrDefault("succeeded", 0L));
-                    var failed = Convert.ToInt64(metrics.GetValueOrDefault("failed", 0L));
-                    var deleted = Convert.ToInt64(metrics.GetValueOrDefault("deleted", 0L));
+                    var succeeded = GetLongFromMetrics(metrics, "succeeded");
+                    var failed = GetLongFromMetrics(metrics, "failed");
+                    var deleted = GetLongFromMetrics(metrics, "deleted");
 
                     var deltaSucceeded = Math.Max(0, succeeded - _prevSucceeded);
                     var deltaFailed = Math.Max(0, failed - _prevFailed);
@@ -375,6 +376,20 @@ else
             }
         }
         catch { }
+    }
+
+    private static long GetLongFromMetrics(Dictionary<string, object> metrics, string key)
+    {
+        if (!metrics.TryGetValue(key, out var value) || value is null)
+            return 0;
+
+        // SignalR with System.Text.Json deserializes numbers as JsonElement
+        if (value is System.Text.Json.JsonElement jsonElement)
+        {
+            return jsonElement.TryGetInt64(out var l) ? l : 0;
+        }
+
+        return Convert.ToInt64(value);
     }
 
     private static string FormatCount(long count)

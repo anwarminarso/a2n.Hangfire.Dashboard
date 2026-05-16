@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- a2n.Hangfire.Dashboard NuGet Package Icon -->
+  <!-- Concept: H (Hangfire) + rising chart line (Dashboard) -->
+  <!-- Colors: orange → purple → cyan gradient on near-black -->
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#18181b"/>
+      <stop offset="100%" style="stop-color:#09090b"/>
+    </linearGradient>
+    <linearGradient id="chart" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="50%" style="stop-color:#a855f7"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect x="8" y="8" width="112" height="112" rx="22" fill="url(#bg)"/>
+  <rect x="8" y="8" width="112" height="112" rx="22" fill="none" stroke="#27272a" stroke-width="1.5"/>
+  <!-- H left pillar -->
+  <rect x="30" y="30" width="13" height="68" rx="6.5" fill="white" opacity="0.88"/>
+  <!-- H right pillar -->
+  <rect x="85" y="30" width="13" height="68" rx="6.5" fill="white" opacity="0.88"/>
+  <!-- Chart line (orange → purple → cyan) -->
+  <path d="M 36 74 L 48 70 L 58 72 L 68 60 L 78 52 L 91 42" 
+        fill="none" stroke="url(#chart)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Glow dot at peak -->
+  <circle cx="91" cy="42" r="7" fill="#06b6d4" opacity="0.25"/>
+  <circle cx="91" cy="42" r="4.5" fill="#06b6d4"/>
+  <!-- Small start dot -->
+  <circle cx="36" cy="74" r="3" fill="#f97316" opacity="0.7"/>
+</svg>

@@ -4,6 +4,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <RootNamespace>a2n.Hangfire.Dashboard.PostgreSql</RootNamespace>
+    <PackageId>a2n.Hangfire.Dashboard.PostgreSql</PackageId>
+    <Description>PostgreSQL storage adapter for a2n.Hangfire.Dashboard. Provides optimized Dapper-based queries for search, filtering, pagination, and analytics metrics using Npgsql.</Description>
+    <PackageTags>hangfire;dashboard;postgresql;dapper;storage;query;analytics;aspnetcore;dotnet</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.*" />
@@ -11,5 +14,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

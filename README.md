@@ -10,7 +10,7 @@ One NuGet package. Zero Pro license.
 
 ---
 
-![Dashboard Overview](docs/screenshots/home.png)
+![Dashboard Overview](docs/screenshots/overview.png)
 
 ## Get Started in 30 Seconds
 
@@ -71,10 +71,13 @@ This project solves all of that in a single, free, open-source package.
 |:---:|:---:|
 | ![Tags](docs/screenshots/tags.png) | ![Recurring](docs/screenshots/recurring.png) |
 
-| Advanced Search | Dark / Light / Auto |
+| Advanced Search | Performance |
 |:---:|:---:|
-| ![Search](docs/screenshots/search.png) | ![Theme](docs/screenshots/auto-light-dark-mode.png) |
+| ![Search](docs/screenshots/search.png) | ![Theme](docs/screenshots/performance.png) |
 
+| Light / Dark / Auto |
+|:---:|
+| ![Search](docs/screenshots/light-dark.png)  |
 ---
 
 ## Full Setup

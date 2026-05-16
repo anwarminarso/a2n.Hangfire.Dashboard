@@ -5,20 +5,19 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Hangfire.Tags</RootNamespace>
-    <Version>1.2.0-alpha.1</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Description>Drop-in replacement for Hangfire.Tags — adds tagging support to Hangfire jobs. Features auto-tagging via attributes, runtime tag management, tag cloud visualization, and search by tag. Storage-agnostic (works with any Hangfire storage provider). Same namespace and API as the original — just swap the NuGet package.</Description>
     <PackageId>a2n.Hangfire.Tags</PackageId>
-    <Authors>a2n</Authors>
     <PackageTags>hangfire;tags;tagging;background-jobs;job-management;search;filtering;categorization;aspnetcore;dotnet</PackageTags>
-    <RepositoryUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</PackageProjectUrl>
-    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Hangfire.Core" Version="1.8.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
