@@ -64,7 +64,7 @@ samples/
 
 ---
 
-## Phase 2 — Differentiation (In Progress)
+## Phase 2 — Differentiation ✅
 
 **Goal**: Features that don't exist in the built-in dashboard.
 
@@ -139,6 +139,17 @@ services.AddHangfireDashboardUI(options =>
 - [ ] Job dependency graph (continuations visualized)
 - [ ] Retry history with diff
 - [ ] Job execution duration chart (historical)
+
+### Bug Fixes (post v2.0)
+- ✅ Fixed realtime chart on Home page not animating (chartjs-plugin-streaming globally disabled by analyticsCharts.js)
+- ✅ Fixed PostgreSQL search "storage error" (jsonb column requires `::text` cast for ILIKE)
+- ✅ Added logging + fallback to scan-based search when dedicated provider fails
+- ✅ Fixed search secondary filters (duration, date, state) not applied when using dedicated provider
+- ✅ Added filter-only search support (no text query required if filters are active)
+- ✅ Fixed search pagination resetting filter state (switched from URL navigation to in-memory state)
+- ✅ Fixed scroll position reset on page/pageSize change (smooth scroll to results)
+- ✅ Fixed Analytics "Live" badge vertical alignment (removed nested flex wrapper from TimeRangeSelector)
+- ✅ Fixed Analytics charts showing only 1 data point for "Last 1h" (expanded query window to 6h with hourly interval)
 
 ---
 
