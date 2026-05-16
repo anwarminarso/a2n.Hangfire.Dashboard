@@ -5,6 +5,7 @@
         <button class="btn btn-sm btn-link text-decoration-none p-0 d-flex align-items-center gap-1"
                 @onclick="TogglePanel" aria-expanded="@_isExpanded" aria-controls="filter-panel-body">
             <i class="bi @(_isExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+            <i class="bi bi-funnel"></i>
             <span>Advanced Filters</span>
         </button>
         @if (GetActiveFilterCount() > 0)

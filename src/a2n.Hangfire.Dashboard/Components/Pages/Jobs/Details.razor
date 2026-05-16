@@ -82,18 +82,16 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
         </div>
 
         @* State Section *@
-        <div class="card mb-3">
-            <div class="card-header">
-                <h6 class="mb-0">State History</h6>
-            </div>
-            <div class="card-body">
+        <h6 class="fw-semibold mb-3">State History</h6>
                 @* State cards — chronological (newest first), console embedded in Processing *@
-                <div class="d-flex flex-column gap-3">
+                <div class="d-flex flex-column gap-2">
                     @foreach (var state in _job.History)
                     {
                         <div class="card @GetStateCardBorderClass(state.StateName)">
                             <div class="card-header d-flex justify-content-between align-items-center py-2">
-                                <span class="badge @GetStateBadgeClass(state.StateName)">@state.StateName</span>
+                                <span class="fw-semibold">
+                                    <i class="bi @GetStateIcon(state.StateName) @GetStateTextClass(state.StateName)"></i> @state.StateName
+                                </span>
                                 <small class="text-body-secondary"><RelativeTime UtcTime="@state.CreatedAt" /></small>
                             </div>
 
@@ -139,7 +137,7 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
                                         {
                                             <details class="mt-1">
                                                 <summary class="small text-danger">Stack Trace</summary>
-                                                <pre class="small mt-1 mb-0 text-wrap">@exDetails</pre>
+                                                <pre class="hf-stacktrace mt-1 mb-0">@((MarkupString)FormatStackTrace(exDetails))</pre>
                                             </details>
                                         }
                                     </div>
@@ -238,8 +236,6 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
                         </div>
                     }
                 </div>
-            </div>
-        </div>
     }
 </div>
 
@@ -370,12 +366,13 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
 
     private static string GetStateCardBorderClass(string stateName) => stateName switch
     {
-        "Succeeded" => "border-success",
-        "Failed" => "border-danger",
-        "Processing" => "border-warning",
-        "Enqueued" => "border-info",
-        "Scheduled" => "border-info",
-        "Deleted" => "border-secondary",
+        "Succeeded" => "hf-state-border-succeeded",
+        "Failed" => "hf-state-border-failed",
+        "Processing" => "hf-state-border-processing",
+        "Enqueued" => "hf-state-border-enqueued",
+        "Scheduled" => "hf-state-border-scheduled",
+        "Deleted" => "hf-state-border-deleted",
+        "Created" => "hf-state-border-created",
         _ => ""
     };
 
@@ -391,6 +388,31 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
         _ => "bg-secondary"
     };
 
+    private static string GetStateTextClass(string stateName) => stateName switch
+    {
+        "Succeeded" => "text-success",
+        "Failed" => "text-danger",
+        "Processing" => "text-primary",
+        "Enqueued" => "text-info",
+        "Scheduled" => "text-warning",
+        "Deleted" => "text-secondary",
+        "Created" => "text-secondary",
+        _ => "text-secondary"
+    };
+
+    private static string GetStateIcon(string stateName) => stateName switch
+    {
+        "Succeeded" => "bi-check-circle-fill",
+        "Failed" => "bi-x-circle-fill",
+        "Processing" => "bi-gear-fill",
+        "Enqueued" => "bi-inbox-fill",
+        "Scheduled" => "bi-clock-fill",
+        "Deleted" => "bi-trash3-fill",
+        "Created" => "bi-plus-circle-fill",
+        "Awaiting" => "bi-hourglass-split",
+        _ => "bi-circle-fill"
+    };
+
     private static string FormatDuration(string millisOrValue)
     {
         if (string.IsNullOrEmpty(millisOrValue)) return "";
@@ -403,6 +425,26 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
             return $"{ms:F0}ms";
         }
         return millisOrValue;
+    }
+
+    /// <summary>
+    /// Formats a .NET stack trace with syntax highlighting.
+    /// Highlights: method names (bold), file paths (muted), line numbers (colored).
+    /// </summary>
+    private static string FormatStackTrace(string stackTrace)
+    {
+        if (string.IsNullOrEmpty(stackTrace)) return "";
+
+        var escaped = System.Net.WebUtility.HtmlEncode(stackTrace);
+        // Highlight method names: word.word.MethodName(params)
+        escaped = System.Text.RegularExpressions.Regex.Replace(escaped,
+            @"(at\s+)([\w\.]+)\.([\w`\[\]]+)\(([^)]*)\)",
+            """$1<span class="hf-st-namespace">$2</span>.<span class="hf-st-method">$3</span>(<span class="hf-st-params">$4</span>)""");
+        // Highlight file paths: in filepath
+        escaped = System.Text.RegularExpressions.Regex.Replace(escaped,
+            @"\s+in\s+(.+?):line\s+(\d+)",
+            """ in <span class="hf-st-file">$1</span>:line <span class="hf-st-line">$2</span>""");
+        return escaped;
     }
 
     private async Task Requeue()

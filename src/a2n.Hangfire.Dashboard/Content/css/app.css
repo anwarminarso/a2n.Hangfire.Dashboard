@@ -285,17 +285,30 @@
 /* ===== Dashboard Tweaks ===== */
 header.navbar h1 { border: none; outline: none; }
 .hf-code-block {
-    background-color: #1e293b;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
     border-radius: 0.5rem;
     padding: 14px 18px;
     overflow-x: auto;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.7;
-    color: #e2e8f0;
+    color: var(--bs-body-color);
 }
 
-/* ===== Stat Card Gradients (Light Mode) ===== */
+.hf-code-block .code-comment { color: var(--bs-secondary-color); font-style: italic; }
+.hf-code-block .code-keyword { color: var(--bs-primary); font-weight: 600; }
+.hf-code-block .code-namespace { color: var(--bs-secondary-color); }
+.hf-code-block .code-type { color: var(--bs-info); }
+.hf-code-block .code-method { color: var(--bs-success); font-weight: 600; }
+
+/* ===== Stat Card — Left Border Accent ===== */
+.hf-stat-border-info { border-left: 4px solid var(--bs-info) !important; }
+.hf-stat-border-warning { border-left: 4px solid var(--bs-warning) !important; }
+.hf-stat-border-success { border-left: 4px solid var(--bs-success) !important; }
+.hf-stat-border-danger { border-left: 4px solid var(--bs-danger) !important; }
+.hf-stat-border-secondary { border-left: 4px solid var(--bs-secondary) !important; }
+
+/* Legacy gradient classes (unused, kept for reference) */
 .hf-stat-card-info {
     background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
     border: 1px solid #bfdbfe;
@@ -380,3 +393,34 @@ header.navbar h1 { border: none; outline: none; }
     text-decoration: none;
     opacity: 0.7;
 }
+
+/* ===== State History — Left Border per State ===== */
+[class*="hf-state-border-"] {
+    border-left: 4px solid transparent !important;
+}
+
+.hf-state-border-succeeded { border-left-color: var(--bs-success) !important; }
+.hf-state-border-failed { border-left-color: var(--bs-danger) !important; }
+.hf-state-border-processing { border-left-color: var(--bs-primary) !important; }
+.hf-state-border-enqueued { border-left-color: var(--bs-info) !important; }
+.hf-state-border-scheduled { border-left-color: var(--bs-warning) !important; }
+.hf-state-border-deleted { border-left-color: var(--bs-secondary) !important; }
+.hf-state-border-created { border-left-color: var(--bs-secondary) !important; }
+
+/* ===== Stack Trace Syntax Highlighting ===== */
+.hf-stacktrace {
+    background-color: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    padding: 12px 16px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.hf-st-namespace { color: var(--bs-secondary-color); }
+.hf-st-method { color: var(--bs-primary); font-weight: 600; }
+.hf-st-params { color: var(--bs-info); }
+.hf-st-file { color: var(--bs-secondary-color); font-style: italic; }
+.hf-st-line { color: var(--bs-success); font-weight: 600; }

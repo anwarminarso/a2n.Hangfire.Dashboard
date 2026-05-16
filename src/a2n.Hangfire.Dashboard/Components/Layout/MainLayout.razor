@@ -95,6 +95,7 @@
         {
             "" or "/" => "Dashboard",
             "/jobs/enqueued" => "Enqueued Jobs",
+            _ when path.StartsWith("/jobs/enqueued/") => "Enqueued Jobs",
             "/jobs/processing" => "Processing Jobs",
             "/jobs/scheduled" => "Scheduled Jobs",
             "/jobs/succeeded" => "Succeeded Jobs",
@@ -106,9 +107,12 @@
             "/retries" => "Retries",
             "/tags" => "Tags",
             "/search" => "Search",
+            "/analytics" => "Analytics Dashboard",
+            _ when path.StartsWith("/analytics/") => "Analytics Dashboard",
             _ when path.StartsWith("/jobs/details/") => $"Job #{path.Split('/').Last()}",
+            _ when path.StartsWith("/tags/") => "Tags",
             _ when path.StartsWith("/recurring/") => "Recurring Job Editor",
-            _ => "Hangfire Dashboard"
+            _ => "Dashboard"
         };
     }
 
