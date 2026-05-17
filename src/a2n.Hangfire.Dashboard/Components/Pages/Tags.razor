@@ -1,19 +1,20 @@
 @page "/tags"
 @page "/tags/{SearchTag}"
-@inject TagsDataReader TagsReader
-@inject HangfireMonitorService Monitor
+@using a2n.Hangfire.Dashboard.Interfaces
+@using a2n.Hangfire.Dashboard.Models
+@inject IStorageQueryProvider QueryProvider
 @inject NavigationManager Navigation
 
 <PageTitle>Tags</PageTitle>
 
-@if (_allTags is null)
+@if (_loading)
 {
     <p class="text-muted">Loading...</p>
 }
 else if (string.IsNullOrEmpty(SearchTag))
 {
-    @* Tag Cloud / Search *@
-    @if (_allTags.Length == 0)
+    @* Tag Cloud *@
+    @if (_tagCloud is null || _tagCloud.Count == 0)
     {
         <EmptyState Icon="tags" Color="secondary"
                     Message="No tags found yet."
@@ -22,10 +23,12 @@ else if (string.IsNullOrEmpty(SearchTag))
     else
     {
         <div class="d-flex flex-wrap gap-2">
-            @foreach (var tag in _allTags)
+            @foreach (var tag in _tagCloud.Where(t => !IsNumericTag(t.Tag)))
             {
                 <a class="badge text-decoration-none px-3 py-2 fs-6 rounded-pill"
-                   style="@GetTagStyle(tag)" href="@GetTagUrl(tag)">@tag</a>
+                   style="@GetTagStyle(tag.Tag)" href="@GetTagUrl(tag.Tag)">
+                    @tag.Tag <span class="ms-1 opacity-75">(@tag.Count)</span>
+                </a>
             }
         </div>
     }
@@ -39,13 +42,20 @@ else
         <a class="btn btn-sm btn-outline-secondary" href="@GetTagsBaseUrl()">← All Tags</a>
     </div>
 
-    @if (_taggedJobs is null || _taggedJobs.Count == 0)
+    @if (_taggedJobs is null || _taggedJobs.Items.Count == 0)
     {
         <EmptyState Icon="tag" Color="secondary"
                     Message="@($"No jobs found with tag \"{SearchTag}\".")" />
     }
     else
     {
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <small class="text-body-secondary">
+                @_taggedJobs.TotalCount job@(_taggedJobs.TotalCount != 1 ? "s" : "") tagged
+            </small>
+            <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
+        </div>
+
         <div class="card">
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -55,21 +65,28 @@ else
                                 <th>Id</th>
                                 <th>Job</th>
                                 <th>State</th>
+                                <th class="text-end">Created</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var jobId in _taggedJobs)
+                            @foreach (var job in _taggedJobs.Items)
                             {
-                                _jobDetails.TryGetValue(jobId, out var details);
                                 <tr>
                                     <td class="font-monospace">
-                                        <a href="jobs/details/@jobId">@ShortenId(jobId)</a>
+                                        <a href="jobs/details/@job.JobId">@ShortenId(job.JobId)</a>
                                     </td>
-                                    <td>@(details.jobName ?? "Unknown")</td>
+                                    <td>@(job.JobName ?? "Unknown")</td>
                                     <td>
-                                        @if (details.state is not null)
+                                        <span class="badge @GetStateBadgeClass(job.State)">@(job.State ?? "Unknown")</span>
+                                    </td>
+                                    <td class="text-end">
+                                        @if (job.CreatedAt.HasValue)
                                         {
-                                            <span class="badge bg-secondary">@details.state</span>
+                                            <RelativeTime UtcTime="@job.CreatedAt.Value" />
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
                                         }
                                     </td>
                                 </tr>
@@ -80,7 +97,7 @@ else
             </div>
         </div>
 
-        <Pager TotalCount="@_totalTaggedJobs" PageSize="@_pageSize" From="@_from"
+        <Pager TotalCount="@_taggedJobs.TotalCount" PageSize="@_pageSize" From="@_from"
                OnPageChanged="HandlePageChanged" />
     }
 }
@@ -88,12 +105,11 @@ else
 @code {
     [Parameter] public string SearchTag { get; set; }
 
-    private string[] _allTags;
-    private IReadOnlyList<string> _taggedJobs;
-    private long _totalTaggedJobs;
+    private bool _loading = true;
+    private IReadOnlyList<TagCountDto> _tagCloud;
+    private PagedResult<JobSummaryDto> _taggedJobs;
     private int _from = 0;
     private int _pageSize = 20;
-    private Dictionary<string, (string jobName, string state)> _jobDetails = new();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -103,27 +119,19 @@ else
 
     private async Task LoadData()
     {
-        await Task.Run(() =>
+        _loading = true;
+
+        if (string.IsNullOrEmpty(SearchTag))
         {
-            _allTags = TagsReader.GetAllTags();
+            _tagCloud = await QueryProvider.GetTagCloudAsync(CancellationToken.None);
+        }
+        else
+        {
+            var page = (_from / _pageSize) + 1;
+            _taggedJobs = await QueryProvider.GetJobsByTagAsync(SearchTag, page, _pageSize, CancellationToken.None);
+        }
 
-            if (!string.IsNullOrEmpty(SearchTag))
-            {
-                _totalTaggedJobs = TagsReader.GetJobCountByTag(SearchTag);
-                _taggedJobs = TagsReader.GetJobsByTag(SearchTag, _from, _pageSize);
-                _jobDetails.Clear();
-
-                foreach (var jobId in _taggedJobs)
-                {
-                    var detail = Monitor.GetJobDetails(jobId);
-                    var jobName = detail?.Job is not null
-                        ? $"{detail.Job.Type.Name}.{detail.Job.Method.Name}"
-                        : null;
-                    var state = detail?.History.FirstOrDefault()?.StateName;
-                    _jobDetails[jobId] = (jobName, state);
-                }
-            }
-        });
+        _loading = false;
     }
 
     private async Task HandlePageChanged((int From, int PageSize) args)
@@ -133,26 +141,50 @@ else
         await LoadData();
     }
 
+    private async Task HandlePageSizeChanged(int newSize)
+    {
+        _pageSize = newSize;
+        _from = 0;
+        await LoadData();
+    }
+
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
 
     private string GetTagUrl(string tag) => Navigation.ToAbsoluteUri($"tags/{tag}").PathAndQuery;
     private string GetTagsBaseUrl() => Navigation.ToAbsoluteUri("tags").PathAndQuery;
 
-    /// <summary>
-    /// Generates a unique pastel color style for each tag using HSL hashing.
-    /// Same tag always gets the same hue. Colors are soft and readable in both light/dark mode.
-    /// </summary>
+    private static string GetStateBadgeClass(string state)
+    {
+        return state?.ToLowerInvariant() switch
+        {
+            "succeeded" => "bg-success",
+            "failed" => "bg-danger",
+            "processing" => "bg-warning text-dark",
+            "enqueued" => "bg-info text-dark",
+            "scheduled" => "bg-info text-dark",
+            "deleted" => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
     private static string GetTagStyle(string tag)
     {
-        // Generate a stable hue (0-360) from the tag name
         var hash = (uint)tag.GetHashCode(StringComparison.OrdinalIgnoreCase);
         var hue = hash % 360;
-
-        // Pastel palette: moderate saturation, high lightness for bg, low lightness for text
-        // Light mode: bg hsl(h, 55%, 88%), text hsl(h, 60%, 30%)
-        // We use CSS variables approach but since we can't detect theme in C#,
-        // use a middle-ground that works well in both modes:
-        // Semi-transparent background + solid text
         return $"background-color: hsl({hue}, 55%, 82%); color: hsl({hue}, 70%, 25%); border: 1px solid hsl({hue}, 45%, 72%);";
+    }
+
+    /// <summary>
+    /// Filters out numeric-only "tags" which are actually job IDs stored in the set table,
+    /// not real user-defined tags.
+    /// </summary>
+    private static bool IsNumericTag(string tag)
+    {
+        if (string.IsNullOrEmpty(tag)) return true;
+        foreach (var c in tag)
+        {
+            if (!char.IsDigit(c)) return false;
+        }
+        return true;
     }
 }

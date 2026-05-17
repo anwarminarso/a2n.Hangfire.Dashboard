@@ -22,17 +22,12 @@ public class PostgreSqlQueryProvider : IStorageQueryProvider
     private readonly string _connectionString;
     private readonly string _schema;
 
-    // Pre-built table references (schema is trusted config, not user input)
     private readonly string _jobTable;
     private readonly string _stateTable;
     private readonly string _setTable;
     private readonly string _jobParameterTable;
+    private readonly string _hashTable;
 
-    /// <summary>
-    /// Creates a new PostgreSQL query provider.
-    /// </summary>
-    /// <param name="connectionString">PostgreSQL connection string</param>
-    /// <param name="schema">Schema name (default: "hangfire")</param>
     public PostgreSqlQueryProvider(string connectionString, string schema = "hangfire")
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
@@ -42,231 +37,82 @@ public class PostgreSqlQueryProvider : IStorageQueryProvider
         _stateTable = PgHelper.Table(_schema, "state");
         _setTable = PgHelper.Table(_schema, "set");
         _jobParameterTable = PgHelper.Table(_schema, "jobparameter");
+        _hashTable = PgHelper.Table(_schema, "hash");
     }
 
-    /// <inheritdoc />
-    public async Task<PagedResult<JobSummaryDto>> SearchJobsByNameAsync(
-        string searchTerm, int page, int pageSize, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(searchTerm))
-            return PagedResult<JobSummaryDto>.Empty(page, pageSize);
+    // ─── Column definitions (reused across queries) ──────────────────────────
 
-        var pattern = "%" + PgHelper.EscapeILikePattern(searchTerm) + "%";
-        var offset = (page - 1) * pageSize;
+    private string JobColumns => $@"
+j.id::text AS ""JobId"",
+j.invocationdata::text AS ""InvocationData"",
+j.statename AS ""State"",
+j.createdat AS ""CreatedAt"",
+s.createdat AS ""LastStateChange"",
+(s.data::json ->> 'PerformanceDuration')::double precision AS ""DurationMs"",
+(s.data::json ->> 'Latency')::double precision AS ""LatencyMs"",
+s.data::json ->> 'ExceptionType' AS ""ExceptionType"",
+s.data::json ->> 'ExceptionMessage' AS ""ExceptionMessage""";
 
-        var countSql = $@"
-SELECT COUNT(*)
-FROM {_jobTable} j
-WHERE j.invocationdata::text ILIKE @Pattern";
-
-        var querySql = $@"
-SELECT j.id::text AS ""JobId"",
-       j.invocationdata::text AS ""InvocationData"",
-       j.statename AS ""State"",
-       j.createdat AS ""CreatedAt"",
-       s.createdat AS ""LastStateChange"",
-       s.data::json ->> 'PerformanceDuration' AS ""DurationMsRaw""
-FROM {_jobTable} j
-LEFT JOIN {_stateTable} s ON s.id = j.stateid
-WHERE j.invocationdata::text ILIKE @Pattern
-ORDER BY j.createdat DESC
-LIMIT @PageSize OFFSET @Offset";
-
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(ct);
-
-        var totalCount = await connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(countSql, new { Pattern = pattern }, cancellationToken: ct));
-
-        var rows = await connection.QueryAsync<JobRawRowWithDuration>(
-            new CommandDefinition(querySql, new { Pattern = pattern, PageSize = pageSize, Offset = offset }, cancellationToken: ct));
-
-        var items = rows.Select(r => new JobSummaryDto
-        {
-            JobId = r.JobId,
-            JobName = ExtractJobName(r.InvocationData),
-            State = r.State,
-            CreatedAt = r.CreatedAt,
-            LastStateChange = r.LastStateChange,
-            DurationMs = ParseNullableDouble(r.DurationMsRaw)
-        }).ToList();
-
-        return new PagedResult<JobSummaryDto>
-        {
-            Items = items,
-            TotalCount = totalCount,
-            Page = page,
-            PageSize = pageSize
-        };
-    }
-
-    /// <inheritdoc />
-    public async Task<PagedResult<JobSummaryDto>> SearchFailedByExceptionAsync(
-        string searchTerm, int page, int pageSize, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(searchTerm))
-            return PagedResult<JobSummaryDto>.Empty(page, pageSize);
-
-        var pattern = "%" + PgHelper.EscapeILikePattern(searchTerm) + "%";
-        var offset = (page - 1) * pageSize;
-
-        // Search in state data for exception type or message using ->> operator
-        var countSql = $@"
-SELECT COUNT(*)
-FROM {_jobTable} j
-INNER JOIN {_stateTable} s ON s.id = j.stateid
-WHERE j.statename = 'Failed'
-  AND (s.data::json ->> 'ExceptionType' ILIKE @Pattern
-    OR s.data::json ->> 'ExceptionMessage' ILIKE @Pattern)";
-
-        var querySql = $@"
-SELECT j.id::text AS ""JobId"",
-       j.invocationdata AS ""InvocationData"",
-       j.statename AS ""State"",
-       j.createdat AS ""CreatedAt"",
-       s.createdat AS ""LastStateChange"",
-       s.data::json ->> 'ExceptionType' AS ""ExceptionType"",
-       s.data::json ->> 'ExceptionMessage' AS ""ExceptionMessage""
-FROM {_jobTable} j
-INNER JOIN {_stateTable} s ON s.id = j.stateid
-WHERE j.statename = 'Failed'
-  AND (s.data::json ->> 'ExceptionType' ILIKE @Pattern
-    OR s.data::json ->> 'ExceptionMessage' ILIKE @Pattern)
-ORDER BY j.createdat DESC
-LIMIT @PageSize OFFSET @Offset";
-
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(ct);
-
-        var totalCount = await connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(countSql, new { Pattern = pattern }, cancellationToken: ct));
-
-        var rows = await connection.QueryAsync<FailedJobRawRow>(
-            new CommandDefinition(querySql, new { Pattern = pattern, PageSize = pageSize, Offset = offset }, cancellationToken: ct));
-
-        var items = rows.Select(r => new JobSummaryDto
-        {
-            JobId = r.JobId,
-            JobName = ExtractJobName(r.InvocationData),
-            State = r.State,
-            CreatedAt = r.CreatedAt,
-            LastStateChange = r.LastStateChange,
-            ExceptionType = r.ExceptionType,
-            ExceptionMessage = r.ExceptionMessage
-        }).ToList();
-
-        return new PagedResult<JobSummaryDto>
-        {
-            Items = items,
-            TotalCount = totalCount,
-            Page = page,
-            PageSize = pageSize
-        };
-    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GetJobsWithFilterAsync — Unified multi-stage advanced search
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// <inheritdoc />
     public async Task<PagedResult<JobSummaryDto>> GetJobsWithFilterAsync(
         JobFilterCriteria criteria, int page, int pageSize, CancellationToken ct)
     {
-        if (criteria == null)
+        if (criteria == null || !criteria.HasAnyCriteria())
             return PagedResult<JobSummaryDto>.Empty(page, pageSize);
 
         var offset = (page - 1) * pageSize;
         var conditions = new List<string>();
         var parameters = new DynamicParameters();
+        var needsStateJoin = false;
 
-        // Build dynamic WHERE clause with parameterized conditions
-        if (!string.IsNullOrWhiteSpace(criteria.State))
-        {
-            conditions.Add("j.statename = @State");
-            parameters.Add("State", criteria.State);
-        }
+        // ═══ Stage 1: Basic filters (indexed columns) ═══
 
-        if (criteria.DateFrom.HasValue)
-        {
-            conditions.Add("j.createdat >= @DateFrom");
-            parameters.Add("DateFrom", criteria.DateFrom.Value.UtcDateTime);
-        }
+        BuildBasicFilters(criteria, conditions, parameters);
 
-        if (criteria.DateTo.HasValue)
-        {
-            conditions.Add("j.createdat <= @DateTo");
-            parameters.Add("DateTo", criteria.DateTo.Value.UtcDateTime);
-        }
+        // ═══ Stage 2: State data filters (requires JOIN to state table) ═══
 
-        if (!string.IsNullOrWhiteSpace(criteria.Queue))
-        {
-            conditions.Add(@"EXISTS (
-                SELECT 1 FROM {0} jp
-                WHERE jp.jobid = j.id AND jp.name = 'CurrentQueue' AND jp.value = @Queue
-            )".Replace("{0}", _jobParameterTable));
-            parameters.Add("Queue", criteria.Queue);
-        }
+        needsStateJoin = BuildStateDataFilters(criteria, conditions, parameters);
 
-        if (!string.IsNullOrWhiteSpace(criteria.Server))
-        {
-            conditions.Add(@"EXISTS (
-                SELECT 1 FROM {0} s2
-                WHERE s2.jobid = j.id AND s2.name = 'Processing'
-                  AND s2.data::json ->> 'ServerId' = @Server
-            )".Replace("{0}", _stateTable));
-            parameters.Add("Server", criteria.Server);
-        }
+        // ═══ Stage 3: Cross-table filters (EXISTS subqueries) ═══
 
-        if (criteria.MinDuration.HasValue)
-        {
-            conditions.Add("(s.data::json ->> 'PerformanceDuration')::numeric >= @MinDurationMs");
-            parameters.Add("MinDurationMs", criteria.MinDuration.Value.TotalMilliseconds);
-        }
+        BuildCrossTableFilters(criteria, conditions, parameters);
 
-        if (criteria.MaxDuration.HasValue)
-        {
-            conditions.Add("(s.data::json ->> 'PerformanceDuration')::numeric <= @MaxDurationMs");
-            parameters.Add("MaxDurationMs", criteria.MaxDuration.Value.TotalMilliseconds);
-        }
+        // ═══ Stage 4: Content search (conditional UNION via CTE) ═══
 
-        if (criteria.Tags != null && criteria.Tags.Count > 0)
-        {
-            for (int i = 0; i < criteria.Tags.Count; i++)
-            {
-                var paramName = $"@Tag{i}";
-                conditions.Add($@"EXISTS (
-                    SELECT 1 FROM {_setTable} t
-                    WHERE t.key = 'tags:' || {paramName} AND t.value = j.id::text
-                )");
-                parameters.Add($"Tag{i}", criteria.Tags[i]);
-            }
-        }
+        var contentCte = BuildContentSearchCte(criteria, parameters);
 
-        if (!string.IsNullOrWhiteSpace(criteria.RecurringJobId))
-        {
-            conditions.Add(@"EXISTS (
-                SELECT 1 FROM {0} jp
-                WHERE jp.jobid = j.id AND jp.name = 'RecurringJobId' AND jp.value = @RecurringJobId
-            )".Replace("{0}", _jobParameterTable));
-            parameters.Add("RecurringJobId", criteria.RecurringJobId);
-        }
+        // ═══ Final: Assemble and execute ═══
 
+        var stateJoin = $"LEFT JOIN {_stateTable} s ON s.id = j.stateid";
         var whereClause = conditions.Count > 0
             ? "WHERE " + string.Join(" AND ", conditions)
             : "";
 
-        var countSql = $@"
+        // If content search is active, add CTE and INNER JOIN to matched IDs
+        string ctePart = "";
+        string contentJoin = "";
+        if (!string.IsNullOrEmpty(contentCte))
+        {
+            ctePart = $"WITH matched_jobs AS (\n{contentCte}\n)\n";
+            contentJoin = "INNER JOIN matched_jobs mj ON mj.id = j.id";
+        }
+
+        var countSql = $@"{ctePart}
 SELECT COUNT(*)
 FROM {_jobTable} j
-LEFT JOIN {_stateTable} s ON s.id = j.stateid
+{stateJoin}
+{contentJoin}
 {whereClause}";
 
-        var querySql = $@"
-SELECT j.id::text AS ""JobId"",
-       j.invocationdata AS ""InvocationData"",
-       j.statename AS ""State"",
-       j.createdat AS ""CreatedAt"",
-       s.createdat AS ""LastStateChange"",
-       s.data::json ->> 'PerformanceDuration' AS ""DurationMsRaw"",
-       s.data::json ->> 'Latency' AS ""LatencyMsRaw""
+        var querySql = $@"{ctePart}
+SELECT {JobColumns}
 FROM {_jobTable} j
-LEFT JOIN {_stateTable} s ON s.id = j.stateid
+{stateJoin}
+{contentJoin}
 {whereClause}
 ORDER BY j.createdat DESC
 LIMIT @PageSize OFFSET @Offset";
@@ -280,19 +126,10 @@ LIMIT @PageSize OFFSET @Offset";
         var totalCount = await connection.ExecuteScalarAsync<long>(
             new CommandDefinition(countSql, parameters, cancellationToken: ct));
 
-        var rows = await connection.QueryAsync<FilteredJobRawRow>(
+        var rows = await connection.QueryAsync<JobRawRow>(
             new CommandDefinition(querySql, parameters, cancellationToken: ct));
 
-        var items = rows.Select(r => new JobSummaryDto
-        {
-            JobId = r.JobId,
-            JobName = ExtractJobName(r.InvocationData),
-            State = r.State,
-            CreatedAt = r.CreatedAt,
-            LastStateChange = r.LastStateChange,
-            DurationMs = ParseNullableDouble(r.DurationMsRaw),
-            LatencyMs = ParseNullableDouble(r.LatencyMsRaw)
-        }).ToList();
+        var items = rows.Select(MapToJobSummary).ToList();
 
         return new PagedResult<JobSummaryDto>
         {
@@ -302,6 +139,10 @@ LIMIT @PageSize OFFSET @Offset";
             PageSize = pageSize
         };
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GetJobsByTagAsync — Simple tag-based lookup
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// <inheritdoc />
     public async Task<PagedResult<JobSummaryDto>> GetJobsByTagAsync(
@@ -320,11 +161,7 @@ INNER JOIN {_jobTable} j ON j.id::text = t.value
 WHERE t.key = @TagKey";
 
         var querySql = $@"
-SELECT j.id::text AS ""JobId"",
-       j.invocationdata AS ""InvocationData"",
-       j.statename AS ""State"",
-       j.createdat AS ""CreatedAt"",
-       s.createdat AS ""LastStateChange""
+SELECT {JobColumns}
 FROM {_setTable} t
 INNER JOIN {_jobTable} j ON j.id::text = t.value
 LEFT JOIN {_stateTable} s ON s.id = j.stateid
@@ -332,35 +169,24 @@ WHERE t.key = @TagKey
 ORDER BY j.createdat DESC
 LIMIT @PageSize OFFSET @Offset";
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(ct);
-
-        var totalCount = await connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(countSql, new { TagKey = tagKey }, cancellationToken: ct));
-
-        var rows = await connection.QueryAsync<JobRawRow>(
-            new CommandDefinition(querySql, new { TagKey = tagKey, PageSize = pageSize, Offset = offset }, cancellationToken: ct));
-
-        var items = rows.Select(MapToJobSummary).ToList();
-
-        return new PagedResult<JobSummaryDto>
-        {
-            Items = items,
-            TotalCount = totalCount,
-            Page = page,
-            PageSize = pageSize
-        };
+        return await ExecutePagedAsync(countSql, querySql,
+            new { TagKey = tagKey, PageSize = pageSize, Offset = offset }, page, pageSize, ct);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GetTagCloudAsync — Tag aggregation
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<TagCountDto>> GetTagCloudAsync(CancellationToken ct)
     {
         var sql = $@"
-SELECT SUBSTRING(key FROM 6) AS ""Tag"",
+SELECT SUBSTRING(t.key FROM 6) AS ""Tag"",
        COUNT(*) AS ""Count""
-FROM {_setTable}
-WHERE key LIKE 'tags:%'
-GROUP BY key
+FROM {_setTable} t
+INNER JOIN {_jobTable} j ON j.id::text = t.value
+WHERE t.key LIKE 'tags:%'
+GROUP BY t.key
 ORDER BY ""Count"" DESC";
 
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -371,6 +197,10 @@ ORDER BY ""Count"" DESC";
 
         return results.ToList();
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GetJobsByStateAsync — Simple state-based pagination
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// <inheritdoc />
     public async Task<PagedResult<JobSummaryDto>> GetJobsByStateAsync(
@@ -387,36 +217,20 @@ FROM {_jobTable} j
 WHERE j.statename = @StateName";
 
         var querySql = $@"
-SELECT j.id::text AS ""JobId"",
-       j.invocationdata AS ""InvocationData"",
-       j.statename AS ""State"",
-       j.createdat AS ""CreatedAt"",
-       s.createdat AS ""LastStateChange""
+SELECT {JobColumns}
 FROM {_jobTable} j
 LEFT JOIN {_stateTable} s ON s.id = j.stateid
 WHERE j.statename = @StateName
 ORDER BY j.createdat DESC
 LIMIT @PageSize OFFSET @Offset";
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(ct);
-
-        var totalCount = await connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(countSql, new { StateName = stateName }, cancellationToken: ct));
-
-        var rows = await connection.QueryAsync<JobRawRow>(
-            new CommandDefinition(querySql, new { StateName = stateName, PageSize = pageSize, Offset = offset }, cancellationToken: ct));
-
-        var items = rows.Select(MapToJobSummary).ToList();
-
-        return new PagedResult<JobSummaryDto>
-        {
-            Items = items,
-            TotalCount = totalCount,
-            Page = page,
-            PageSize = pageSize
-        };
+        return await ExecutePagedAsync(countSql, querySql,
+            new { StateName = stateName, PageSize = pageSize, Offset = offset }, page, pageSize, ct);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GetSlowestJobsAsync — Top N by duration
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<SlowestJobDto>> GetSlowestJobsAsync(
@@ -448,89 +262,230 @@ LIMIT @Count";
         return rows.Select(r => new SlowestJobDto
         {
             JobId = r.JobId,
-            JobName = ExtractJobName(r.InvocationData),
+            JobName = PgHelper.ExtractJobName(r.InvocationData),
             DurationMs = r.DurationMs,
             CompletedAt = r.CompletedAt
         }).ToList();
     }
 
-    #region Private Helpers
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Private: Multi-stage filter builders
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Extracts a human-readable job name from the InvocationData JSON.
-    /// InvocationData typically contains a "Type" field with the fully qualified type name.
+    /// Stage 1: Basic filters on indexed job table columns.
     /// </summary>
-    private static string ExtractJobName(string invocationData)
+    private void BuildBasicFilters(JobFilterCriteria criteria, List<string> conditions, DynamicParameters parameters)
     {
-        if (string.IsNullOrWhiteSpace(invocationData))
-            return "(unknown)";
-
-        try
+        // State filter
+        var states = criteria.GetEffectiveStates();
+        if (states.Count == 1)
         {
-            // InvocationData is JSON like: {"Type":"Namespace.Class, Assembly","Method":"MethodName",...}
-            // Extract Type and Method for a readable name
-            var typeStart = invocationData.IndexOf("\"Type\"", StringComparison.OrdinalIgnoreCase);
-            if (typeStart < 0)
-            {
-                // Try lowercase "type" (PostgreSQL may store differently)
-                typeStart = invocationData.IndexOf("\"t\"", StringComparison.OrdinalIgnoreCase);
-                if (typeStart < 0)
-                    return TruncateInvocationData(invocationData);
-            }
-
-            var valueStart = invocationData.IndexOf('"', typeStart + 6);
-            if (valueStart < 0) return TruncateInvocationData(invocationData);
-            valueStart++; // skip opening quote
-
-            var valueEnd = invocationData.IndexOf('"', valueStart);
-            if (valueEnd < 0) return TruncateInvocationData(invocationData);
-
-            var typeName = invocationData.Substring(valueStart, valueEnd - valueStart);
-
-            // Get just the class name (last part before comma for assembly)
-            var commaIdx = typeName.IndexOf(',');
-            if (commaIdx > 0)
-                typeName = typeName.Substring(0, commaIdx);
-
-            var dotIdx = typeName.LastIndexOf('.');
-            if (dotIdx > 0)
-                typeName = typeName.Substring(dotIdx + 1);
-
-            // Try to extract method name
-            var methodStart = invocationData.IndexOf("\"Method\"", StringComparison.OrdinalIgnoreCase);
-            if (methodStart < 0)
-                methodStart = invocationData.IndexOf("\"m\"", StringComparison.OrdinalIgnoreCase);
-
-            if (methodStart >= 0)
-            {
-                var mValueStart = invocationData.IndexOf('"', methodStart + 8);
-                if (mValueStart < 0)
-                    mValueStart = invocationData.IndexOf('"', methodStart + 3);
-                if (mValueStart >= 0)
-                {
-                    mValueStart++;
-                    var mValueEnd = invocationData.IndexOf('"', mValueStart);
-                    if (mValueEnd > mValueStart)
-                    {
-                        var methodName = invocationData.Substring(mValueStart, mValueEnd - mValueStart);
-                        return $"{typeName}.{methodName}";
-                    }
-                }
-            }
-
-            return typeName;
+            conditions.Add("j.statename = @State");
+            parameters.Add("State", states[0]);
         }
-        catch
+        else if (states.Count > 1)
         {
-            return TruncateInvocationData(invocationData);
+            conditions.Add("j.statename = ANY(@States)");
+            parameters.Add("States", states.ToArray());
+        }
+
+        // Date range
+        if (criteria.DateFrom.HasValue)
+        {
+            conditions.Add("j.createdat >= @DateFrom");
+            parameters.Add("DateFrom", criteria.DateFrom.Value.UtcDateTime);
+        }
+        if (criteria.DateTo.HasValue)
+        {
+            conditions.Add("j.createdat <= @DateTo");
+            parameters.Add("DateTo", criteria.DateTo.Value.UtcDateTime);
+        }
+
+        // Job name pattern (ILIKE on invocationdata)
+        if (!string.IsNullOrWhiteSpace(criteria.JobNamePattern))
+        {
+            conditions.Add("j.invocationdata::text ILIKE @NamePattern");
+            parameters.Add("NamePattern", "%" + PgHelper.EscapeILikePattern(criteria.JobNamePattern) + "%");
         }
     }
 
-    private static string TruncateInvocationData(string data)
+    /// <summary>
+    /// Stage 2: Filters that require state data (JSON extraction).
+    /// Returns true if state JOIN is needed.
+    /// </summary>
+    private bool BuildStateDataFilters(JobFilterCriteria criteria, List<string> conditions, DynamicParameters parameters)
     {
-        if (data.Length <= 100)
-            return data;
-        return data.Substring(0, 100) + "...";
+        bool needed = false;
+
+        // Server filter
+        if (!string.IsNullOrWhiteSpace(criteria.Server))
+        {
+            conditions.Add($@"EXISTS (
+                SELECT 1 FROM {_stateTable} s2
+                WHERE s2.jobid = j.id AND s2.name = 'Processing'
+                  AND s2.data::json ->> 'ServerId' = @Server
+            )");
+            parameters.Add("Server", criteria.Server);
+            needed = true;
+        }
+
+        // Duration filters
+        if (criteria.MinDuration.HasValue)
+        {
+            conditions.Add("(s.data::json ->> 'PerformanceDuration')::double precision >= @MinDurationMs");
+            parameters.Add("MinDurationMs", criteria.MinDuration.Value.TotalMilliseconds);
+            needed = true;
+        }
+        if (criteria.MaxDuration.HasValue)
+        {
+            conditions.Add("(s.data::json ->> 'PerformanceDuration')::double precision <= @MaxDurationMs");
+            parameters.Add("MaxDurationMs", criteria.MaxDuration.Value.TotalMilliseconds);
+            needed = true;
+        }
+
+        // Exception pattern
+        if (!string.IsNullOrWhiteSpace(criteria.ExceptionPattern))
+        {
+            var pattern = "%" + PgHelper.EscapeILikePattern(criteria.ExceptionPattern) + "%";
+            conditions.Add(@"(s.data::json ->> 'ExceptionType' ILIKE @ExPattern
+                OR s.data::json ->> 'ExceptionMessage' ILIKE @ExPattern)");
+            parameters.Add("ExPattern", pattern);
+            needed = true;
+
+            // Exception search implies Failed state (unless user explicitly set another state)
+            if (criteria.GetEffectiveStates().Count == 0)
+            {
+                conditions.Add("j.statename = 'Failed'");
+            }
+        }
+
+        return needed;
+    }
+
+    /// <summary>
+    /// Stage 3: Cross-table filters using EXISTS subqueries.
+    /// </summary>
+    private void BuildCrossTableFilters(JobFilterCriteria criteria, List<string> conditions, DynamicParameters parameters)
+    {
+        // Queue filter
+        if (!string.IsNullOrWhiteSpace(criteria.Queue))
+        {
+            conditions.Add($@"EXISTS (
+                SELECT 1 FROM {_jobParameterTable} jp
+                WHERE jp.jobid = j.id AND jp.name = 'CurrentQueue' AND jp.value = @Queue
+            )");
+            parameters.Add("Queue", criteria.Queue);
+        }
+
+        // Recurring job ID filter
+        if (!string.IsNullOrWhiteSpace(criteria.RecurringJobId))
+        {
+            conditions.Add($@"EXISTS (
+                SELECT 1 FROM {_jobParameterTable} jp
+                WHERE jp.jobid = j.id AND jp.name = 'RecurringJobId' AND jp.value = @RecurringJobId
+            )");
+            parameters.Add("RecurringJobId", criteria.RecurringJobId);
+        }
+
+        // Tags filter (AND logic: job must have ALL specified tags)
+        if (criteria.Tags != null && criteria.Tags.Count > 0)
+        {
+            for (int i = 0; i < criteria.Tags.Count; i++)
+            {
+                var paramName = $"Tag{i}";
+                conditions.Add($@"EXISTS (
+                    SELECT 1 FROM {_setTable} t
+                    WHERE t.key = 'tags:' || @{paramName} AND t.value = j.id::text
+                )");
+                parameters.Add(paramName, criteria.Tags[i]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stage 4: Content search CTE (stack trace + console output).
+    /// Returns the CTE body SQL or null if not needed.
+    /// </summary>
+    private string BuildContentSearchCte(JobFilterCriteria criteria, DynamicParameters parameters)
+    {
+        if (string.IsNullOrWhiteSpace(criteria.ContentPattern))
+            return null;
+
+        if (!criteria.SearchStackTrace && !criteria.SearchConsoleOutput)
+            return null;
+
+        var pattern = "%" + PgHelper.EscapeILikePattern(criteria.ContentPattern) + "%";
+        parameters.Add("ContentPattern", pattern);
+
+        var unionParts = new List<string>();
+
+        if (criteria.SearchStackTrace)
+        {
+            // Search in state.data (full JSON text includes ExceptionDetails/stack trace)
+            unionParts.Add($@"
+                SELECT j2.id
+                FROM {_jobTable} j2
+                INNER JOIN {_stateTable} s2 ON s2.id = j2.stateid
+                WHERE s2.data::text ILIKE @ContentPattern");
+        }
+
+        if (criteria.SearchConsoleOutput)
+        {
+            // Console messages stored in set table (short messages as JSON)
+            unionParts.Add($@"
+                SELECT CAST(h_ref.value AS bigint) AS id
+                FROM {_setTable} st
+                INNER JOIN {_hashTable} h_ref
+                    ON h_ref.key = REPLACE(st.key, 'console:set:', 'console:hash:')
+                    AND h_ref.field = 'jobId'
+                WHERE st.key LIKE 'console:set:%'
+                  AND st.value ILIKE @ContentPattern");
+
+            // Console messages stored in hash table (long messages)
+            unionParts.Add($@"
+                SELECT CAST(h_ref.value AS bigint) AS id
+                FROM {_hashTable} h
+                INNER JOIN {_hashTable} h_ref
+                    ON h_ref.key = h.key
+                    AND h_ref.field = 'jobId'
+                WHERE h.key LIKE 'console:hash:%'
+                  AND h.field <> 'jobId'
+                  AND h.field <> 'progress'
+                  AND h.value ILIKE @ContentPattern");
+        }
+
+        return string.Join("\n    UNION\n", unionParts);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Private: Execution helpers
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Executes a count + paginated query pair and returns a PagedResult.
+    /// </summary>
+    private async Task<PagedResult<JobSummaryDto>> ExecutePagedAsync(
+        string countSql, string querySql, object parameters, int page, int pageSize, CancellationToken ct)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var totalCount = await connection.ExecuteScalarAsync<long>(
+            new CommandDefinition(countSql, parameters, cancellationToken: ct));
+
+        var rows = await connection.QueryAsync<JobRawRow>(
+            new CommandDefinition(querySql, parameters, cancellationToken: ct));
+
+        var items = rows.Select(MapToJobSummary).ToList();
+
+        return new PagedResult<JobSummaryDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     private static JobSummaryDto MapToJobSummary(JobRawRow row)
@@ -538,26 +493,20 @@ LIMIT @Count";
         return new JobSummaryDto
         {
             JobId = row.JobId,
-            JobName = ExtractJobName(row.InvocationData),
+            JobName = PgHelper.ExtractJobName(row.InvocationData),
             State = row.State,
             CreatedAt = row.CreatedAt,
-            LastStateChange = row.LastStateChange
+            LastStateChange = row.LastStateChange,
+            DurationMs = row.DurationMs,
+            LatencyMs = row.LatencyMs,
+            ExceptionType = row.ExceptionType,
+            ExceptionMessage = row.ExceptionMessage
         };
     }
 
-    private static double? ParseNullableDouble(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-        if (double.TryParse(value, System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var result))
-            return result;
-        return null;
-    }
-
-    #endregion
-
-    #region Internal Row Types
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Internal row types
+    // ═══════════════════════════════════════════════════════════════════════════
 
     private class JobRawRow
     {
@@ -566,38 +515,10 @@ LIMIT @Count";
         public string State { get; set; }
         public DateTime? CreatedAt { get; set; }
         public DateTime? LastStateChange { get; set; }
-    }
-
-    private class JobRawRowWithDuration
-    {
-        public string JobId { get; set; }
-        public string InvocationData { get; set; }
-        public string State { get; set; }
-        public DateTime? CreatedAt { get; set; }
-        public DateTime? LastStateChange { get; set; }
-        public string DurationMsRaw { get; set; }
-    }
-
-    private class FailedJobRawRow
-    {
-        public string JobId { get; set; }
-        public string InvocationData { get; set; }
-        public string State { get; set; }
-        public DateTime? CreatedAt { get; set; }
-        public DateTime? LastStateChange { get; set; }
+        public double? DurationMs { get; set; }
+        public double? LatencyMs { get; set; }
         public string ExceptionType { get; set; }
         public string ExceptionMessage { get; set; }
-    }
-
-    private class FilteredJobRawRow
-    {
-        public string JobId { get; set; }
-        public string InvocationData { get; set; }
-        public string State { get; set; }
-        public DateTime? CreatedAt { get; set; }
-        public DateTime? LastStateChange { get; set; }
-        public string DurationMsRaw { get; set; }
-        public string LatencyMsRaw { get; set; }
     }
 
     private class SlowestJobRawRow
@@ -607,6 +528,4 @@ LIMIT @Count";
         public double DurationMs { get; set; }
         public DateTime? CompletedAt { get; set; }
     }
-
-    #endregion
 }

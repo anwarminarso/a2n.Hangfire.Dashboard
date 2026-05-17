@@ -95,7 +95,7 @@ samples/
 - `IStorageMetricsProvider` — analytics/metrics (optional, dashboard gracefully degrades)
 
 **Completed:**
-- ✅ `IStorageQueryProvider` interface with 7 async methods
+- ✅ `IStorageQueryProvider` interface (unified: 5 async methods)
 - ✅ `IStorageMetricsProvider` interface with 16 async methods
 - ✅ Supporting DTOs (`PagedResult<T>`, `JobFilterCriteria`, `JobDurationStatsDto`, etc.)
 - ✅ `GenericQueryProvider` fallback (IMonitoringApi + client-side filtering)
@@ -104,7 +104,8 @@ samples/
 - ✅ LIKE/ILIKE pattern sanitization
 - ✅ Parameterized queries only — zero string concatenation
 - ✅ DI registration via `DashboardStorageOptionsBuilder` pattern
-- ✅ SearchService delegation to IStorageQueryProvider for database-level search
+- ✅ Unified multi-stage `GetJobsWithFilterAsync` (absorbs name/exception/content search)
+- ✅ Simplified SearchService (build criteria → delegate to provider)
 - ✅ Graceful degradation when `IStorageMetricsProvider` not registered
 
 **Registration:**
@@ -150,6 +151,23 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Fixed scroll position reset on page/pageSize change (smooth scroll to results)
 - ✅ Fixed Analytics "Live" badge vertical alignment (removed nested flex wrapper from TimeRangeSelector)
 - ✅ Fixed Analytics charts showing only 1 data point for "Last 1h" (expanded query window to 6h with hourly interval)
+
+### v2.1 — Search & Query Refactor ✅
+- ✅ Unified `IStorageQueryProvider` interface (8 methods → 5 methods)
+- ✅ Merged `SearchJobsByNameAsync`, `SearchFailedByExceptionAsync`, `SearchByContentAsync` into unified `GetJobsWithFilterAsync`
+- ✅ Extended `JobFilterCriteria` with `JobNamePattern`, `ExceptionPattern`, `ContentPattern`, `States` (multi-state)
+- ✅ Multi-stage query approach in `GetJobsWithFilterAsync` (basic filters → state data → cross-table → content CTE)
+- ✅ Simplified `SearchService` (1536 lines → ~280 lines) — build criteria + delegate to provider
+- ✅ Removed scan-based fallback and N+1 `ApplySecondaryFilters` from SearchService
+- ✅ Tags page now uses `IStorageQueryProvider` (GetJobsByTagAsync + GetTagCloudAsync) instead of TagsDataReader
+- ✅ Tag cloud count now matches actual job count (INNER JOIN to job table, excludes expired)
+- ✅ Filtered out numeric-only entries from tag cloud display
+- ✅ `JobNameHelper` — unified job name extraction with `JobDisplayNameAttribute` support
+- ✅ All job list pages use `JobNameHelper.GetDisplayName()` (fallback to InvocationData when assembly unavailable)
+- ✅ Search result filter badges now have distinct colors per filter type
+- ✅ Fixed SQL Server content search (bracket escaping conflict with ESCAPE clause)
+- ✅ Fixed SQL Server metrics provider GROUP BY full InvocationData (now extracts Type+Method via JSON_VALUE)
+- ✅ Fixed SQL Server tag queries (TRY_CAST for non-numeric safety)
 
 ---
 
@@ -199,6 +217,7 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v1.5 | PostgreSQL adapter (`a2n.Hangfire.Dashboard.PostgreSql`) | ✅ Done |
 | v1.6 | Analytics Dashboard (Overview + Performance + Failures + Queues + Recurring) | ✅ Done |
 | v2.0 | Phase 2 complete | ✅ Done |
+| v2.1 | Search & query refactor + JobDisplayName + SQL Server fixes | ✅ Done |
 | v3.0 | Phase 3 — extensibility & integration | Planned |
 
 ---

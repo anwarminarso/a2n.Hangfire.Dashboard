@@ -309,8 +309,8 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
 
     private string GetJobTitle()
     {
-        if (_job?.Job is null) return $"Job #{JobId}";
-        return $"{_job.Job.Type.Name}.{_job.Job.Method.Name}";
+        if (_job is null) return $"Job #{JobId}";
+        return Helpers.JobNameHelper.GetDisplayName(_job.Job, _job.InvocationData);
     }
 
     private string GetFormattedArguments()

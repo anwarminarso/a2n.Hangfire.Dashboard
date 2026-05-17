@@ -247,7 +247,7 @@ public class HangfireMonitorService
     public void StopRecurringJob(string recurringJobId)
     {
         // Read the recurring job config before removing
-        using var connection = _storage.GetConnection();
+        using var connection = _storage.GetReadOnlyConnection();
         if (connection is not JobStorageConnection storageConnection) return;
 
         var recurringJobs = storageConnection.GetRecurringJobs();

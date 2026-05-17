@@ -3,6 +3,8 @@ using Hangfire.Console;
 using Hangfire.PostgreSql;
 using Hangfire.Tags;
 using Hangfire.Tags.MemoryStorage;
+using Hangfire.Tags.PostgreSql;
+using Hangfire.Tags.SqlServer;
 using SampleAppOrig.Jobs;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,6 +28,7 @@ builder.Services.AddHangfire(config =>
         case "SqlServer":
             config.UseSqlServerStorage(sqlServerConn);
             config.UseConsole();
+            config.UseTagsWithSql();
             // Note: FaceIT.Hangfire.Tags doesn't have a stable SqlServer storage package
             // Tags will work but won't persist across restarts
             Console.WriteLine("[SampleAppOrig] Using SQL Server storage");
@@ -33,6 +36,7 @@ builder.Services.AddHangfire(config =>
         case "PostgreSql":
             config.UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(postgreSqlConn));
             config.UseConsole();
+            config.UseTagsWithPostgreSql();
             // Note: FaceIT.Hangfire.Tags doesn't have a stable PostgreSql storage package
             // Tags will work but won't persist across restarts
             Console.WriteLine("[SampleAppOrig] Using PostgreSQL storage");
@@ -92,6 +96,12 @@ app.Lifetime.ApplicationStarted.Register(() =>
         "long-running-job",
         x => x.LongRunningJob(null!),
         "*/10 * * * *");
+
+    RecurringJob.AddOrUpdate<SampleJobs>(
+        "long-running-job-label",
+        x => x.LongRunningJobLabel(null!),
+        "*/10 * * * *");
+
 });
 
 app.MapGet("/health", () => Results.Ok("healthy"));

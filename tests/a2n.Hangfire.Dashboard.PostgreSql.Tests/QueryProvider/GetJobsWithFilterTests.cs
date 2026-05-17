@@ -573,11 +573,11 @@ public class GetJobsWithFilterTests
     }
 
     [Fact]
-    public async Task FilterWithEmptyCriteria_ReturnsAllJobs()
+    public async Task FilterWithEmptyCriteria_ReturnsEmpty()
     {
         var criteria = new JobFilterCriteria();
         var result = await _provider.GetJobsWithFilterAsync(criteria, 1, 100, CancellationToken.None);
-        Assert.Equal(100, result.TotalCount);
+        Assert.Equal(0, result.TotalCount);
     }
 
     [Fact]
@@ -663,11 +663,11 @@ public class GetJobsWithFilterTests
     }
 
     [Fact]
-    public async Task FilterByEmptyTagsList_IgnoresTagFilter()
+    public async Task FilterByEmptyTagsList_ReturnsEmpty()
     {
         var criteria = new JobFilterCriteria { Tags = new List<string>() };
         var result = await _provider.GetJobsWithFilterAsync(criteria, 1, 100, CancellationToken.None);
-        Assert.Equal(100, result.TotalCount);
+        Assert.Equal(0, result.TotalCount);
     }
 
     #endregion

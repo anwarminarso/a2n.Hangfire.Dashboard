@@ -17,6 +17,11 @@ public class SearchRequest
     public List<string> Tags { get; set; } = new();
     public string Queue { get; set; }
     public string RecurringJobId { get; set; }
+
+    // Content search (searches inside job data — stack trace, console output)
+    public string ContentQuery { get; set; }
+    public bool SearchStackTrace { get; set; } = false;
+    public bool SearchConsoleOutput { get; set; } = false;
 }
 
 public enum SearchMode
@@ -50,6 +55,7 @@ public class SearchResultItem
     public double? DurationMs { get; set; }
     public string[] Tags { get; set; }
     public string ExceptionExcerpt { get; set; }
+    public string ContentExcerpt { get; set; }
     public SearchMatchSource MatchSource { get; set; }
 }
 
@@ -59,7 +65,8 @@ public enum SearchMatchSource
     Name,
     Queue,
     Tag,
-    Exception
+    Exception,
+    Content
 }
 
 public class FilterOptions
@@ -84,4 +91,7 @@ public class FilterPreset
     public List<string> Tags { get; set; } = new();
     public string Queue { get; set; }
     public string RecurringJobId { get; set; }
+    public string ContentQuery { get; set; }
+    public bool SearchStackTrace { get; set; } = false;
+    public bool SearchConsoleOutput { get; set; } = false;
 }

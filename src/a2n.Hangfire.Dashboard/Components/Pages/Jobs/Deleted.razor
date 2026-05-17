@@ -159,7 +159,7 @@
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
     private static string GetJobName(DeletedJobDto dto) =>
-        dto?.Job is null ? "Unknown" : $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
+        dto is null ? "(unknown)" : Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
 
     public void Dispose()
     {

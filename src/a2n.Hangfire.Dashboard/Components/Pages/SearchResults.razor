@@ -66,50 +66,58 @@
         }
         @if (!string.IsNullOrEmpty(_currentFilterRequest.Queue))
         {
-            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+            <span class="badge bg-secondary d-inline-flex align-items-center gap-1">
                 <i class="bi bi-collection"></i> @_currentFilterRequest.Queue
-                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
                         @onclick="ClearQueueParam" aria-label="Clear queue filter"></button>
             </span>
         }
         @if (!string.IsNullOrEmpty(_currentFilterRequest.Server))
         {
-            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+            <span class="badge bg-dark d-inline-flex align-items-center gap-1">
                 <i class="bi bi-hdd-rack"></i> @_currentFilterRequest.Server
-                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
                         @onclick="ClearServerParam" aria-label="Clear server filter"></button>
             </span>
         }
         @if (_currentFilterRequest.DateFrom.HasValue || _currentFilterRequest.DateTo.HasValue)
         {
-            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+            <span class="badge bg-success d-inline-flex align-items-center gap-1">
                 <i class="bi bi-calendar-range"></i> @GetDateRangeLabel()
-                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
                         @onclick="ClearDateRangeParam" aria-label="Clear date range"></button>
             </span>
         }
         @if (_currentFilterRequest.MinDurationSeconds.HasValue || _currentFilterRequest.MaxDurationSeconds.HasValue)
         {
-            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+            <span class="badge bg-danger d-inline-flex align-items-center gap-1">
                 <i class="bi bi-stopwatch"></i> @GetDurationLabel()
-                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
                         @onclick="ClearDurationParam" aria-label="Clear duration filter"></button>
             </span>
         }
         @if (_currentFilterRequest.Tags is not null && _currentFilterRequest.Tags.Count > 0)
         {
-            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+            <span class="badge text-bg-purple d-inline-flex align-items-center gap-1" style="background-color: #6f42c1 !important;">
                 <i class="bi bi-tags"></i> @string.Join(", ", _currentFilterRequest.Tags)
-                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.5em;"
                         @onclick="ClearTagsParam" aria-label="Clear tags filter"></button>
             </span>
         }
         @if (!string.IsNullOrEmpty(_currentFilterRequest.RecurringJobId))
         {
-            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+            <span class="badge text-bg-teal d-inline-flex align-items-center gap-1" style="background-color: #20c997 !important; color: #000 !important;">
                 <i class="bi bi-arrow-repeat"></i> @_currentFilterRequest.RecurringJobId
                 <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
                         @onclick="ClearRecurringJobParam" aria-label="Clear recurring job filter"></button>
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_currentFilterRequest.ContentQuery))
+        {
+            <span class="badge bg-warning text-dark d-inline-flex align-items-center gap-1">
+                <i class="bi bi-file-text"></i> content: @_currentFilterRequest.ContentQuery
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearContentQueryParam" aria-label="Clear content search"></button>
             </span>
         }
         @if (string.IsNullOrWhiteSpace(_searchQuery) && !HasActiveFilters())
@@ -193,38 +201,44 @@ else if (_result is not null)
         }
         @if (!string.IsNullOrEmpty(_lastSearchedRequest.Queue))
         {
-            <span class="badge bg-info text-dark">
+            <span class="badge bg-secondary">
                 <i class="bi bi-collection"></i> @_lastSearchedRequest.Queue
             </span>
         }
         @if (!string.IsNullOrEmpty(_lastSearchedRequest.Server))
         {
-            <span class="badge bg-info text-dark">
+            <span class="badge bg-dark">
                 <i class="bi bi-hdd-rack"></i> @_lastSearchedRequest.Server
             </span>
         }
         @if (_lastSearchedRequest.DateFrom.HasValue || _lastSearchedRequest.DateTo.HasValue)
         {
-            <span class="badge bg-info text-dark">
+            <span class="badge bg-success">
                 <i class="bi bi-calendar-range"></i> @GetLastSearchedDateRangeLabel()
             </span>
         }
         @if (_lastSearchedRequest.MinDurationSeconds.HasValue || _lastSearchedRequest.MaxDurationSeconds.HasValue)
         {
-            <span class="badge bg-info text-dark">
+            <span class="badge bg-danger">
                 <i class="bi bi-stopwatch"></i> @GetLastSearchedDurationLabel()
             </span>
         }
         @if (_lastSearchedRequest.Tags is not null && _lastSearchedRequest.Tags.Count > 0)
         {
-            <span class="badge bg-info text-dark">
+            <span class="badge" style="background-color: #6f42c1 !important;">
                 <i class="bi bi-tags"></i> @string.Join(", ", _lastSearchedRequest.Tags)
             </span>
         }
         @if (!string.IsNullOrEmpty(_lastSearchedRequest.RecurringJobId))
         {
-            <span class="badge bg-info text-dark">
+            <span class="badge" style="background-color: #20c997 !important; color: #000 !important;">
                 <i class="bi bi-arrow-repeat"></i> @_lastSearchedRequest.RecurringJobId
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_lastSearchedRequest.ContentQuery))
+        {
+            <span class="badge bg-warning text-dark">
+                <i class="bi bi-file-text"></i> content: @_lastSearchedRequest.ContentQuery
             </span>
         }
     </div>
@@ -452,7 +466,8 @@ else if (_result is not null)
             || _currentFilterRequest.MaxDurationSeconds.HasValue
             || (_currentFilterRequest.Tags is not null && _currentFilterRequest.Tags.Count > 0)
             || !string.IsNullOrEmpty(_currentFilterRequest.Queue)
-            || !string.IsNullOrEmpty(_currentFilterRequest.RecurringJobId);
+            || !string.IsNullOrEmpty(_currentFilterRequest.RecurringJobId)
+            || !string.IsNullOrEmpty(_currentFilterRequest.ContentQuery);
     }
 
     // ═══════════════════════════════════════════════════
@@ -506,7 +521,10 @@ else if (_result is not null)
                 MaxDurationSeconds = _currentFilterRequest.MaxDurationSeconds,
                 Tags = _currentFilterRequest.Tags ?? new List<string>(),
                 Queue = _currentFilterRequest.Queue,
-                RecurringJobId = _currentFilterRequest.RecurringJobId
+                RecurringJobId = _currentFilterRequest.RecurringJobId,
+                ContentQuery = _currentFilterRequest.ContentQuery,
+                SearchConsoleOutput = _currentFilterRequest.SearchConsoleOutput,
+                SearchStackTrace = _currentFilterRequest.SearchStackTrace,
             };
 
             _result = await SearchService.SearchAsync(request, cts.Token);
@@ -523,7 +541,10 @@ else if (_result is not null)
                 MinDurationSeconds = request.MinDurationSeconds,
                 MaxDurationSeconds = request.MaxDurationSeconds,
                 Tags = request.Tags?.ToList(),
-                RecurringJobId = request.RecurringJobId
+                RecurringJobId = request.RecurringJobId,
+                ContentQuery = request.ContentQuery,
+                SearchConsoleOutput = request.SearchConsoleOutput,
+                SearchStackTrace = request.SearchStackTrace,
             };
         }
         catch (OperationCanceledException)
@@ -632,6 +653,12 @@ else if (_result is not null)
     private void ClearRecurringJobParam()
     {
         _currentFilterRequest.RecurringJobId = null;
+        StateHasChanged();
+    }
+
+    private void ClearContentQueryParam()
+    {
+        _currentFilterRequest.ContentQuery = null;
         StateHasChanged();
     }
 

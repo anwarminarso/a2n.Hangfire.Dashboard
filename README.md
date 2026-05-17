@@ -209,6 +209,7 @@ Open `https://localhost:7100/hangfire` to see it in action.
 | v1.2 | ✅ Done | Razor Class Library (NuGet-ready) |
 | v1.3–v1.6 | ✅ Done | Storage adapters (SQL Server, PostgreSQL) + Analytics dashboard |
 | v2.0 | ✅ Done | All differentiation features complete |
+| v2.1 | ✅ Done | Search refactor + JobDisplayName + SQL Server fixes |
 | v3.0 | Planned | Notifications, REST API, Prometheus metrics, theming |
 
 See the full [roadmap](docs/ROADMAP.md) for details.

@@ -125,13 +125,22 @@ public class JobSummaryDto
 /// <summary>
 /// Filter criteria for advanced job queries.
 /// All fields are optional; non-null fields are combined with AND logic.
+/// Unified criteria that covers basic filters, name search, exception search, and content search.
 /// </summary>
 public class JobFilterCriteria
 {
+    // ─── Basic Filters ───────────────────────────────────────────────
+
     /// <summary>
-    /// Filter by job state (e.g., "Succeeded", "Failed").
+    /// Filter by job state (e.g., "Succeeded", "Failed"). Single state.
     /// </summary>
     public string State { get; set; }
+
+    /// <summary>
+    /// Filter by multiple states (OR logic between states).
+    /// Takes precedence over <see cref="State"/> if both are set.
+    /// </summary>
+    public List<string> States { get; set; }
 
     /// <summary>
     /// Filter jobs created on or after this date.
@@ -149,7 +158,7 @@ public class JobFilterCriteria
     public string Queue { get; set; }
 
     /// <summary>
-    /// Filter by server name.
+    /// Filter by server name (from State.Data ServerId).
     /// </summary>
     public string Server { get; set; }
 
@@ -164,7 +173,7 @@ public class JobFilterCriteria
     public TimeSpan? MaxDuration { get; set; }
 
     /// <summary>
-    /// Filter jobs that have all specified tags.
+    /// Filter jobs that have all specified tags (AND logic between tags).
     /// </summary>
     public List<string> Tags { get; set; }
 
@@ -172,6 +181,70 @@ public class JobFilterCriteria
     /// Filter by recurring job identifier.
     /// </summary>
     public string RecurringJobId { get; set; }
+
+    // ─── Search Patterns (absorbed from separate search methods) ─────
+
+    /// <summary>
+    /// Search by job type/method name (ILIKE on InvocationData).
+    /// Replaces SearchJobsByNameAsync.
+    /// </summary>
+    public string JobNamePattern { get; set; }
+
+    /// <summary>
+    /// Search by exception type or message (ILIKE on State.Data exception fields).
+    /// Replaces SearchFailedByExceptionAsync.
+    /// </summary>
+    public string ExceptionPattern { get; set; }
+
+    /// <summary>
+    /// Search by content (stack trace and/or console output).
+    /// Replaces SearchByContentAsync.
+    /// </summary>
+    public string ContentPattern { get; set; }
+
+    /// <summary>
+    /// When ContentPattern is set, whether to search in exception stack traces.
+    /// </summary>
+    public bool SearchStackTrace { get; set; }
+
+    /// <summary>
+    /// When ContentPattern is set, whether to search in console output.
+    /// </summary>
+    public bool SearchConsoleOutput { get; set; }
+
+    // ─── Helpers ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the effective state filter list (merges State and States).
+    /// </summary>
+    public IReadOnlyList<string> GetEffectiveStates()
+    {
+        if (States != null && States.Count > 0)
+            return States;
+        if (!string.IsNullOrWhiteSpace(State))
+            return new[] { State };
+        return Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// Returns true if any filter criterion is active.
+    /// </summary>
+    public bool HasAnyCriteria()
+    {
+        return !string.IsNullOrWhiteSpace(State)
+            || (States != null && States.Count > 0)
+            || DateFrom.HasValue
+            || DateTo.HasValue
+            || !string.IsNullOrWhiteSpace(Queue)
+            || !string.IsNullOrWhiteSpace(Server)
+            || MinDuration.HasValue
+            || MaxDuration.HasValue
+            || (Tags != null && Tags.Count > 0)
+            || !string.IsNullOrWhiteSpace(RecurringJobId)
+            || !string.IsNullOrWhiteSpace(JobNamePattern)
+            || !string.IsNullOrWhiteSpace(ExceptionPattern)
+            || !string.IsNullOrWhiteSpace(ContentPattern);
+    }
 }
 
 /// <summary>

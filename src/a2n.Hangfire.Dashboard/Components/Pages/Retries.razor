@@ -124,7 +124,9 @@ else
                 foreach (var jobId in _jobIds)
                 {
                     var detail = Monitor.GetJobDetails(jobId);
-                    var jobName = detail?.Job is not null ? $"{detail.Job.Type.Name}.{detail.Job.Method.Name}" : null;
+                    var jobName = detail is not null
+                        ? Helpers.JobNameHelper.GetDisplayName(detail.Job, detail.InvocationData)
+                        : null;
                     var currentState = detail?.History?.FirstOrDefault();
                     var state = currentState?.StateName;
                     var reason = currentState?.Reason;

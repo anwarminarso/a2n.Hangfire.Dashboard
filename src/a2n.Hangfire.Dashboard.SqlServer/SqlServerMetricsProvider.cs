@@ -85,7 +85,11 @@ ORDER BY Bucket";
     {
         var sql = $@"
 WITH DurationData AS (
-    SELECT j.InvocationData AS JobType,
+    SELECT CONCAT(
+               COALESCE(JSON_VALUE(j.InvocationData, '$.Type'), JSON_VALUE(j.InvocationData, '$.t'), ''),
+               '|',
+               COALESCE(JSON_VALUE(j.InvocationData, '$.Method'), JSON_VALUE(j.InvocationData, '$.m'), '')
+           ) AS JobType,
            CAST(JSON_VALUE(s.Data, '$.PerformanceDuration') AS BIGINT) AS DurationMs
     FROM {Table("State")} s
     INNER JOIN {Table("Job")} j ON j.Id = s.JobId
@@ -109,7 +113,11 @@ GROUP BY JobType";
         // Calculate percentiles per job type using PERCENTILE_CONT
         var percentileSql = $@"
 WITH DurationData AS (
-    SELECT j.InvocationData AS JobType,
+    SELECT CONCAT(
+               COALESCE(JSON_VALUE(j.InvocationData, '$.Type'), JSON_VALUE(j.InvocationData, '$.t'), ''),
+               '|',
+               COALESCE(JSON_VALUE(j.InvocationData, '$.Method'), JSON_VALUE(j.InvocationData, '$.m'), '')
+           ) AS JobType,
            CAST(JSON_VALUE(s.Data, '$.PerformanceDuration') AS BIGINT) AS DurationMs
     FROM {Table("State")} s
     INNER JOIN {Table("Job")} j ON j.Id = s.JobId
@@ -244,12 +252,20 @@ ORDER BY CAST(JSON_VALUE(s.Data, '$.PerformanceDuration') AS BIGINT) DESC";
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
         var sql = $@"
-SELECT j.InvocationData AS JobType,
+SELECT CONCAT(
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Type'), JSON_VALUE(j.InvocationData, '$.t'), ''),
+           '|',
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Method'), JSON_VALUE(j.InvocationData, '$.m'), '')
+       ) AS JobType,
        COUNT(*) AS TotalCount,
        SUM(CASE WHEN j.StateName = 'Failed' THEN 1 ELSE 0 END) AS FailedCount
 FROM {Table("Job")} j
 WHERE j.CreatedAt >= @From AND j.CreatedAt < @To
-GROUP BY j.InvocationData
+GROUP BY CONCAT(
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Type'), JSON_VALUE(j.InvocationData, '$.t'), ''),
+           '|',
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Method'), JSON_VALUE(j.InvocationData, '$.m'), '')
+       )
 ORDER BY CAST(SUM(CASE WHEN j.StateName = 'Failed' THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) DESC";
 
         using var connection = CreateConnection();
@@ -587,11 +603,19 @@ ORDER BY [Hour]";
     {
         var sql = $@"
 SELECT TOP (@Count)
-       j.InvocationData AS JobType,
+       CONCAT(
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Type'), JSON_VALUE(j.InvocationData, '$.t'), ''),
+           '|',
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Method'), JSON_VALUE(j.InvocationData, '$.m'), '')
+       ) AS JobType,
        COUNT(*) AS ExecutionCount
 FROM {Table("Job")} j
 WHERE j.CreatedAt >= @From AND j.CreatedAt < @To
-GROUP BY j.InvocationData
+GROUP BY CONCAT(
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Type'), JSON_VALUE(j.InvocationData, '$.t'), ''),
+           '|',
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Method'), JSON_VALUE(j.InvocationData, '$.m'), '')
+       )
 ORDER BY COUNT(*) DESC";
 
         using var connection = CreateConnection();
@@ -761,35 +785,47 @@ ORDER BY COUNT(*) DESC";
     {
         if (string.IsNullOrEmpty(invocationData)) return "Unknown";
 
+        // New format: "Namespace.Class, Assembly|MethodName" (from CONCAT in SQL)
+        var pipeIdx = invocationData.IndexOf('|');
+        if (pipeIdx >= 0)
+        {
+            var typePart = invocationData[..pipeIdx];
+            var methodPart = invocationData[(pipeIdx + 1)..];
+
+            if (!string.IsNullOrEmpty(typePart))
+            {
+                // Strip assembly info
+                var commaIdx = typePart.IndexOf(',');
+                var typeName = commaIdx > 0 ? typePart[..commaIdx].Trim() : typePart.Trim();
+
+                // Get just the class name
+                var dotIdx = typeName.LastIndexOf('.');
+                var className = dotIdx > 0 ? typeName[(dotIdx + 1)..] : typeName;
+
+                if (!string.IsNullOrEmpty(methodPart))
+                    return $"{className}.{methodPart}";
+
+                return className;
+            }
+        }
+
+        // Fallback: try parsing as JSON (legacy format)
         try
         {
-            using var doc = JsonDocument.Parse(invocationData);
+            using var doc = System.Text.Json.JsonDocument.Parse(invocationData);
             if (doc.RootElement.TryGetProperty("Type", out var typeProp))
             {
                 var fullType = typeProp.GetString();
                 if (!string.IsNullOrEmpty(fullType))
                 {
-                    // Extract short type name (remove assembly info)
                     var commaIdx = fullType.IndexOf(',');
-                    var typeName = commaIdx > 0 ? fullType.Substring(0, commaIdx) : fullType;
-
-                    // Get just the class name (last segment after dot)
+                    var typeName = commaIdx > 0 ? fullType[..commaIdx] : fullType;
                     var dotIdx = typeName.LastIndexOf('.');
-                    return dotIdx > 0 ? typeName.Substring(dotIdx + 1) : typeName;
+                    return dotIdx > 0 ? typeName[(dotIdx + 1)..] : typeName;
                 }
             }
-
-            // Fallback: try Method property
-            if (doc.RootElement.TryGetProperty("Method", out var methodProp))
-            {
-                var method = methodProp.GetString();
-                if (!string.IsNullOrEmpty(method)) return method;
-            }
         }
-        catch
-        {
-            // Ignore parse errors
-        }
+        catch { }
 
         return "Unknown";
     }

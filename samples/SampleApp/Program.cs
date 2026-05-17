@@ -105,6 +105,11 @@ app.Lifetime.ApplicationStarted.Register(() =>
         "long-running-job",
         x => x.LongRunningJob(null!),
         "*/10 * * * *");
+
+    RecurringJob.AddOrUpdate<SampleJobs>(
+        "long-running-job-label",
+        x => x.LongRunningJobLabel(null!),
+        "*/10 * * * *");
 });
 
 app.MapGet("/health", () => Results.Ok("healthy"));

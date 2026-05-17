@@ -69,4 +69,25 @@ public class SampleJobs
 
         context.WriteLine("Long running job completed.");
     }
+
+
+
+    /// <summary>
+    /// A long-running job with progress bar — demonstrates progress tracking.
+    /// </summary>
+    [JobDisplayName("Long Running Job with Custom Label")]
+    public void LongRunningJobLabel(PerformContext context)
+    {
+        var progressBar = context.WriteProgressBar();
+
+        for (var i = 0; i <= 100; i += 10)
+        {
+            context.WriteLine($"Progress: {i}%");
+            progressBar.SetValue(i);
+            Thread.Sleep(500);
+        }
+
+        context.WriteLine("Long running job with custom label completed.");
+    }
+
 }

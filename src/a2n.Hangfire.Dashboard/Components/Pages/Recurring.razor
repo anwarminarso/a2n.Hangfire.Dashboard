@@ -308,7 +308,7 @@ else
     }
 
     private static string GetJobName(RecurringJobDto dto) =>
-        dto.Job is null ? "Unknown" : $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
+        dto?.Job is null ? "(unknown)" : JobNameHelper.GetDisplayName(dto.Job, null);
 
     private static string GetLastStateClass(string state) => state switch
     {

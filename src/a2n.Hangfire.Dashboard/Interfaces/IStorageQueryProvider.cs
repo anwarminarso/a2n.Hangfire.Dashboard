@@ -10,29 +10,11 @@ namespace a2n.Hangfire.Dashboard.Interfaces;
 public interface IStorageQueryProvider
 {
     /// <summary>
-    /// Searches jobs by type name using database-level pattern matching (LIKE/ILIKE).
-    /// Returns jobs whose type name contains the search term (case-insensitive).
-    /// </summary>
-    /// <param name="searchTerm">Search term (1–200 characters)</param>
-    /// <param name="page">Page number (1-based)</param>
-    /// <param name="pageSize">Items per page</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>Paginated results ordered by CreatedAt descending</returns>
-    Task<PagedResult<JobSummaryDto>> SearchJobsByNameAsync(
-        string searchTerm, int page, int pageSize, CancellationToken ct);
-
-    /// <summary>
-    /// Searches failed jobs by exception message or exception type.
-    /// </summary>
-    /// <param name="searchTerm">Search term (1–500 characters)</param>
-    /// <param name="page">Page number (1-based)</param>
-    /// <param name="pageSize">Items per page</param>
-    /// <param name="ct">Cancellation token</param>
-    Task<PagedResult<JobSummaryDto>> SearchFailedByExceptionAsync(
-        string searchTerm, int page, int pageSize, CancellationToken ct);
-
-    /// <summary>
+    /// Unified advanced search and filter method.
     /// Returns jobs matching all specified non-null filter criteria (AND logic).
+    /// Supports: state, date range, queue, server, duration, tags, recurring job ID,
+    /// job name pattern, exception pattern, and content search (stack trace + console output).
+    /// Uses multi-stage query approach for optimal performance.
     /// </summary>
     /// <param name="criteria">Filter criteria (all fields optional, AND between non-null)</param>
     /// <param name="page">Page number (1-based)</param>

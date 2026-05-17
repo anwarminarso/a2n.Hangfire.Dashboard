@@ -197,8 +197,8 @@ else
 
     private static string GetJobName(FailedJobDto dto)
     {
-        if (dto?.Job is null) return "Unknown";
-        return $"{dto.Job.Type.Name}.{dto.Job.Method.Name}";
+        if (dto is null) return "(unknown)";
+        return Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
     }
 
     private static string TruncateReason(string reason)
