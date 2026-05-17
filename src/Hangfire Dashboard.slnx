@@ -9,6 +9,7 @@
   <Folder Name="/tests/">
     <Project Path="../tests/a2n.Hangfire.Console.Tests/a2n.Hangfire.Console.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Dashboard.Tests/a2n.Hangfire.Dashboard.Tests.csproj" />
+    <Project Path="../tests/a2n.Hangfire.Dashboard.PostgreSql.Tests/a2n.Hangfire.Dashboard.PostgreSql.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Tags.Tests/a2n.Hangfire.Tags.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
