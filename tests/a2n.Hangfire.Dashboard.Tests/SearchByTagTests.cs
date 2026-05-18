@@ -11,7 +11,8 @@ using a2n.Hangfire.Dashboard.Services;
 namespace a2n.Hangfire.Dashboard.Tests;
 
 /// <summary>
-/// Unit tests for SearchService tag search via TagsDataReader.
+/// Unit tests for SearchService tag search via GenericQueryProvider.
+/// The GenericQueryProvider scans states, collects jobs, then filters by tag client-side.
 /// Validates: Requirements 5.1, 5.2, 5.3, 5.4
 /// </summary>
 public class SearchByTagTests
@@ -31,20 +32,43 @@ public class SearchByTagTests
         _mockStorage.Setup(s => s.GetMonitoringApi()).Returns(_mockMonitoringApi.Object);
         _mockStorage.Setup(s => s.GetReadOnlyConnection()).Returns(_mockConnection.Object);
 
+        // Default: no queues
+        _mockMonitoringApi.Setup(m => m.Queues())
+            .Returns(new List<QueueWithTopEnqueuedJobsDto>());
+
+        // Default: empty state lists
+        _mockMonitoringApi.Setup(m => m.ProcessingJobs(It.IsAny<int>(), It.IsAny<int>()))
+            .Returns(new JobList<ProcessingJobDto>(new List<KeyValuePair<string, ProcessingJobDto>>()));
+        _mockMonitoringApi.Setup(m => m.SucceededJobs(It.IsAny<int>(), It.IsAny<int>()))
+            .Returns(new JobList<SucceededJobDto>(new List<KeyValuePair<string, SucceededJobDto>>()));
+        _mockMonitoringApi.Setup(m => m.FailedJobs(It.IsAny<int>(), It.IsAny<int>()))
+            .Returns(new JobList<FailedJobDto>(new List<KeyValuePair<string, FailedJobDto>>()));
+        _mockMonitoringApi.Setup(m => m.ScheduledJobs(It.IsAny<int>(), It.IsAny<int>()))
+            .Returns(new JobList<ScheduledJobDto>(new List<KeyValuePair<string, ScheduledJobDto>>()));
+        _mockMonitoringApi.Setup(m => m.DeletedJobs(It.IsAny<int>(), It.IsAny<int>()))
+            .Returns(new JobList<DeletedJobDto>(new List<KeyValuePair<string, DeletedJobDto>>()));
+
         _tagsReader = new TagsDataReader(_mockStorage.Object);
-        _service = new SearchService(_mockStorage.Object, _tagsReader);
+        var queryProvider = new GenericQueryProvider(_mockStorage.Object, _tagsReader);
+        _service = new SearchService(_mockStorage.Object, _tagsReader, queryProvider);
     }
 
     [Fact]
     public async Task SearchAsync_TagPrefix_ExactMatch_ReturnsMatchingJobs()
     {
-        // Arrange
-        SetupAllTags("urgent", "batch", "api");
-        SetupJobsByTag("urgent", new[] { "101", "102" });
-        SetupJobData("101", "Processing", new DateTime(2024, 1, 15, 10, 0, 0));
-        SetupJobData("102", "Succeeded", new DateTime(2024, 1, 14, 9, 0, 0));
+        // Arrange — jobs in Processing state, tagged with "urgent"
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        SetupProcessingJobs(new List<KeyValuePair<string, ProcessingJobDto>>
+        {
+            new("101", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 15, 10, 0, 0, DateTimeKind.Utc), InProcessingState = true }),
+            new("102", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 14, 9, 0, 0, DateTimeKind.Utc), InProcessingState = true }),
+            new("103", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 13, 8, 0, 0, DateTimeKind.Utc), InProcessingState = true })
+        });
+
+        // Only 101 and 102 have the "urgent" tag
         SetupJobTags("101", new[] { "urgent", "api" });
         SetupJobTags("102", new[] { "urgent" });
+        SetupJobTags("103", new[] { "batch" });
 
         var request = new SearchRequest { Query = "tag:urgent" };
 
@@ -61,9 +85,12 @@ public class SearchByTagTests
     public async Task SearchAsync_TagPrefix_CaseInsensitive_ReturnsMatchingJobs()
     {
         // Arrange
-        SetupAllTags("Urgent");
-        SetupJobsByTag("Urgent", new[] { "201" });
-        SetupJobData("201", "Failed", new DateTime(2024, 1, 10, 8, 0, 0));
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        SetupProcessingJobs(new List<KeyValuePair<string, ProcessingJobDto>>
+        {
+            new("201", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 10, 8, 0, 0, DateTimeKind.Utc), InProcessingState = true })
+        });
+
         SetupJobTags("201", new[] { "Urgent" });
 
         var request = new SearchRequest { Query = "tag:URGENT" };
@@ -80,8 +107,14 @@ public class SearchByTagTests
     [Fact]
     public async Task SearchAsync_TagPrefix_NoMatchingTag_ReturnsEmpty()
     {
-        // Arrange
-        SetupAllTags("urgent", "batch");
+        // Arrange — jobs exist but none have the searched tag
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        SetupProcessingJobs(new List<KeyValuePair<string, ProcessingJobDto>>
+        {
+            new("301", new ProcessingJobDto { Job = job, StartedAt = DateTime.UtcNow, InProcessingState = true })
+        });
+
+        SetupJobTags("301", new[] { "batch" });
 
         var request = new SearchRequest { Query = "tag:nonexistent" };
 
@@ -97,11 +130,14 @@ public class SearchByTagTests
     public async Task SearchAsync_TagPrefix_OrdersByCreatedAtDescending()
     {
         // Arrange
-        SetupAllTags("batch");
-        SetupJobsByTag("batch", new[] { "301", "302", "303" });
-        SetupJobData("301", "Succeeded", new DateTime(2024, 1, 10, 8, 0, 0));
-        SetupJobData("302", "Succeeded", new DateTime(2024, 1, 15, 12, 0, 0));
-        SetupJobData("303", "Succeeded", new DateTime(2024, 1, 12, 6, 0, 0));
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        SetupProcessingJobs(new List<KeyValuePair<string, ProcessingJobDto>>
+        {
+            new("301", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 10, 8, 0, 0, DateTimeKind.Utc), InProcessingState = true }),
+            new("302", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 15, 12, 0, 0, DateTimeKind.Utc), InProcessingState = true }),
+            new("303", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 12, 6, 0, 0, DateTimeKind.Utc), InProcessingState = true })
+        });
+
         SetupJobTags("301", new[] { "batch" });
         SetupJobTags("302", new[] { "batch" });
         SetupJobTags("303", new[] { "batch" });
@@ -119,18 +155,26 @@ public class SearchByTagTests
     }
 
     [Fact]
-    public async Task SearchAsync_TagPrefix_PaginatesWithDefaultPageSize20()
+    public async Task SearchAsync_TagPrefix_PaginatesCorrectly()
     {
-        // Arrange
-        SetupAllTags("large");
-        var jobIds = Enumerable.Range(1, 30).Select(i => i.ToString()).ToArray();
-        SetupJobsByTag("large", jobIds);
-
+        // Arrange — 30 jobs all tagged
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        var jobs = new List<KeyValuePair<string, ProcessingJobDto>>();
         for (int i = 1; i <= 30; i++)
         {
-            SetupJobData(i.ToString(), "Succeeded", new DateTime(2024, 1, 1).AddHours(i));
-            SetupJobTags(i.ToString(), new[] { "large" });
+            jobs.Add(new KeyValuePair<string, ProcessingJobDto>(
+                i.ToString(),
+                new ProcessingJobDto
+                {
+                    Job = job,
+                    StartedAt = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddHours(i),
+                    InProcessingState = true
+                }));
         }
+        SetupProcessingJobs(jobs);
+
+        for (int i = 1; i <= 30; i++)
+            SetupJobTags(i.ToString(), new[] { "large" });
 
         var request = new SearchRequest { Query = "tag:large", PageSize = 20 };
 
@@ -145,40 +189,57 @@ public class SearchByTagTests
     [Fact]
     public async Task SearchAsync_TagPrefix_PaginatesWithFrom()
     {
-        // Arrange
-        SetupAllTags("paged");
-        var jobIds = Enumerable.Range(1, 10).Select(i => i.ToString()).ToArray();
-        SetupJobsByTag("paged", jobIds);
-
+        // Arrange — 10 jobs all tagged
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        var jobs = new List<KeyValuePair<string, ProcessingJobDto>>();
         for (int i = 1; i <= 10; i++)
         {
-            SetupJobData(i.ToString(), "Succeeded", new DateTime(2024, 1, 1).AddHours(i));
-            SetupJobTags(i.ToString(), new[] { "paged" });
+            jobs.Add(new KeyValuePair<string, ProcessingJobDto>(
+                i.ToString(),
+                new ProcessingJobDto
+                {
+                    Job = job,
+                    StartedAt = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddHours(i),
+                    InProcessingState = true
+                }));
         }
+        SetupProcessingJobs(jobs);
 
-        var request = new SearchRequest { Query = "tag:paged", From = 5, PageSize = 20 };
+        for (int i = 1; i <= 10; i++)
+            SetupJobTags(i.ToString(), new[] { "paged" });
+
+        // From=5, PageSize=5 → page = 5/5 + 1 = 2 → skip 5, take 5
+        var request = new SearchRequest { Query = "tag:paged", From = 5, PageSize = 5 };
 
         // Act
         var result = await _service.SearchAsync(request, CancellationToken.None);
 
         // Assert
         Assert.Equal(10, result.TotalCount);
-        Assert.Equal(5, result.Items.Count); // 10 total - 5 skipped = 5 remaining
+        Assert.Equal(5, result.Items.Count); // page 2: 10 total - 5 skipped = 5 remaining
     }
 
     [Fact]
     public async Task SearchAsync_TagPrefix_PageSizeCappedAt50()
     {
-        // Arrange
-        SetupAllTags("capped");
-        var jobIds = Enumerable.Range(1, 60).Select(i => i.ToString()).ToArray();
-        SetupJobsByTag("capped", jobIds);
-
+        // Arrange — 60 jobs all tagged
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        var jobs = new List<KeyValuePair<string, ProcessingJobDto>>();
         for (int i = 1; i <= 60; i++)
         {
-            SetupJobData(i.ToString(), "Succeeded", new DateTime(2024, 1, 1).AddHours(i));
-            SetupJobTags(i.ToString(), new[] { "capped" });
+            jobs.Add(new KeyValuePair<string, ProcessingJobDto>(
+                i.ToString(),
+                new ProcessingJobDto
+                {
+                    Job = job,
+                    StartedAt = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddHours(i),
+                    InProcessingState = true
+                }));
         }
+        SetupProcessingJobs(jobs);
+
+        for (int i = 1; i <= 60; i++)
+            SetupJobTags(i.ToString(), new[] { "capped" });
 
         var request = new SearchRequest { Query = "tag:capped", PageSize = 100 };
 
@@ -194,9 +255,12 @@ public class SearchByTagTests
     public async Task SearchAsync_TagPrefix_IncludesTagsInResult()
     {
         // Arrange
-        SetupAllTags("tagged");
-        SetupJobsByTag("tagged", new[] { "501" });
-        SetupJobData("501", "Processing", new DateTime(2024, 1, 20, 14, 0, 0));
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        SetupProcessingJobs(new List<KeyValuePair<string, ProcessingJobDto>>
+        {
+            new("501", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 20, 14, 0, 0, DateTimeKind.Utc), InProcessingState = true })
+        });
+
         SetupJobTags("501", new[] { "tagged", "extra-tag", "another" });
 
         var request = new SearchRequest { Query = "tag:tagged" };
@@ -216,9 +280,12 @@ public class SearchByTagTests
     public async Task SearchAsync_TagPrefix_SetsMatchSourceToTag()
     {
         // Arrange
-        SetupAllTags("source-test");
-        SetupJobsByTag("source-test", new[] { "601" });
-        SetupJobData("601", "Enqueued", new DateTime(2024, 1, 5, 7, 0, 0));
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        SetupProcessingJobs(new List<KeyValuePair<string, ProcessingJobDto>>
+        {
+            new("601", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 5, 7, 0, 0, DateTimeKind.Utc), InProcessingState = true })
+        });
+
         SetupJobTags("601", new[] { "source-test" });
 
         var request = new SearchRequest { Query = "tag:source-test" };
@@ -234,8 +301,8 @@ public class SearchByTagTests
     [Fact]
     public async Task SearchAsync_TagPrefix_HandlesStorageError()
     {
-        // Arrange - setup GetAllItemsFromSet to throw
-        _mockConnection.Setup(c => c.GetAllItemsFromSet("tags"))
+        // Arrange — monitoring API throws when scanning states
+        _mockMonitoringApi.Setup(m => m.ProcessingJobs(It.IsAny<int>(), It.IsAny<int>()))
             .Throws(new InvalidOperationException("Storage unavailable"));
 
         var request = new SearchRequest { Query = "tag:anything" };
@@ -255,8 +322,6 @@ public class SearchByTagTests
         var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        SetupAllTags("cancel-test");
-
         var request = new SearchRequest { Query = "tag:cancel-test" };
 
         // Act
@@ -267,15 +332,18 @@ public class SearchByTagTests
     }
 
     [Fact]
-    public async Task SearchAsync_TagPrefix_SkipsDeletedJobs()
+    public async Task SearchAsync_TagPrefix_SkipsJobsWithoutMatchingTag()
     {
-        // Arrange - job ID exists in tag set but GetJobData returns null (job was deleted from storage)
-        SetupAllTags("with-deleted");
-        SetupJobsByTag("with-deleted", new[] { "701", "702" });
-        SetupJobData("701", "Succeeded", new DateTime(2024, 1, 10, 8, 0, 0));
+        // Arrange — two jobs, only one has the searched tag
+        var job = Job.FromExpression(() => SampleJob.Execute());
+        SetupProcessingJobs(new List<KeyValuePair<string, ProcessingJobDto>>
+        {
+            new("701", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 10, 8, 0, 0, DateTimeKind.Utc), InProcessingState = true }),
+            new("702", new ProcessingJobDto { Job = job, StartedAt = new DateTime(2024, 1, 11, 8, 0, 0, DateTimeKind.Utc), InProcessingState = true })
+        });
+
         SetupJobTags("701", new[] { "with-deleted" });
-        // Job 702 returns null (deleted from storage)
-        _mockConnection.Setup(c => c.GetJobData("702")).Returns((JobData)null!);
+        SetupJobTags("702", new[] { "other-tag" });
 
         var request = new SearchRequest { Query = "tag:with-deleted" };
 
@@ -290,30 +358,12 @@ public class SearchByTagTests
 
     #region Helper Methods
 
-    private void SetupAllTags(params string[] tags)
+    private void SetupProcessingJobs(List<KeyValuePair<string, ProcessingJobDto>> jobs)
     {
-        _mockConnection.Setup(c => c.GetAllItemsFromSet("tags"))
-            .Returns(new HashSet<string>(tags));
-    }
-
-    private void SetupJobsByTag(string tag, string[] jobIds)
-    {
-        _mockConnection.Setup(c => c.GetSetCount($"tags:{tag}"))
-            .Returns(jobIds.Length);
-        _mockConnection.Setup(c => c.GetRangeFromSet($"tags:{tag}", 0, jobIds.Length - 1))
-            .Returns(jobIds.ToList());
-    }
-
-    private void SetupJobData(string jobId, string state, DateTime createdAt)
-    {
-        var job = Job.FromExpression(() => SampleJob.Execute());
-        var jobData = new JobData
-        {
-            State = state,
-            Job = job,
-            CreatedAt = createdAt
-        };
-        _mockConnection.Setup(c => c.GetJobData(jobId)).Returns(jobData);
+        _mockMonitoringApi.Setup(m => m.ProcessingJobs(0, 100))
+            .Returns(new JobList<ProcessingJobDto>(jobs));
+        _mockMonitoringApi.Setup(m => m.ProcessingJobs(It.Is<int>(i => i >= Math.Max(jobs.Count, 100)), 100))
+            .Returns(new JobList<ProcessingJobDto>(new List<KeyValuePair<string, ProcessingJobDto>>()));
     }
 
     private void SetupJobTags(string jobId, string[] tags)

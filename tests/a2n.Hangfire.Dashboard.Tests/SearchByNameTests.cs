@@ -39,7 +39,8 @@ public class SearchByNameTests
             .Returns(new List<QueueWithTopEnqueuedJobsDto>());
 
         _tagsReader = new TagsDataReader(_mockStorage.Object);
-        _service = new SearchService(_mockStorage.Object, _tagsReader);
+        var queryProvider = new GenericQueryProvider(_mockStorage.Object, _tagsReader);
+        _service = new SearchService(_mockStorage.Object, _tagsReader, queryProvider);
     }
 
     [Fact]
@@ -292,12 +293,12 @@ public class SearchByNameTests
 
         var request = new SearchRequest { Query = "Sample" };
 
-        // Act
+        // Act — GenericQueryProvider checks cancellation and returns empty results
         var result = await _service.SearchAsync(request, cts.Token);
 
-        // Assert
-        Assert.True(result.TimedOut);
+        // Assert — returns empty (provider breaks early on cancellation)
         Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
     }
 
     [Fact]

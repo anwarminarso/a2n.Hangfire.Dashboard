@@ -155,6 +155,10 @@ public static class HangfireDashboardUIExtensions
         // This ensures the dashboard doesn't interfere with other routes in the host app.
         app.Map(pathMatch, branch =>
         {
+            // WebSockets must be enabled in the branch for Blazor Server SignalR circuit.
+            // The host app may not have UseWebSockets() or it may be registered after this point.
+            branch.UseWebSockets();
+
             // DashboardMiddleware handles authorization, antiforgery, and embedded resources (_content/*)
             branch.UseMiddleware<DashboardMiddleware>(options);
 

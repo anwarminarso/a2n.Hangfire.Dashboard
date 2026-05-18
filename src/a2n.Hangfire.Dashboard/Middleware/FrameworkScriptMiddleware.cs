@@ -33,7 +33,18 @@ internal class FrameworkScriptMiddleware
             return;
         }
 
-        // Try to serve from the web host environment's file providers
+        if (await TryServeFrameworkFileAsync(context, path))
+            return;
+
+        await _next(context);
+    }
+
+    /// <summary>
+    /// Attempts to serve a framework file (e.g., _framework/blazor.web.js) from the
+    /// web host environment's file providers. Returns true if the file was served.
+    /// </summary>
+    internal static async Task<bool> TryServeFrameworkFileAsync(HttpContext context, string path)
+    {
         var env = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
 
         // The WebRootFileProvider in development includes StaticWebAssets file provider
@@ -44,7 +55,7 @@ internal class FrameworkScriptMiddleware
         if (fileInfo.Exists && !fileInfo.IsDirectory)
         {
             await ServeFileAsync(context, fileInfo, path);
-            return;
+            return true;
         }
 
         // Fallback: try without leading slash
@@ -54,10 +65,10 @@ internal class FrameworkScriptMiddleware
         if (fileInfo.Exists && !fileInfo.IsDirectory)
         {
             await ServeFileAsync(context, fileInfo, path);
-            return;
+            return true;
         }
 
-        await _next(context);
+        return false;
     }
 
     private static async Task ServeFileAsync(HttpContext context, IFileInfo fileInfo, string path)

@@ -218,6 +218,7 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v1.6 | Analytics Dashboard (Overview + Performance + Failures + Queues + Recurring) | ✅ Done |
 | v2.0 | Phase 2 complete | ✅ Done |
 | v2.1 | Search & query refactor + JobDisplayName + SQL Server fixes | ✅ Done |
+| v2.1.1 | WebSocket fix for Startup-pattern host apps (Generic Host compatibility) | ✅ Done |
 | v3.0 | Phase 3 — extensibility & integration | Planned |
 
 ---

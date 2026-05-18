@@ -1,0 +1,76 @@
+@page "/"
+@using Hangfire
+@using SampleAppBlazor.Jobs
+
+<div class="container py-5">
+    <h1 class="mb-3">SampleApp — Blazor</h1>
+    <p class="text-muted mb-4">
+        This sample demonstrates <code>a2n.Hangfire.Dashboard</code> running inside a Blazor Server application.
+    </p>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>Hangfire Dashboard</strong>
+        </div>
+        <div class="card-body">
+            <a href="/hangfire" class="btn btn-primary" target="_blank">Open Dashboard</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <strong>Enqueue Background Jobs</strong>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrEmpty(message))
+            {
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    @message
+                    <button type="button" class="btn-close" @onclick="() => message = null"></button>
+                </div>
+            }
+
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-outline-primary" @onclick="EnqueueSimpleJob">Simple Job</button>
+                <button class="btn btn-outline-primary" @onclick="EnqueueConsoleJob">Console Job</button>
+                <button class="btn btn-outline-primary" @onclick="EnqueueTaggedJob">Tagged Job</button>
+                <button class="btn btn-outline-danger" @onclick="EnqueueFailingJob">Failing Job</button>
+                <button class="btn btn-outline-warning" @onclick="EnqueueLongRunningJob">Long Running Job</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string message;
+
+    private void EnqueueSimpleJob()
+    {
+        BackgroundJob.Enqueue<SampleJobs>(x => x.SimpleJob());
+        message = "Simple Job enqueued!";
+    }
+
+    private void EnqueueConsoleJob()
+    {
+        BackgroundJob.Enqueue<SampleJobs>(x => x.ConsoleJob(null!));
+        message = "Console Job enqueued!";
+    }
+
+    private void EnqueueTaggedJob()
+    {
+        BackgroundJob.Enqueue<SampleJobs>(x => x.TaggedJob(null!));
+        message = "Tagged Job enqueued!";
+    }
+
+    private void EnqueueFailingJob()
+    {
+        BackgroundJob.Enqueue<SampleJobs>(x => x.FailingJob());
+        message = "Failing Job enqueued!";
+    }
+
+    private void EnqueueLongRunningJob()
+    {
+        BackgroundJob.Enqueue<SampleJobs>(x => x.LongRunningJob(null!));
+        message = "Long Running Job enqueued!";
+    }
+}

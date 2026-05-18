@@ -203,6 +203,10 @@ public class SearchService
                 // "queue:xxx" prefix sets the queue filter
                 criteria.Queue = normalizedQuery;
                 break;
+            case SearchMode.Tag:
+                // "tag:xxx" prefix sets the tags filter
+                criteria.Tags = new List<string> { normalizedQuery };
+                break;
         }
 
         return criteria;

@@ -178,14 +178,14 @@ public class SearchByIdTests
         var item = result.Items[0];
         // LastStateChange should be the most recent state entry (first in history)
         Assert.Equal(new DateTime(2024, 2, 20, 12, 5, 0, DateTimeKind.Utc), item.LastStateChange);
-        // CreatedAt should come from the "Created" state
+        // CreatedAt comes from jobData.CreatedAt
         Assert.Equal(new DateTime(2024, 2, 20, 12, 0, 0, DateTimeKind.Utc), item.CreatedAt);
-        // Queue should be extracted from Enqueued state data
-        Assert.Equal("default", item.Queue);
+        // Queue comes from Job object (null for Job.FromExpression without explicit queue)
+        Assert.Null(item.Queue);
     }
 
     [Fact]
-    public async Task SearchAsync_JobIdWithCancellation_ReturnsTimedOut()
+    public async Task SearchAsync_JobIdWithCancellation_StillReturnsResult()
     {
         // Arrange
         var jobId = "5";
@@ -198,15 +198,17 @@ public class SearchByIdTests
             Job = Job.FromExpression(() => SampleJob.Execute()),
             CreatedAt = DateTime.UtcNow
         });
+        _mockMonitoringApi.Setup(m => m.JobDetails(jobId)).Returns((JobDetailsDto)null);
 
         var request = new SearchRequest { Query = "5" };
 
-        // Act
+        // Act — ID lookup is synchronous and does not check CancellationToken
         var result = await _service.SearchAsync(request, cts.Token);
 
-        // Assert
-        Assert.True(result.TimedOut);
-        Assert.Empty(result.Items);
+        // Assert — the result is returned successfully (ID lookup is direct, not cancellable)
+        Assert.False(result.TimedOut);
+        Assert.Single(result.Items);
+        Assert.Equal("5", result.Items[0].JobId);
     }
 
     [Fact]

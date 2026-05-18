@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
+    <ProjectReference Include="..\..\src\a2n.Hangfire.Console\a2n.Hangfire.Console.csproj" />
+    <ProjectReference Include="..\..\src\a2n.Hangfire.Tags\a2n.Hangfire.Tags.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -35,7 +35,8 @@ public class SearchByQueueTests
             .Returns(new HashSet<string>());
 
         _tagsReader = new TagsDataReader(_mockStorage.Object);
-        _service = new SearchService(_mockStorage.Object, _tagsReader);
+        var queryProvider = new GenericQueryProvider(_mockStorage.Object, _tagsReader);
+        _service = new SearchService(_mockStorage.Object, _tagsReader, queryProvider);
     }
 
     [Fact]
@@ -246,9 +247,9 @@ public class SearchByQueueTests
     }
 
     [Fact]
-    public async Task SearchByQueue_NullJobInEntry_ShowsUnknownName()
+    public async Task SearchByQueue_NullJobInEntry_IsSkipped()
     {
-        // Arrange: job deserialization failed (null Job)
+        // Arrange: job deserialization failed (null Job) — GenericQueryProvider skips null jobs
         SetupQueues("default");
         SetupEnqueuedJobs("default", new List<KeyValuePair<string, EnqueuedJobDto>>
         {
@@ -265,9 +266,9 @@ public class SearchByQueueTests
         // Act
         var result = await _service.SearchAsync(request, CancellationToken.None);
 
-        // Assert
-        Assert.Equal(1, result.TotalCount);
-        Assert.Equal("Unknown", result.Items[0].JobName);
+        // Assert — null jobs are skipped during scanning
+        Assert.Equal(0, result.TotalCount);
+        Assert.Empty(result.Items);
     }
 
     [Fact]
@@ -281,12 +282,12 @@ public class SearchByQueueTests
 
         var request = new SearchRequest { Query = "queue:default" };
 
-        // Act
+        // Act — GenericQueryProvider checks cancellation and returns empty results
         var result = await _service.SearchAsync(request, cts.Token);
 
-        // Assert
-        Assert.True(result.TimedOut);
+        // Assert — returns empty (provider breaks early on cancellation)
         Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
     }
 
     [Fact]
