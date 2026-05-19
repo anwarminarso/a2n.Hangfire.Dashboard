@@ -143,6 +143,7 @@ public static class HangfireDashboardUIExtensions
             registered.IsReadOnly = options.IsReadOnly;
             registered.DefaultRecordsPerPage = options.DefaultRecordsPerPage;
             registered.DefaultTheme = options.DefaultTheme;
+            registered.FaviconPath = options.FaviconPath;
             registered.Authorization = options.Authorization;
         }
 

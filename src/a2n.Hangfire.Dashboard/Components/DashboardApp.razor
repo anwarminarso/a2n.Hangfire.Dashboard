@@ -1,5 +1,6 @@
 @attribute [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 @inject IHttpContextAccessor HttpContextAccessor
+@inject DashboardUIOptions Options
 
 <!DOCTYPE html>
 <html lang="en">
@@ -14,7 +15,7 @@
     <link rel="stylesheet" href="_content/lib/bootstrap-icons/bootstrap-icons.min.css" />
     <!-- Custom overrides (console viewer, charts) -->
     <link rel="stylesheet" href="_content/css/app.css" />
-    <link rel="icon" type="image/png" href="_content/favicon.ico" />
+    <link rel="icon" href="@GetFaviconHref()" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 
@@ -41,5 +42,15 @@
         if (string.IsNullOrEmpty(pathBase))
             return "/";
         return pathBase.TrimEnd('/') + "/";
+    }
+
+    private string GetFaviconHref()
+    {
+        if (!string.IsNullOrEmpty(Options.FaviconPath))
+        {
+            return Options.FaviconPath;
+        }
+        // Default: point to host app's root favicon so it inherits the host's icon
+        return "/favicon.ico";
     }
 }

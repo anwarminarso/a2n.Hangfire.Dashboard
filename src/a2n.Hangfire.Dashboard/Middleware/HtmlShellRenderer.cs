@@ -34,6 +34,12 @@ internal class HtmlShellRenderer
         // Normalize pathPrefix: ensure it starts with / and has no trailing slash
         var prefix = pathPrefix.TrimEnd('/');
 
+        // Resolve favicon: use custom path if configured, otherwise point to host app's root favicon
+        var faviconHref = !string.IsNullOrEmpty(options?.FaviconPath)
+            ? options.FaviconPath
+            : "/favicon.ico";
+        var faviconHtml = $"""<link rel="icon" href="{faviconHref}" />""";
+
         var html = $"""
             <!DOCTYPE html>
             <html lang="en">
@@ -48,7 +54,7 @@ internal class HtmlShellRenderer
                 <link rel="stylesheet" href="{prefix}/_content/lib/bootstrap-icons/bootstrap-icons.min.css" />
                 <!-- Custom overrides (console viewer, charts) -->
                 <link rel="stylesheet" href="{prefix}/_content/css/app.css" />
-                <link rel="icon" type="image/png" href="{prefix}/_content/favicon.png" />
+                {faviconHtml}
             </head>
             <body>
                 {antiforgeryHtml}
