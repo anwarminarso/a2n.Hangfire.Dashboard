@@ -10,7 +10,7 @@ One NuGet package. Zero Pro license.
 
 ---
 
-![Dashboard Overview](docs/screenshots/overview.png)
+![Dashboard Overview](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/overview.png)
 
 ## Get Started in 30 Seconds
 
@@ -67,19 +67,19 @@ This project solves all of that in a single, free, open-source package.
 
 | Home & Realtime Charts | Console Viewer |
 |:---:|:---:|
-| ![Home](docs/screenshots/home.png) | ![Console](docs/screenshots/console-viewer.png) |
+| ![Home](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/home.png) | ![Console](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/console-viewer.png) |
 
 | Tags & Search | Recurring Jobs |
 |:---:|:---:|
-| ![Tags](docs/screenshots/tags.png) | ![Recurring](docs/screenshots/recurring.png) |
+| ![Tags](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/tags.png) | ![Recurring](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/recurring.png) |
 
 | Advanced Search | Performance |
 |:---:|:---:|
-| ![Search](docs/screenshots/search.png) | ![Theme](docs/screenshots/performance.png) |
+| ![Search](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/search.png) | ![Theme](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/performance.png) |
 
 | Light / Dark / Auto |
 |:---:|
-| ![Search](docs/screenshots/light-dark.png)  |
+| ![Search](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/light-dark.png) |
 ---
 
 ## Full Setup
@@ -217,7 +217,7 @@ Open `https://localhost:7100/hangfire` to see it in action.
 | v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
 | v3.0 | Planned | Notifications, REST API, Prometheus metrics, theming |
 
-See the full [roadmap](docs/ROADMAP.md) for details.
+See the full [roadmap](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/ROADMAP.md) for details.
 
 ---
 
@@ -231,11 +231,11 @@ cd a2n.Hangfire.Dashboard/samples/SampleApp
 dotnet run
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/CONTRIBUTING.md) for guidelines.
 
 ## License
 
-LGPL-3.0-or-later — see [LICENSE](LICENSE).
+LGPL-3.0-or-later — see [LICENSE](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/LICENSE).
 
 ## Acknowledgments
 
