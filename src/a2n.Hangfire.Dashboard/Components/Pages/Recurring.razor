@@ -1,6 +1,7 @@
 @page "/recurring"
 @using global::Hangfire.Storage
 @inject HangfireMonitorService Monitor
+@inject DashboardUIOptions Options
 @implements IDisposable
 
 <PageTitle>Recurring Jobs</PageTitle>
@@ -15,13 +16,16 @@ else
 {
     <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="d-flex gap-2">
-            <a class="btn btn-success btn-sm" href="recurring/create">
-                <i class="bi bi-plus-lg"></i> Create Job
-            </a>
+            @if (Options.EnableRecurringJobAdmin)
+            {
+                <a class="btn btn-success btn-sm" href="recurring/create">
+                    <i class="bi bi-plus-lg"></i> Create Job
+                </a>
+            }
             <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
                 <i class="bi bi-play-circle"></i> Trigger
             </button>
-            <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RemoveSelected">
+            <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
                 <i class="bi bi-x-lg"></i> Delete
             </button>
         </div>
@@ -29,7 +33,7 @@ else
     </div>
 
     @* Stopped Jobs Section *@
-    @if (_stoppedJobs.Count > 0)
+    @if (Options.EnableRecurringJobAdmin && _stoppedJobs.Count > 0)
     {
         <div class="card mb-3">
             <div class="card-header">
@@ -97,7 +101,10 @@ else
                                 <th class="text-end">Next Execution</th>
                                 <th class="text-end">Last Execution</th>
                                 <th class="text-end">Created</th>
-                                <th>Actions</th>
+                                @if (Options.EnableRecurringJobAdmin)
+                                {
+                                    <th>Actions</th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
@@ -148,19 +155,22 @@ else
                                         }
                                     </td>
                                     <td>
-                                        <a class="btn btn-outline-secondary btn-sm" href="recurring/edit/@job.Id" title="Edit this recurring job">
-                                            <i class="bi bi-pencil"></i>
-                                        </a>
-                                        <button class="btn btn-outline-secondary btn-sm" @onclick="() => StopJob(job.Id)" title="Stop this recurring job">
-                                            <i class="bi bi-stop-fill"></i>
-                                        </button>
+                                        @if (Options.EnableRecurringJobAdmin)
+                                        {
+                                            <a class="btn btn-outline-secondary btn-sm" href="recurring/edit/@job.Id" title="Edit this recurring job">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button class="btn btn-outline-secondary btn-sm" @onclick="() => StopJob(job.Id)" title="Stop this recurring job">
+                                                <i class="bi bi-stop-fill"></i>
+                                            </button>
+                                        }
                                     </td>
                                 </tr>
                                 @if (job.Error is not null)
                                 {
                                     <tr>
                                         <td></td>
-                                        <td colspan="8">
+                                        <td colspan="@(Options.EnableRecurringJobAdmin ? 8 : 7)">
                                             <div class="alert alert-danger py-2 mb-0">
                                                 <small>@job.Error</small>
                                             </div>
@@ -174,6 +184,13 @@ else
             </div>
         </div>
     }
+
+    @* Delete Confirmation Modal *@
+    <ConfirmModal Visible="@_showDeleteConfirm"
+                  Title="Confirm Delete"
+                  Message="@($"Are you sure you want to delete {_selectedJobs.Count} recurring job(s)?")"
+                  OnConfirm="ConfirmDelete"
+                  OnCancel="CancelDelete" />
 }
 
 @code {
@@ -181,6 +198,7 @@ else
     private List<StoppedJobInfo> _stoppedJobs = new();
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
+    private bool _showDeleteConfirm;
     private int _pageSize = 20;
     private Timer _refreshTimer;
 
@@ -298,8 +316,19 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task RemoveSelected()
+    private void ShowDeleteConfirm()
     {
+        _showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        _showDeleteConfirm = false;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        _showDeleteConfirm = false;
         await Task.Run(() => Monitor.RemoveRecurringJobs(_selectedJobs));
         _selectedJobs.Clear();
         _selectAll = false;

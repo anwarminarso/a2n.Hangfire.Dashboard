@@ -14,20 +14,20 @@
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="_content/lib/bootstrap-icons/bootstrap-icons.min.css" />
     <!-- Custom overrides (console viewer, charts) -->
-    <link rel="stylesheet" href="_content/css/app.css" />
+    <link rel="stylesheet" href="_content/css/app.css?v=@V" />
     <link rel="icon" href="@GetFaviconHref()" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 
 <body>
-    <script src="_content/js/theme.js"></script>
+    <script src="_content/js/theme.js?v=@V"></script>
     <script src="_content/js/moment.min.js"></script>
     <script src="_content/js/chart.umd.min.js"></script>
     <script src="_content/js/chartjs-adapter-moment.min.js"></script>
     <script src="_content/js/chartjs-plugin-streaming.min.js"></script>
-    <script src="_content/js/charts.js"></script>
-    <script src="_content/js/analyticsCharts.js"></script>
-    <script src="_content/js/search-presets.js"></script>
+    <script src="_content/js/charts.js?v=@V"></script>
+    <script src="_content/js/analyticsCharts.js?v=@V"></script>
+    <script src="_content/js/search-presets.js?v=@V"></script>
     <DashboardRoutes @rendermode="InteractiveServer" />
     <script src="_content/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="_framework/blazor.web.js"></script>
@@ -36,6 +36,13 @@
 </html>
 
 @code {
+    private static readonly string V = typeof(DashboardApp).Assembly
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+        .FirstOrDefault()?.InformationalVersion
+        ?? typeof(DashboardApp).Assembly.GetName().Version?.ToString()
+        ?? "0.0.0";
+
     private string GetBaseHref()
     {
         var pathBase = HttpContextAccessor?.HttpContext?.Request.PathBase.Value;

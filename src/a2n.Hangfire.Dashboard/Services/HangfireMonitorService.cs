@@ -58,6 +58,11 @@ public class HangfireMonitorService
     public long GetDeletedListCount() => GetMonitoringApi().DeletedListCount();
     public long GetEnqueuedCount(string queue) => GetMonitoringApi().EnqueuedCount(queue);
 
+    public JobList<FetchedJobDto> GetFetchedJobs(string queue, int from, int count)
+        => GetMonitoringApi().FetchedJobs(queue, from, count);
+
+    public long GetFetchedCount(string queue) => GetMonitoringApi().FetchedCount(queue);
+
     public IDictionary<DateTime, long> GetHourlySucceededJobs()
         => GetMonitoringApi().HourlySucceededJobs();
 

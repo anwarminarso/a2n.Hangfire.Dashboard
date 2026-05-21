@@ -19,6 +19,85 @@ public class ConsoleDataReader
     }
 
     /// <summary>
+    /// Gets the current progress value for a processing job (0-100).
+    /// Returns null if no progress bar has been written.
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    /// <param name="startedAt">The job's StartedAt timestamp (from Processing state)</param>
+    /// <returns>Progress value (0-100), or null if not available</returns>
+    public double? GetProgress(string jobId, DateTime startedAt)
+    {
+        var consoleId = FormatConsoleId(jobId, startedAt);
+        // a2n.Hangfire.Console uses "console:hash:{consoleId}"
+        // Original Hangfire.Console uses "console:refs:{consoleId}"
+        var hashKeyNew = $"console:hash:{consoleId}";
+        var hashKeyOld = $"console:refs:{consoleId}";
+
+        using var connection = _storage.GetReadOnlyConnection();
+        if (connection is not JobStorageConnection storageConnection)
+            return null;
+
+        // Try new key format first (a2n.Hangfire.Console)
+        var progress = storageConnection.GetValueFromHash(hashKeyNew, "progress");
+        if (string.IsNullOrEmpty(progress))
+        {
+            // Fallback to old key format (original Hangfire.Console)
+            progress = storageConnection.GetValueFromHash(hashKeyOld, "progress");
+        }
+
+        if (string.IsNullOrEmpty(progress))
+            return null;
+
+        try
+        {
+            return double.Parse(progress, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets progress values for multiple processing jobs in batch.
+    /// </summary>
+    /// <param name="jobs">Collection of (jobId, startedAt) tuples</param>
+    /// <returns>Dictionary of jobId → progress value (only includes jobs with progress)</returns>
+    public Dictionary<string, double> GetProgressBatch(IEnumerable<(string JobId, DateTime StartedAt)> jobs)
+    {
+        var result = new Dictionary<string, double>();
+
+        using var connection = _storage.GetReadOnlyConnection();
+        if (connection is not JobStorageConnection storageConnection)
+            return result;
+
+        foreach (var (jobId, startedAt) in jobs)
+        {
+            var consoleId = FormatConsoleId(jobId, startedAt);
+            var hashKeyNew = $"console:hash:{consoleId}";
+            var hashKeyOld = $"console:refs:{consoleId}";
+
+            try
+            {
+                var progress = storageConnection.GetValueFromHash(hashKeyNew, "progress");
+                if (string.IsNullOrEmpty(progress))
+                {
+                    progress = storageConnection.GetValueFromHash(hashKeyOld, "progress");
+                }
+
+                if (!string.IsNullOrEmpty(progress) &&
+                    double.TryParse(progress, System.Globalization.CultureInfo.InvariantCulture, out var value))
+                {
+                    result[jobId] = value;
+                }
+            }
+            catch { /* ignore individual read errors */ }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Gets console lines for a job execution.
     /// </summary>
     /// <param name="jobId">The job ID</param>

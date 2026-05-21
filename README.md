@@ -5,7 +5,7 @@
 One NuGet package. Zero Pro license.
 
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-LGPL--3.0--or--later-blue.svg)](LICENSE)
 [![Hangfire](https://img.shields.io/badge/Hangfire-1.8+-blue.svg)](https://www.hangfire.io/)
 
 ---
@@ -49,12 +49,14 @@ This project solves all of that in a single, free, open-source package.
 | Job state pages + batch operations | ✅ | ✅ |
 | Recurring job CRUD (create, edit, start/stop) | View only | ✅ |
 | Console output (logs, progress bars, colors) | ❌ (plugin) | ✅ |
+| Job progress circle on Processing page | ❌ (plugin) | ✅ |
 | Job tagging & tag cloud | ❌ (plugin) | ✅ |
 | Global search (ID, name, queue, tag, exception) | ❌ | ✅ |
 | Advanced filters (date, duration, state, server) | ❌ | ✅ |
 | Analytics dashboard (throughput, latency, failures) | ❌ | ✅ |
 | Storage-optimized queries (SQL Server, PostgreSQL) | ❌ | ✅ |
 | Realtime updates (SignalR, no polling) | ❌ | ✅ |
+| Delete confirmation modals | Browser confirm() | ✅ Bootstrap modal |
 | Dark / Light / Auto theme toggle | System only | ✅ |
 | Full mobile responsive | Partial | ✅ |
 | Modern stack (Blazor + Bootstrap 5 + Chart.js) | jQuery + BS3 | ✅ |
@@ -113,6 +115,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
     DashboardTitle = "My Jobs",
     DefaultTheme = "auto",  // "auto", "light", or "dark"
+    EnableRecurringJobAdmin = true,  // set false to hide Create/Edit/Stop
 });
 
 app.Run();
@@ -211,6 +214,7 @@ Open `https://localhost:7100/hangfire` to see it in action.
 | v2.0 | ✅ Done | All differentiation features complete |
 | v2.1 | ✅ Done | Search refactor + JobDisplayName + SQL Server fixes |
 | v2.1.1 | ✅ Done | WebSocket fix for Startup-pattern host apps |
+| v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
 | v3.0 | Planned | Notifications, REST API, Prometheus metrics, theming |
 
 See the full [roadmap](docs/ROADMAP.md) for details.
@@ -231,7 +235,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+LGPL-3.0-or-later — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 

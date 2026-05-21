@@ -31,6 +31,13 @@ public class DashboardUIOptions
     public bool IsReadOnly { get; set; } = false;
 
     /// <summary>
+    /// Whether recurring job administration (create, edit, delete, stop, start) is enabled.
+    /// When false, only the recurring jobs list and trigger action are available.
+    /// Default: true.
+    /// </summary>
+    public bool EnableRecurringJobAdmin { get; set; } = true;
+
+    /// <summary>
     /// Default number of records per page.
     /// </summary>
     public int DefaultRecordsPerPage { get; set; } = 20;

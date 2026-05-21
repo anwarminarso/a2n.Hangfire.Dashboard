@@ -1,11 +1,19 @@
-@page "/jobs/scheduled"
+@page "/jobs/fetched/{QueueName}"
 @inject HangfireMonitorService Monitor
 @implements IDisposable
 
-<PageTitle>Scheduled Jobs</PageTitle>
+<PageTitle>Fetched Jobs — @QueueName</PageTitle>
 
 <div class="page-container">
-    <h2 class="page-title">Scheduled Jobs</h2>
+    <h2 class="page-title">@QueueName <small class="text-muted">Fetched</small></h2>
+
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="jobs/enqueued">Queues</a></li>
+            <li class="breadcrumb-item"><a href="jobs/enqueued/@QueueName">@QueueName</a></li>
+            <li class="breadcrumb-item active">Fetched</li>
+        </ol>
+    </nav>
 
     @if (_jobs is null)
     {
@@ -13,15 +21,15 @@
     }
     else if (_jobs.Count == 0)
     {
-        <EmptyState Icon="calendar-check" Color="secondary"
-                    Message="No scheduled jobs." />
+        <EmptyState Icon="inbox" Color="secondary"
+                    Message="No fetched jobs in this queue." />
     }
     else
     {
         <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="d-flex gap-2">
-                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
-                    <i class="bi bi-play-fill"></i> Enqueue
+                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
+                    <i class="bi bi-arrow-repeat"></i> Requeue
                 </button>
                 <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
                     <i class="bi bi-x-lg"></i> Delete
@@ -40,32 +48,42 @@
                                     <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" />
                                 </th>
                                 <th>Id</th>
-                                <th>Enqueue</th>
+                                <th>State</th>
                                 <th>Job</th>
-                                <th class="text-end">Scheduled</th>
+                                <th class="text-end">Fetched</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var job in _jobs)
                             {
-                                <tr>
+                                var isObsolete = job.Value == null;
+
+                                <tr class="@(isObsolete ? "opacity-50" : "")">
                                     <td>
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" />
-                                    </td>
-                                    <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                    <td>
-                                        @if (job.Value is not null)
+                                        @if (job.Value != null)
                                         {
-                                            <RelativeTime UtcTime="@job.Value.EnqueueAt" IsFuture="true" />
+                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
+                                                   @onchange="() => ToggleJob(job.Key)" />
                                         }
                                     </td>
-                                    <td>@GetJobName(job.Value)</td>
-                                    <td class="text-end">
-                                        @if (job.Value?.ScheduledAt.HasValue == true)
-                                        {
-                                            <RelativeTime UtcTime="@job.Value.ScheduledAt.Value" />
-                                        }
+                                    <td class="font-monospace">
+                                        <a href="jobs/details/@job.Key">@ShortenId(job.Key)</a>
                                     </td>
+                                    @if (job.Value == null)
+                                    {
+                                        <td colspan="3"><em class="text-muted">Job expired</em></td>
+                                    }
+                                    else
+                                    {
+                                        <td><span class="badge bg-secondary">@(job.Value.State ?? "N/A")</span></td>
+                                        <td>@GetJobName(job.Value)</td>
+                                        <td class="text-end">
+                                            @if (job.Value.FetchedAt.HasValue)
+                                            {
+                                                <RelativeTime UtcTime="@job.Value.FetchedAt.Value" />
+                                            }
+                                        </td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -85,7 +103,9 @@
               OnCancel="CancelDelete" />
 
 @code {
-    private JobList<ScheduledJobDto> _jobs;
+    [Parameter] public string QueueName { get; set; } = "default";
+
+    private JobList<FetchedJobDto> _jobs;
     private long _totalCount;
     private int _from = 0;
     private int _pageSize = 20;
@@ -93,21 +113,29 @@
     private bool _selectAll;
     private Timer _refreshTimer;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
         await LoadData();
+        StartTimer();
+    }
 
+    private void StartTimer()
+    {
+        _refreshTimer?.Dispose();
         _refreshTimer = new Timer(async _ =>
         {
             try
             {
-                var newCount = Monitor.GetScheduledCount();
-                if (newCount != _totalCount)
+                var count = Monitor.GetFetchedCount(QueueName);
+                if (count != _totalCount)
                 {
-                    var jobs = Monitor.GetScheduledJobs(_from, _pageSize);
+                    var jobs = Monitor.GetFetchedJobs(QueueName, _from, _pageSize);
                     await InvokeAsync(() =>
                     {
-                        _totalCount = newCount;
+                        _totalCount = count;
                         _jobs = jobs;
                         StateHasChanged();
                     });
@@ -121,8 +149,8 @@
     {
         await Task.Run(() =>
         {
-            _totalCount = Monitor.GetScheduledCount();
-            _jobs = Monitor.GetScheduledJobs(_from, _pageSize);
+            _totalCount = Monitor.GetFetchedCount(QueueName);
+            _jobs = Monitor.GetFetchedJobs(QueueName, _from, _pageSize);
         });
     }
 
@@ -148,14 +176,15 @@
     private void ToggleJob(string id)
     {
         if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id);
-        _selectAll = _jobs != null && _selectedJobs.Count == _jobs.Count;
+        var validCount = _jobs?.Count(j => j.Value != null) ?? 0;
+        _selectAll = validCount > 0 && _selectedJobs.Count == validCount;
     }
     private void ToggleAll(ChangeEventArgs e)
     {
         if (_jobs is null) return;
         if ((bool)(e.Value ?? false))
         {
-            _selectedJobs = new(_jobs.Select(j => j.Key));
+            _selectedJobs = new(_jobs.Where(j => j.Value != null).Select(j => j.Key));
             _selectAll = true;
         }
         else
@@ -164,7 +193,8 @@
             _selectAll = false;
         }
     }
-    private async Task EnqueueSelected()
+
+    private async Task RequeueSelected()
     {
         await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
         _selectedJobs.Clear();
@@ -190,7 +220,7 @@
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
-    private static string GetJobName(ScheduledJobDto dto) =>
+    private static string GetJobName(FetchedJobDto dto) =>
         dto is null ? "(unknown)" : Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
 
     public void Dispose()

@@ -152,8 +152,7 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Fixed Analytics "Live" badge vertical alignment (removed nested flex wrapper from TimeRangeSelector)
 - ✅ Fixed Analytics charts showing only 1 data point for "Last 1h" (expanded query window to 6h with hourly interval)
 
-### v2.1 — Search & Query Refactor ✅
-- ✅ Unified `IStorageQueryProvider` interface (8 methods → 5 methods)
+### v2.1 — Search & Query Refactor ✅- ✅ Unified `IStorageQueryProvider` interface (8 methods → 5 methods)
 - ✅ Merged `SearchJobsByNameAsync`, `SearchFailedByExceptionAsync`, `SearchByContentAsync` into unified `GetJobsWithFilterAsync`
 - ✅ Extended `JobFilterCriteria` with `JobNamePattern`, `ExceptionPattern`, `ContentPattern`, `States` (multi-state)
 - ✅ Multi-stage query approach in `GetJobsWithFilterAsync` (basic filters → state data → cross-table → content CTE)
@@ -168,6 +167,19 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Fixed SQL Server content search (bracket escaping conflict with ESCAPE clause)
 - ✅ Fixed SQL Server metrics provider GROUP BY full InvocationData (now extracts Type+Method via JSON_VALUE)
 - ✅ Fixed SQL Server tag queries (TRY_CAST for non-numeric safety)
+
+### v2.2 — UX Improvements & Grid Parity ✅
+- ✅ Processing page: realtime job progress circle (SVG, color gradient orange→green, requires `UseConsole()`)
+- ✅ Processing page: obsolete/expired job handling (colspan, state changed indicator, conditional checkbox)
+- ✅ Processing page: server possibly aborted warning (heartbeat threshold check)
+- ✅ Deleted page: conditional Exception column (shows exception type when StateData contains Exception)
+- ✅ Fetched Jobs page (`/jobs/fetched/{queue}`) — new page matching original Hangfire dashboard
+- ✅ Enqueued page: "Fetched" tab shown when fetched count > 0
+- ✅ Delete confirmation modal (Bootstrap) on all pages — replaces browser `confirm()`
+- ✅ `EnableRecurringJobAdmin` option — toggle Create/Edit/Stop/Start visibility (default: true)
+- ✅ Mobile offcanvas navigation: auto-close on page navigation (JS interop)
+- ✅ Asset cache busting: `?v={version}` query string on custom JS/CSS resources
+- ✅ License updated to LGPL-3.0-or-later
 
 ---
 
@@ -219,6 +231,7 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v2.0 | Phase 2 complete | ✅ Done |
 | v2.1 | Search & query refactor + JobDisplayName + SQL Server fixes | ✅ Done |
 | v2.1.1 | WebSocket fix for Startup-pattern host apps (Generic Host compatibility) | ✅ Done |
+| v2.2 | UX improvements: progress circle, Fetched page, delete modals, mobile nav fix | ✅ Done |
 | v3.0 | Phase 3 — extensibility & integration | Planned |
 
 ---

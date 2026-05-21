@@ -1,0 +1,36 @@
+@* Circular SVG progress indicator for processing jobs *@
+
+@if (Value.HasValue && Value.Value >= 0)
+{
+    var percent = (int)Math.Min(Math.Round(Value.Value), 100);
+    var circumference = 2 * Math.PI * 11; // r=11
+    var offset = ((100 - percent) / 100.0) * circumference;
+    var color = GetProgressColor(percent);
+
+    <div class="hf-progress-circle" title="@($"{percent}%")" style="color: @color;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <circle r="11" cx="12" cy="12" />
+            <circle class="bar" r="11" cx="12" cy="12"
+                    stroke-dasharray="@circumference.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)"
+                    stroke-dashoffset="@offset.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)" />
+        </svg>
+        <span class="hf-progress-circle-label">@percent</span>
+    </div>
+}
+
+@code {
+    [Parameter] public double? Value { get; set; }
+
+    /// <summary>
+    /// Interpolates color from orange (#e67e22) at 0% to green (#27ae60) at 100%.
+    /// </summary>
+    private static string GetProgressColor(int percent)
+    {
+        // Orange (230, 126, 34) → Green (39, 174, 96)
+        var t = percent / 100.0;
+        var r = (int)(230 + (39 - 230) * t);
+        var g = (int)(126 + (174 - 126) * t);
+        var b = (int)(34 + (96 - 34) * t);
+        return $"rgb({r},{g},{b})";
+    }
+}

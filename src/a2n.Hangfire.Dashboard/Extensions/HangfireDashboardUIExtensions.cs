@@ -141,6 +141,7 @@ public static class HangfireDashboardUIExtensions
             registered.AppPath = options.AppPath;
             registered.StatsPollingInterval = options.StatsPollingInterval;
             registered.IsReadOnly = options.IsReadOnly;
+            registered.EnableRecurringJobAdmin = options.EnableRecurringJobAdmin;
             registered.DefaultRecordsPerPage = options.DefaultRecordsPerPage;
             registered.DefaultTheme = options.DefaultTheme;
             registered.FaviconPath = options.FaviconPath;

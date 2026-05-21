@@ -38,24 +38,59 @@
                                 </th>
                                 <th>Id</th>
                                 <th>Job</th>
+                                @if (_hasExceptionData)
+                                {
+                                    <th>Exception</th>
+                                }
                                 <th class="text-end">Deleted</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var job in _jobs)
                             {
-                                <tr>
+                                var isValid = job.Value != null && job.Value.InDeletedState;
+                                var isObsolete = job.Value == null || !job.Value.InDeletedState;
+
+                                <tr class="@(isObsolete ? "opacity-50" : "")">
                                     <td>
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" />
-                                    </td>
-                                    <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                    <td>@GetJobName(job.Value)</td>
-                                    <td class="text-end">
-                                        @if (job.Value?.DeletedAt.HasValue == true)
+                                        @if (isValid)
                                         {
-                                            <RelativeTime UtcTime="@job.Value.DeletedAt.Value" />
+                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" />
                                         }
                                     </td>
+                                    <td class="font-monospace">
+                                        <a href="jobs/details/@job.Key">@ShortenId(job.Key)</a>
+                                        @if (job.Value != null && !job.Value.InDeletedState)
+                                        {
+                                            <i class="bi bi-question-circle text-warning ms-1" title="Job state has changed"></i>
+                                        }
+                                    </td>
+                                    @if (job.Value == null)
+                                    {
+                                        <td colspan="@(_hasExceptionData ? 3 : 2)"><em class="text-muted">Job expired</em></td>
+                                    }
+                                    else
+                                    {
+                                        <td>@GetJobName(job.Value)</td>
+                                        @if (_hasExceptionData)
+                                        {
+                                            <td>
+                                                @{
+                                                    var exType = GetExceptionType(job.Value);
+                                                }
+                                                @if (exType is not null)
+                                                {
+                                                    <code title="@GetExceptionMessage(job.Value)">@exType</code>
+                                                }
+                                            </td>
+                                        }
+                                        <td class="text-end">
+                                            @if (job.Value.DeletedAt.HasValue)
+                                            {
+                                                <RelativeTime UtcTime="@job.Value.DeletedAt.Value" />
+                                            }
+                                        </td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -77,6 +112,7 @@
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
     private Timer _refreshTimer;
+    private bool _hasExceptionData;
 
     protected override async Task OnInitializedAsync()
     {
@@ -94,6 +130,9 @@
                     {
                         _totalCount = newCount;
                         _jobs = jobs;
+                        _hasExceptionData = jobs.Any(j => j.Value?.StateData != null &&
+                            j.Value.StateData.ContainsKey("Exception") &&
+                            !string.IsNullOrWhiteSpace(j.Value.StateData["Exception"]));
                         StateHasChanged();
                     });
                 }
@@ -108,6 +147,9 @@
         {
             _totalCount = Monitor.GetDeletedListCount();
             _jobs = Monitor.GetDeletedJobs(_from, _pageSize);
+            _hasExceptionData = _jobs.Any(j => j.Value?.StateData != null &&
+                j.Value.StateData.ContainsKey("Exception") &&
+                !string.IsNullOrWhiteSpace(j.Value.StateData["Exception"]));
         });
     }
 
@@ -133,14 +175,15 @@
     private void ToggleJob(string id)
     {
         if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id);
-        _selectAll = _jobs != null && _selectedJobs.Count == _jobs.Count;
+        var validCount = _jobs?.Count(j => j.Value != null && j.Value.InDeletedState) ?? 0;
+        _selectAll = validCount > 0 && _selectedJobs.Count == validCount;
     }
     private void ToggleAll(ChangeEventArgs e)
     {
         if (_jobs is null) return;
         if ((bool)(e.Value ?? false))
         {
-            _selectedJobs = new(_jobs.Select(j => j.Key));
+            _selectedJobs = new(_jobs.Where(j => j.Value != null && j.Value.InDeletedState).Select(j => j.Key));
             _selectAll = true;
         }
         else
@@ -160,6 +203,42 @@
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
     private static string GetJobName(DeletedJobDto dto) =>
         dto is null ? "(unknown)" : Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
+
+    private static string GetExceptionType(DeletedJobDto dto)
+    {
+        if (dto?.StateData == null) return null;
+        if (!dto.StateData.TryGetValue("Exception", out var serialized) || string.IsNullOrWhiteSpace(serialized))
+            return null;
+
+        try
+        {
+            var exInfo = global::Hangfire.Common.SerializationHelper.Deserialize<global::Hangfire.ExceptionInfo>(serialized, global::Hangfire.Common.SerializationOption.Internal);
+            if (exInfo?.Type is null) return null;
+            var commaIndex = exInfo.Type.IndexOf(",", StringComparison.OrdinalIgnoreCase);
+            return commaIndex > 0 ? exInfo.Type[..commaIndex] : exInfo.Type;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string GetExceptionMessage(DeletedJobDto dto)
+    {
+        if (dto?.StateData == null) return null;
+        if (!dto.StateData.TryGetValue("Exception", out var serialized) || string.IsNullOrWhiteSpace(serialized))
+            return null;
+
+        try
+        {
+            var exInfo = global::Hangfire.Common.SerializationHelper.Deserialize<global::Hangfire.ExceptionInfo>(serialized, global::Hangfire.Common.SerializationOption.Internal);
+            return exInfo?.Message;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public void Dispose()
     {

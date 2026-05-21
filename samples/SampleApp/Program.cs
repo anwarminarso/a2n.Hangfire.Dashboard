@@ -60,7 +60,7 @@ builder.Services.AddHangfireDashboardUI(options =>
         case "PostgreSql":
             options.UsePostgreSqlStorage(postgreSqlConn);
             break;
-        // InMemory → no adapter configured → GenericQueryProvider fallback, analytics hidden
+            // InMemory → no adapter configured → GenericQueryProvider fallback, analytics hidden
     }
 });
 
@@ -75,7 +75,8 @@ if (!app.Environment.IsDevelopment())
 // Use Hangfire Dashboard UI at /hangfire
 app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions()
 {
-     DashboardTitle = "My Dashboard"
+    DashboardTitle = "My Dashboard",
+    EnableRecurringJobAdmin = true
 });
 
 // Seed sample recurring jobs

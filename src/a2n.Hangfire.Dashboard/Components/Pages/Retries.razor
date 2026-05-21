@@ -23,7 +23,7 @@ else
             <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
                 <i class="bi bi-arrow-repeat"></i> Enqueue
             </button>
-            <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+            <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
                 <i class="bi bi-x-lg"></i> Delete
             </button>
         </div>
@@ -82,6 +82,11 @@ else
     <Pager TotalCount="@_totalCount" PageSize="@_pageSize" From="@_from"
            OnPageChanged="HandlePageChanged" />
 }
+
+<ConfirmModal Visible="@_showDeleteConfirm"
+              Message="@($"Are you sure you want to delete {_selectedJobs.Count} selected job(s)?")"
+              OnConfirm="ConfirmDelete"
+              OnCancel="CancelDelete" />
 
 @code {
     private IReadOnlyList<string> _jobIds;
@@ -201,6 +206,15 @@ else
         _selectedJobs.Clear();
         _selectAll = false;
         await LoadData();
+    }
+
+    private bool _showDeleteConfirm;
+    private void ShowDeleteConfirm() => _showDeleteConfirm = true;
+    private void CancelDelete() => _showDeleteConfirm = false;
+    private async Task ConfirmDelete()
+    {
+        _showDeleteConfirm = false;
+        await DeleteSelected();
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";

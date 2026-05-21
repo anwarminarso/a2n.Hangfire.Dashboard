@@ -28,6 +28,14 @@ else
                 </a>
             </li>
         }
+        @if (_fetchedCount > 0)
+        {
+            <li class="nav-item">
+                <a class="nav-link" href="jobs/fetched/@_activeQueue">
+                    Fetched <span class="badge bg-secondary ms-1">@_fetchedCount</span>
+                </a>
+            </li>
+        }
     </ul>
 
     @if (_jobs is not null)
@@ -41,7 +49,7 @@ else
         {
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                    <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
                         <i class="bi bi-x-lg"></i> Delete
                     </button>
                 </div>
@@ -94,6 +102,11 @@ else
     }
 }
 
+<ConfirmModal Visible="@_showDeleteConfirm"
+              Message="@($"Are you sure you want to delete {_selectedJobs.Count} selected job(s)?")"
+              OnConfirm="ConfirmDelete"
+              OnCancel="CancelDelete" />
+
 @code {
     [Parameter] public string QueueName { get; set; }
 
@@ -101,6 +114,7 @@ else
     private JobList<EnqueuedJobDto> _jobs;
     private string _activeQueue = "default";
     private long _totalCount;
+    private long _fetchedCount;
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
@@ -125,11 +139,13 @@ else
             {
                 var queues = Monitor.GetQueues();
                 var totalCount = Monitor.GetEnqueuedCount(_activeQueue);
+                var fetchedCount = Monitor.GetFetchedCount(_activeQueue);
                 var jobs = Monitor.GetEnqueuedJobs(_activeQueue, _from, _pageSize);
                 await InvokeAsync(() =>
                 {
                     _queues = queues;
                     _totalCount = totalCount;
+                    _fetchedCount = fetchedCount;
                     _jobs = jobs;
                     StateHasChanged();
                 });
@@ -145,6 +161,7 @@ else
             _queues = Monitor.GetQueues();
             _activeQueue = QueueName ?? _queues.FirstOrDefault()?.Name ?? "default";
             _totalCount = Monitor.GetEnqueuedCount(_activeQueue);
+            _fetchedCount = Monitor.GetFetchedCount(_activeQueue);
             _jobs = Monitor.GetEnqueuedJobs(_activeQueue, _from, _pageSize);
         });
     }
@@ -194,6 +211,15 @@ else
         _selectedJobs.Clear();
         _selectAll = false;
         await LoadData();
+    }
+
+    private bool _showDeleteConfirm;
+    private void ShowDeleteConfirm() => _showDeleteConfirm = true;
+    private void CancelDelete() => _showDeleteConfirm = false;
+    private async Task ConfirmDelete()
+    {
+        _showDeleteConfirm = false;
+        await DeleteSelected();
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";

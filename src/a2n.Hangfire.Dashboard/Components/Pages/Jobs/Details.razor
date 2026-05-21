@@ -76,7 +76,7 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
             <button class="btn btn-outline-secondary btn-sm" @onclick="Requeue" disabled="@_actionInProgress">
                 <i class="bi bi-arrow-counterclockwise"></i> Requeue
             </button>
-            <button class="btn btn-danger btn-sm" @onclick="Delete" disabled="@_actionInProgress">
+            <button class="btn btn-danger btn-sm" @onclick="ShowDeleteConfirm" disabled="@_actionInProgress">
                 <i class="bi bi-trash"></i> Delete
             </button>
         </div>
@@ -238,6 +238,11 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
                 </div>
     }
 </div>
+
+<ConfirmModal Visible="@_showDeleteConfirm"
+              Message="@($"Are you sure you want to delete job #{JobId}?")"
+              OnConfirm="ConfirmDelete"
+              OnCancel="CancelDelete" />
 
 @code {
     [Parameter] public string JobId { get; set; } = "";
@@ -471,6 +476,15 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
 
         _actionInProgress = false;
         StateHasChanged();
+    }
+
+    private bool _showDeleteConfirm;
+    private void ShowDeleteConfirm() => _showDeleteConfirm = true;
+    private void CancelDelete() => _showDeleteConfirm = false;
+    private async Task ConfirmDelete()
+    {
+        _showDeleteConfirm = false;
+        await Delete();
     }
 
     private static string TruncateValue(string value) =>

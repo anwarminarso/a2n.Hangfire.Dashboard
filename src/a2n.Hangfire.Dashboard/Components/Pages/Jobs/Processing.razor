@@ -1,5 +1,6 @@
 @page "/jobs/processing"
 @inject HangfireMonitorService Monitor
+@inject ConsoleDataReader ConsoleReader
 @implements IDisposable
 
 <PageTitle>Processing Jobs</PageTitle>
@@ -23,7 +24,7 @@
                 <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
                     <i class="bi bi-arrow-repeat"></i> Requeue
                 </button>
-                <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
                     <i class="bi bi-x-lg"></i> Delete
                 </button>
             </div>
@@ -48,20 +49,53 @@
                         <tbody>
                             @foreach (var job in _jobs)
                             {
-                                <tr>
+                                var isValid = job.Value != null && job.Value.InProcessingState;
+                                var isObsolete = job.Value == null || !job.Value.InProcessingState;
+
+                                <tr class="@(isObsolete ? "opacity-50" : "")">
                                     <td>
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
-                                               @onchange="() => ToggleJob(job.Key)" />
-                                    </td>
-                                    <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                    <td><ServerLabel FullId="@(job.Value?.ServerId)" /></td>
-                                    <td>@GetJobName(job.Value)</td>
-                                    <td class="text-end">
-                                        @if (job.Value?.StartedAt.HasValue == true)
+                                        @if (isValid)
                                         {
-                                            <RelativeTime UtcTime="@job.Value.StartedAt.Value" />
+                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
+                                                   @onchange="() => ToggleJob(job.Key)" />
                                         }
                                     </td>
+                                    <td class="font-monospace">
+                                        <a href="jobs/details/@job.Key">@ShortenId(job.Key)</a>
+                                        @if (job.Value != null && !job.Value.InProcessingState)
+                                        {
+                                            <i class="bi bi-question-circle text-warning ms-1" title="Job state has changed"></i>
+                                        }
+                                    </td>
+                                    @if (job.Value == null)
+                                    {
+                                        <td colspan="3"><em class="text-muted">Job expired</em></td>
+                                    }
+                                    else if (!job.Value.InProcessingState)
+                                    {
+                                        <td colspan="3" class="text-muted">Job state has changed</td>
+                                    }
+                                    else
+                                    {
+                                        <td><ServerLabel FullId="@job.Value.ServerId" /></td>
+                                        <td>
+                                            @if (IsServerPossiblyAborted(job.Value.ServerId))
+                                            {
+                                                <i class="bi bi-exclamation-triangle text-warning me-1" title="Server heartbeat timeout — job may be aborted"></i>
+                                            }
+                                            @GetJobName(job.Value)
+                                        </td>
+                                        <td class="text-end">
+                                            @if (job.Value.StartedAt.HasValue)
+                                            {
+                                                @if (_jobProgress.TryGetValue(job.Key, out var progress))
+                                                {
+                                                    <JobProgressCircle Value="@progress" />
+                                                }
+                                                <RelativeTime UtcTime="@job.Value.StartedAt.Value" />
+                                            }
+                                        </td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -75,6 +109,11 @@
     }
 </div>
 
+<ConfirmModal Visible="@_showDeleteConfirm"
+              Message="@($"Are you sure you want to delete {_selectedJobs.Count} selected job(s)?")"
+              OnConfirm="ConfirmDelete"
+              OnCancel="CancelDelete" />
+
 @code {
     private JobList<ProcessingJobDto> _jobs;
     private long _totalCount;
@@ -83,6 +122,10 @@
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
     private Timer _refreshTimer;
+    private Dictionary<string, double> _jobProgress = new();
+    private bool _consoleEnabled;
+    private IList<ServerDto> _servers;
+    private static readonly TimeSpan ServerAbortedThreshold = TimeSpan.FromMinutes(5);
 
     protected override async Task OnInitializedAsync()
     {
@@ -96,16 +139,33 @@
                 if (newCount != _totalCount || newCount > 0)
                 {
                     var jobs = Monitor.GetProcessingJobs(_from, _pageSize);
+                    var progress = GetProgressForJobs(jobs);
+                    var servers = Monitor.GetServers();
                     await InvokeAsync(() =>
                     {
                         _totalCount = newCount;
                         _jobs = jobs;
+                        _jobProgress = progress;
+                        _servers = servers;
                         StateHasChanged();
                     });
                 }
+                else if (_consoleEnabled && _jobs?.Count > 0)
+                {
+                    // Even if job list hasn't changed, poll progress updates
+                    var progress = GetProgressForJobs(_jobs);
+                    if (!ProgressEquals(progress, _jobProgress))
+                    {
+                        await InvokeAsync(() =>
+                        {
+                            _jobProgress = progress;
+                            StateHasChanged();
+                        });
+                    }
+                }
             }
             catch { }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
 
     private async Task LoadData()
@@ -114,7 +174,58 @@
         {
             _totalCount = Monitor.GetProcessingCount();
             _jobs = Monitor.GetProcessingJobs(_from, _pageSize);
+            _jobProgress = GetProgressForJobs(_jobs);
+            _servers = Monitor.GetServers();
         });
+    }
+
+    private Dictionary<string, double> GetProgressForJobs(JobList<ProcessingJobDto> jobs)
+    {
+        if (jobs is null || jobs.Count == 0)
+            return new();
+
+        try
+        {
+            var jobsWithStartedAt = jobs
+                .Where(j => j.Value?.StartedAt.HasValue == true && j.Value.InProcessingState)
+                .Select(j => (j.Key, j.Value.StartedAt!.Value))
+                .ToList();
+
+            if (jobsWithStartedAt.Count == 0)
+                return new();
+
+            var result = ConsoleReader.GetProgressBatch(jobsWithStartedAt);
+            _consoleEnabled = result.Count > 0 || _consoleEnabled;
+            return result;
+        }
+        catch
+        {
+            return new();
+        }
+    }
+
+    private bool IsServerPossiblyAborted(string serverId)
+    {
+        if (string.IsNullOrEmpty(serverId) || _servers is null)
+            return false;
+
+        var now = DateTime.UtcNow;
+        // Server is possibly aborted if it doesn't exist in server list,
+        // or its heartbeat is older than the threshold
+        return _servers.All(s =>
+            s.Name != serverId ||
+            s.Heartbeat < now.Add(ServerAbortedThreshold.Negate()));
+    }
+
+    private static bool ProgressEquals(Dictionary<string, double> a, Dictionary<string, double> b)
+    {
+        if (a.Count != b.Count) return false;
+        foreach (var kv in a)
+        {
+            if (!b.TryGetValue(kv.Key, out var val) || Math.Abs(val - kv.Value) > 0.01)
+                return false;
+        }
+        return true;
     }
 
     private async Task HandlePageChanged((int From, int PageSize) args)
@@ -139,14 +250,15 @@
     private void ToggleJob(string id)
     {
         if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id);
-        _selectAll = _jobs != null && _selectedJobs.Count == _jobs.Count;
+        var validCount = _jobs?.Count(j => j.Value != null && j.Value.InProcessingState) ?? 0;
+        _selectAll = validCount > 0 && _selectedJobs.Count == validCount;
     }
     private void ToggleAll(ChangeEventArgs e)
     {
         if (_jobs is null) return;
         if ((bool)(e.Value ?? false))
         {
-            _selectedJobs = new(_jobs.Select(j => j.Key));
+            _selectedJobs = new(_jobs.Where(j => j.Value != null && j.Value.InProcessingState).Select(j => j.Key));
             _selectAll = true;
         }
         else
@@ -170,6 +282,15 @@
         _selectedJobs.Clear();
         _selectAll = false;
         await LoadData();
+    }
+
+    private bool _showDeleteConfirm;
+    private void ShowDeleteConfirm() => _showDeleteConfirm = true;
+    private void CancelDelete() => _showDeleteConfirm = false;
+    private async Task ConfirmDelete()
+    {
+        _showDeleteConfirm = false;
+        await DeleteSelected();
     }
 
     private static string ShortenId(string id)

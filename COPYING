@@ -2,7 +2,7 @@ a2n.Hangfire.Dashboard — An open-source alternative dashboard for Hangfire.
 
 Copyright (c) 2024-2026 Anwar Minarso
 
-This project is licensed under the MIT License.
+This project is licensed under the GNU Lesser General Public License v3.0 or later (LGPL-3.0-or-later).
 See the LICENSE file for the full license text.
 
 This software includes or is inspired by the following open-source projects:

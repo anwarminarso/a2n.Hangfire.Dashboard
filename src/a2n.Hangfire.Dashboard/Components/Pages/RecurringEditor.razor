@@ -2,9 +2,18 @@
 @page "/recurring/edit/{JobId}"
 @inject HangfireMonitorService Monitor
 @inject NavigationManager Nav
+@inject DashboardUIOptions Options
 
 <PageTitle>@(_isEdit ? "Edit" : "Create") Recurring Job</PageTitle>
 
+@if (!Options.EnableRecurringJobAdmin)
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-lock"></i> Recurring job administration is disabled.
+    </div>
+}
+else
+{
 <div style="max-width: 600px;">
     <h2 class="mb-3">@(_isEdit ? "Edit" : "Create") Recurring Job</h2>
 
@@ -61,6 +70,7 @@
         </div>
     </div>
 </div>
+}
 
 @code {
     [Parameter] public string JobId { get; set; }

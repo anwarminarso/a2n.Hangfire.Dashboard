@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
 @inject DashboardUIOptions Options
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="d-flex vh-100 overflow-hidden">
@@ -72,7 +73,16 @@
     private void OnLocationChanged(object sender, LocationChangedEventArgs e)
     {
         UpdatePageTitle(e.Location);
-        InvokeAsync(StateHasChanged);
+        InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    "bootstrap.Offcanvas.getInstance(document.getElementById('mobileSidebar'))?.hide()");
+            }
+            catch { /* ignore if offcanvas not open or during prerender */ }
+        });
     }
 
     private void UpdatePageTitle(string uri)
@@ -96,6 +106,7 @@
             "" or "/" => "Dashboard",
             "/jobs/enqueued" => "Enqueued Jobs",
             _ when path.StartsWith("/jobs/enqueued/") => "Enqueued Jobs",
+            _ when path.StartsWith("/jobs/fetched/") => "Fetched Jobs",
             "/jobs/processing" => "Processing Jobs",
             "/jobs/scheduled" => "Scheduled Jobs",
             "/jobs/succeeded" => "Succeeded Jobs",
