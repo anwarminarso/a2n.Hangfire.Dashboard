@@ -357,13 +357,16 @@ else
             await Task.WhenAll(throughputTask, durationStatsTask, latencyStatsTask,
                 hourlyTask, topJobsTask, serverUtilTask);
 
-            _throughputData = throughputTask.Result;
-            _hourlyActivityData = hourlyTask.Result;
-            _topJobTypesData = topJobsTask.Result;
+            var throughput = await throughputTask;
+            var durationStats = await durationStatsTask;
+            var latencyStats = await latencyStatsTask;
+            var serverUtil = await serverUtilTask;
 
-            // Compute stat card values
-            ComputeStatCards(throughputTask.Result, durationStatsTask.Result,
-                latencyStatsTask.Result, serverUtilTask.Result);
+            _throughputData = throughput;
+            _hourlyActivityData = await hourlyTask;
+            _topJobTypesData = await topJobsTask;
+
+            ComputeStatCards(throughput, durationStats, latencyStats, serverUtil);
 
             // Build chart data objects
             BuildThroughputChart();
