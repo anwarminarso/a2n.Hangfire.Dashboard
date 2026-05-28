@@ -39,3 +39,6 @@ msbuild.wrn
 # Kiro
 .kiro/
 *.code-workspace
+
+# Cursor
+.cursor/
