@@ -72,11 +72,13 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-// Use Hangfire Dashboard UI at /hangfire
-app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions()
+// Use Hangfire Dashboard UI at /hangfire (default: local requests only, same as Hangfire built-in dashboard)
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
     DashboardTitle = "My Dashboard",
     EnableRecurringJobAdmin = true
+    // Authorization defaults to LocalRequestsOnlyAuthorizationFilter.
+    // Set Authorization = [] to allow all hosts, or see SampleAppAuth for cookie login.
 });
 
 // Seed sample recurring jobs

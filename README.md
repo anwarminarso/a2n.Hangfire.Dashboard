@@ -26,6 +26,8 @@ app.UseHangfireDashboardUI("/hangfire");
 
 Navigate to `/hangfire`. Done.
 
+> **Authorization (breaking change):** By default, only **local requests** are allowed (same as Hangfire's built-in dashboard). For remote access, set `Authorization = []` or add your own filters. See `CHANGELOG.md` and `samples/SampleAppAuth` for cookie login.
+
 ---
 
 ## The Problem
