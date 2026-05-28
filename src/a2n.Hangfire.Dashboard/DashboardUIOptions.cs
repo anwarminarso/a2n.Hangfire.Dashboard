@@ -1,6 +1,6 @@
+using a2n.Hangfire.Dashboard.Security;
 using Hangfire;
 using Hangfire.Dashboard;
-using Microsoft.AspNetCore.Http;
 
 namespace a2n.Hangfire.Dashboard;
 
@@ -9,10 +9,18 @@ namespace a2n.Hangfire.Dashboard;
 /// </summary>
 public class DashboardUIOptions
 {
+    private static readonly IDashboardAuthorizationFilter[] DefaultAuthorization =
+        [new Security.LocalRequestsOnlyAuthorizationFilter()];
+
     /// <summary>
     /// The path for the Back To Site link. Set to null to hide it.
     /// </summary>
     public string AppPath { get; set; } = "/";
+
+    /// <summary>
+    /// Optional login path. When set, unauthenticated users are redirected here instead of receiving HTTP 401.
+    /// </summary>
+    public string LoginPath { get; set; }
 
     /// <summary>
     /// The title displayed on the dashboard.
@@ -56,9 +64,15 @@ public class DashboardUIOptions
     public string FaviconPath { get; set; }
 
     /// <summary>
-    /// Authorization filters for the dashboard.
+    /// Authorization filters for the dashboard. Defaults to <see cref="LocalRequestsOnlyAuthorizationFilter"/>
+    /// (same as Hangfire's built-in dashboard). Set to an empty array to allow all requests.
     /// </summary>
-    public IEnumerable<IDashboardAuthorizationFilter> Authorization { get; set; } = [];
+    public IEnumerable<IDashboardAuthorizationFilter> Authorization { get; set; } = DefaultAuthorization;
+
+    /// <summary>
+    /// Async authorization filters for the dashboard.
+    /// </summary>
+    public IEnumerable<IDashboardAsyncAuthorizationFilter> AsyncAuthorization { get; set; } = [];
 
     /// <summary>
     /// Creates DashboardUIOptions from an existing Hangfire DashboardOptions instance.
@@ -70,14 +84,25 @@ public class DashboardUIOptions
     {
         ArgumentNullException.ThrowIfNull(hangfireOptions);
 
+        var authorization = hangfireOptions.Authorization?
+            .Select(f => (IDashboardAuthorizationFilter)new Security.HangfireDashboardAuthorizationFilterAdapter(f))
+            .ToArray() ?? DefaultAuthorization;
+
+        var asyncAuthorization = hangfireOptions.AsyncAuthorization?
+            .Select(f => (IDashboardAsyncAuthorizationFilter)new Security.HangfireDashboardAsyncAuthorizationFilterAdapter(f))
+            .ToArray() ?? [];
+
         return new DashboardUIOptions
         {
             AppPath = hangfireOptions.AppPath,
             DashboardTitle = hangfireOptions.DashboardTitle,
             StatsPollingInterval = hangfireOptions.StatsPollingInterval,
-            IsReadOnly = hangfireOptions.IsReadOnlyFunc?.Invoke(null!) ?? false,
+            // IsReadOnlyFunc requires a DashboardContext; default to false when mapping from Hangfire options.
+            IsReadOnly = false,
             DefaultRecordsPerPage = hangfireOptions.DefaultRecordsPerPage,
             DefaultTheme = hangfireOptions.DarkModeEnabled ? "auto" : "light",
+            Authorization = authorization,
+            AsyncAuthorization = asyncAuthorization,
         };
     }
 }

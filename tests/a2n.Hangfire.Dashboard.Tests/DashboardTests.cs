@@ -1,4 +1,5 @@
 using a2n.Hangfire.Dashboard;
+using a2n.Hangfire.Dashboard.Security;
 using Hangfire;
 using Hangfire.Dashboard;
 using Xunit;
@@ -20,7 +21,8 @@ public class DashboardUIOptionsTests
         Assert.False(options.IsReadOnly);
         Assert.Equal(20, options.DefaultRecordsPerPage);
         Assert.Equal("auto", options.DefaultTheme);
-        Assert.Empty(options.Authorization);
+        Assert.Single(options.Authorization);
+        Assert.IsType<Security.LocalRequestsOnlyAuthorizationFilter>(options.Authorization.First());
     }
 
     [Fact]

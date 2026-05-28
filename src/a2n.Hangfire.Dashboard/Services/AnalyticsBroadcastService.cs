@@ -18,16 +18,19 @@ public class AnalyticsBroadcastService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IHubContext<DashboardHub> _hubContext;
+    private readonly DashboardSubscriptionTracker _subscriptions;
     private readonly ILogger<AnalyticsBroadcastService> _logger;
     private readonly TimeSpan _interval = TimeSpan.FromSeconds(5);
 
     public AnalyticsBroadcastService(
         IServiceProvider serviceProvider,
         IHubContext<DashboardHub> hubContext,
+        DashboardSubscriptionTracker subscriptions,
         ILogger<AnalyticsBroadcastService> logger)
     {
         _serviceProvider = serviceProvider;
         _hubContext = hubContext;
+        _subscriptions = subscriptions;
         _logger = logger;
     }
 
@@ -68,6 +71,9 @@ public class AnalyticsBroadcastService : BackgroundService
 
     private async Task BroadcastAnalytics(CancellationToken ct)
     {
+        if (!_subscriptions.HasAnalyticsSubscribers)
+            return;
+
         using var scope = _serviceProvider.CreateScope();
         var metricsProvider = scope.ServiceProvider.GetService<IStorageMetricsProvider>();
 
