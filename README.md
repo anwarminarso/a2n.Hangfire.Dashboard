@@ -1,9 +1,10 @@
 # a2n.Hangfire.Dashboard
 
-**A modern, free alternative to the Hangfire Dashboard — with analytics, console logs, tags, and recurring job management built in.**
+**A modern, open-source dashboard extension for [Hangfire](https://www.hangfire.io/)** — analytics, console logs, tags, and recurring job management built in.
 
-One NuGet package. Zero Pro license.
+Open source (LGPL-3.0-or-later). Requires Hangfire 1.8+ and ASP.NET Core (.NET 8, 9, or 10). Not officially supported by Hangfire OÜ.
 
+[![NuGet](https://img.shields.io/nuget/v/a2n.Hangfire.Dashboard)](https://www.nuget.org/packages/a2n.Hangfire.Dashboard)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-LGPL--3.0--or--later-blue.svg)](LICENSE)
 [![Hangfire](https://img.shields.io/badge/Hangfire-1.8+-blue.svg)](https://www.hangfire.io/)
@@ -19,49 +20,40 @@ dotnet add package a2n.Hangfire.Dashboard
 ```
 
 ```csharp
-// Replace app.UseHangfireDashboard() with:
+// Use in place of app.UseHangfireDashboard():
 builder.Services.AddHangfireDashboardUI();
 app.UseHangfireDashboardUI("/hangfire");
 ```
 
 Navigate to `/hangfire`. Done.
 
-> **Authorization (breaking change):** By default, only **local requests** are allowed (same as Hangfire's built-in dashboard). For remote access, set `Authorization = []` or add your own filters. See `CHANGELOG.md` and `samples/SampleAppAuth` for cookie login.
+> **Authorization:** By default, only **local requests** are allowed (same as the Hangfire dashboard). For remote access, set `Authorization = []` or add your own filters. See [CHANGELOG.md](CHANGELOG.md) and [`samples/SampleAppAuth`](samples/SampleAppAuth) for a cookie login example.
 
 ---
 
-## The Problem
+## About
 
-If you've used Hangfire in production, you've probably hit these walls:
+Hangfire ships a capable monitoring UI out of the box. Many teams extend it with community packages for additional dashboard features — for example [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console), [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags), and [Hangfire.RecurringJobAdmin](https://github.com/bamotav/Hangfire.RecurringJobAdmin). Dashboard analytics are also available in [Hangfire Pro](https://www.hangfire.io/pricing/).
 
-- **Console logs?** Install `Hangfire.Console`. **Tags?** Install `Hangfire.Tags`. **Recurring job editor?** Install `Hangfire.RecurringJobAdmin`. Three extra packages, three sets of compatibility issues.
-- **Want analytics?** That's Hangfire Pro. Per-developer licensing, starting at $500/year.
-- **Search across jobs?** Not built in. You're writing SQL queries against the storage directly.
-- **Dark mode?** The built-in dashboard is jQuery + Bootstrap 3. It follows system theme — no toggle, no choice.
-- **Mobile?** Good luck reading that sidebar on a phone.
-
-This project solves all of that in a single, free, open-source package.
+**a2n.Hangfire.Dashboard** combines several of these capabilities in one extension: search, filters, analytics (with optional storage adapters), console viewer, tags, recurring job CRUD, SignalR realtime updates, and theme options — while using the same Hangfire job storage and APIs.
 
 ---
 
-## What You Get
+## Features
 
-| Feature | Built-in Dashboard | **This Dashboard** |
-|---------|:-----------------:|:--------------:|
-| Job state pages + batch operations | ✅ | ✅ |
-| Recurring job CRUD (create, edit, start/stop) | View only | ✅ |
-| Console output (logs, progress bars, colors) | ❌ (plugin) | ✅ |
-| Job progress circle on Processing page | ❌ (plugin) | ✅ |
-| Job tagging & tag cloud | ❌ (plugin) | ✅ |
-| Global search (ID, name, queue, tag, exception) | ❌ | ✅ |
-| Advanced filters (date, duration, state, server) | ❌ | ✅ |
-| Analytics dashboard (throughput, latency, failures) | ❌ | ✅ |
-| Storage-optimized queries (SQL Server, PostgreSQL) | ❌ | ✅ |
-| Realtime updates (SignalR, no polling) | ❌ | ✅ |
-| Delete confirmation modals | Browser confirm() | ✅ Bootstrap modal |
-| Dark / Light / Auto theme toggle | System only | ✅ |
-| Full mobile responsive | Partial | ✅ |
-| Modern stack (Blazor + Bootstrap 5 + Chart.js) | jQuery + BS3 | ✅ |
+| Feature | Description |
+|---------|-------------|
+| Job monitoring | Job state pages, batch operations, servers, retries |
+| Recurring jobs | Create, edit, start, and stop recurring jobs from the UI |
+| Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
+| Job tags | Tagging and tag cloud (Hangfire.Tags-compatible storage) |
+| Global search | Search by job ID, name, queue, tag, or exception text |
+| Advanced filters | Filter by date, duration, state, server, and more |
+| Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
+| Realtime updates | Live metrics via SignalR |
+| Authorization | Local-only default (same as Hangfire); optional async filters and `LoginPath` redirect |
+| Theming | Dark, light, or auto; responsive layout |
+| Tech | Blazor Server, Bootstrap 5, Chart.js |
 
 ---
 
@@ -75,13 +67,28 @@ This project solves all of that in a single, free, open-source package.
 |:---:|:---:|
 | ![Tags](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/tags.png) | ![Recurring](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/recurring.png) |
 
-| Advanced Search | Performance |
+| Advanced Search | Analytics |
 |:---:|:---:|
-| ![Search](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/search.png) | ![Theme](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/performance.png) |
+| ![Advanced Search](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/search.png) | ![Analytics](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/performance.png) |
 
 | Light / Dark / Auto |
 |:---:|
-| ![Search](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/light-dark.png) |
+| ![Light / Dark / Auto theme](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/light-dark.png) |
+
+---
+
+## Packages
+
+| NuGet package | Purpose |
+|---------------|---------|
+| [`a2n.Hangfire.Dashboard`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard) | Main dashboard UI (search, console, tags, recurring admin) |
+| [`a2n.Hangfire.Dashboard.SqlServer`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.SqlServer) | Storage-specific queries + full analytics for SQL Server |
+| [`a2n.Hangfire.Dashboard.PostgreSql`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.PostgreSql) | Storage-specific queries + full analytics for PostgreSQL |
+| [`a2n.Hangfire.Console`](https://www.nuget.org/packages/a2n.Hangfire.Console) | Console integration (Hangfire.Console-compatible API) |
+| [`a2n.Hangfire.Tags`](https://www.nuget.org/packages/a2n.Hangfire.Tags) | Tags integration (Hangfire.Tags-compatible storage) |
+
+Without a storage adapter package, search and core dashboard features work; the **Analytics** pages require `a2n.Hangfire.Dashboard.SqlServer` or `a2n.Hangfire.Dashboard.PostgreSql`.
+
 ---
 
 ## Full Setup
@@ -89,22 +96,25 @@ This project solves all of that in a single, free, open-source package.
 ```csharp
 using a2n.Hangfire.Dashboard;
 using Hangfire;
-using Hangfire.Console;  // Built-in — same namespace, same API
-using Hangfire.Tags;     // Built-in — same namespace, same API
+using Hangfire.Console;  // Hangfire.Console-compatible API (bundled in this package)
+using Hangfire.Tags;     // Hangfire.Tags-compatible API (bundled in this package)
 
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString = builder.Configuration.GetConnectionString("Hangfire")
+    ?? throw new InvalidOperationException("Connection string 'Hangfire' not found.");
+
 builder.Services.AddHangfire(config => config
-    .UseYourStorage()
+    .UseSqlServerStorage(connectionString)  // or .UsePostgreSqlStorage(connectionString)
     .UseConsole()        // Enable console output
     .UseTags());         // Enable job tagging
 
 builder.Services.AddHangfireServer();
 
-// Basic setup (search works, analytics hidden)
+// Basic setup (search works; analytics requires a storage adapter — see Packages)
 builder.Services.AddHangfireDashboardUI();
 
-// OR: With storage adapter for optimized queries + full analytics
+// With storage adapter for storage-specific queries + full analytics:
 // builder.Services.AddHangfireDashboardUI(options =>
 // {
 //     options.UseSqlServerStorage(connectionString);
@@ -137,11 +147,11 @@ NuGet consumers don't need this — it's handled automatically.
 
 ---
 
-## Drop-in Replacement
+## Using with existing Hangfire code
 
-### Same namespaces, same API
+### Console & tags compatibility
 
-Already using `Hangfire.Console` or `Hangfire.Tags`? Swap the NuGet packages. Your code compiles without changes:
+Already using `Hangfire.Console` or `Hangfire.Tags`? You can keep those packages, or switch to the bundled ones — job code and storage formats are compatible:
 
 ```csharp
 // Works exactly the same
@@ -164,7 +174,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardOptions
 
 ### Data compatibility
 
-Reads the same storage format as the original plugins. Historical console logs and tags are visible immediately — no migration needed.
+Reads the same storage format as [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console) and [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags). Existing console logs and tags are visible immediately — no migration needed.
 
 ---
 
@@ -183,14 +193,24 @@ Reads the same storage format as the original plugins. Historical console logs a
 
 ```
 src/
-├── a2n.Hangfire.Dashboard/            # Main dashboard (Blazor + SignalR + Analytics)
+├── a2n.Hangfire.Dashboard/             # Main dashboard (Blazor + SignalR + Analytics)
 ├── a2n.Hangfire.Dashboard.SqlServer/   # SQL Server adapter (Dapper + T-SQL)
 ├── a2n.Hangfire.Dashboard.PostgreSql/  # PostgreSQL adapter (Dapper + Npgsql)
-├── a2n.Hangfire.Console/              # Console integration (drop-in replacement)
-└── a2n.Hangfire.Tags/                 # Tags integration (drop-in replacement)
+├── a2n.Hangfire.Console/               # Console integration (Hangfire.Console-compatible)
+└── a2n.Hangfire.Tags/                  # Tags integration (Hangfire.Tags-compatible)
+
+tests/
+├── a2n.Hangfire.Dashboard.Tests/
+├── a2n.Hangfire.Console.Tests/
+└── a2n.Hangfire.Dashboard.PostgreSql.Tests/
 
 samples/
-└── SampleApp/                         # Demo app with all features enabled
+├── SampleApp/          # Full demo (all features)
+├── SampleAppAuth/      # Cookie authentication example
+├── SampleAppMvc/       # ASP.NET Core MVC host
+├── SampleAppRazor/     # Razor Pages host
+├── SampleAppBlazor/    # Blazor host
+└── SampleAppOrig/      # Startup-class host pattern
 ```
 
 ## Running the Sample
@@ -203,48 +223,57 @@ dotnet run
 
 Open `https://localhost:7100/hangfire` to see it in action.
 
+For authentication with a login page, run `samples/SampleAppAuth` instead.
+
 ---
 
 ## Roadmap
 
 | Version | Status | Scope |
 |---------|--------|-------|
-| v1.0 | ✅ Done | Full parity + Console + Tags + Recurring Admin |
+| v1.0 | ✅ Done | Core dashboard pages + Console + Tags + Recurring Admin |
 | v1.1 | ✅ Done | Global search & advanced filters |
 | v1.2 | ✅ Done | Razor Class Library (NuGet-ready) |
 | v1.3–v1.6 | ✅ Done | Storage adapters (SQL Server, PostgreSQL) + Analytics dashboard |
-| v2.0 | ✅ Done | All differentiation features complete |
+| v2.0 | ✅ Done | Feature-complete for current scope |
 | v2.1 | ✅ Done | Search refactor + JobDisplayName + SQL Server fixes |
 | v2.1.1 | ✅ Done | WebSocket fix for Startup-pattern host apps |
 | v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
+| v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
 | v3.0 | Planned | Notifications, REST API, Prometheus metrics, theming |
 
-See the full [roadmap](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/ROADMAP.md) for details.
+See the full [roadmap](docs/ROADMAP.md) for details.
 
 ---
 
 ## Contributing
 
-Contributions welcome — bug reports, feature requests, and pull requests.
+Contributions welcome — bug reports, feature requests, documentation improvements, and pull requests.
 
 ```bash
 git clone https://github.com/anwarminarso/a2n.Hangfire.Dashboard.git
-cd a2n.Hangfire.Dashboard/samples/SampleApp
-dotnet run
+cd a2n.Hangfire.Dashboard
+dotnet build src/Hangfire\ Dashboard.slnx
+dotnet test
+cd samples/SampleApp && dotnet run
 ```
 
-See [CONTRIBUTING.md](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for fork workflow, code style, and pull request guidelines.
 
 ## License
 
-LGPL-3.0-or-later — see [LICENSE](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/LICENSE).
+LGPL-3.0-or-later — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-- [Hangfire](https://www.hangfire.io/) — the background job framework this dashboard is built for
-- [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console) — inspiration for console integration
-- [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags) — inspiration for tags integration
-- [Hangfire.RecurringJobAdmin](https://github.com/nickvdyck/Hangfire.RecurringJobAdmin) — inspiration for recurring job CRUD
+This project builds on the excellent work of the Hangfire community:
+
+- [Hangfire](https://www.hangfire.io/) — the background job framework
+- [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console) — console output for background jobs
+- [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags) — job tagging
+- [Hangfire.RecurringJobAdmin](https://github.com/bamotav/Hangfire.RecurringJobAdmin) — recurring job management UI
+
+Community extensions are listed on the [Hangfire Extensions](https://www.hangfire.io/extensions.html) page. This project is community-maintained and is not officially supported by Hangfire OÜ.
 
 ---
 

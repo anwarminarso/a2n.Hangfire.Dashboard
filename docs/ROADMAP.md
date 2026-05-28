@@ -181,6 +181,24 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Asset cache busting: `?v={version}` query string on custom JS/CSS resources
 - ✅ License updated to LGPL-3.0-or-later
 
+### v2.2.1 — Security & Auth Hardening ✅
+- ✅ **BREAKING:** `DashboardUIOptions.Authorization` defaults to `LocalRequestsOnlyAuthorizationFilter` (same as Hangfire built-in)
+- ✅ `IDashboardAsyncAuthorizationFilter` interface + Hangfire filter adapters
+- ✅ `DashboardUIOptions.LoginPath` for redirecting unauthenticated users to a login page
+- ✅ SignalR hub and Blazor circuit paths enforce same authorization as dashboard pages
+- ✅ Schema/table identifiers validated (`^[a-zA-Z_][a-zA-Z0-9_]*$`) before use in SQL
+- ✅ Antiforgery validation skipped for `/_blazor` and `/hubs/*` negotiate endpoints
+- ✅ `MetricsQueryCache` with per-key stampede protection (fixes TOCTOU race)
+- ✅ `samples/SampleAppAuth` — cookie authentication demo with login form
+- ✅ SQL Server: `PERCENTILE_CONT ... OVER (PARTITION BY ...)` fix (valid T-SQL)
+- ✅ PostgreSQL: throughput timeline includes daily counter keys (`stats:*:yyyy-MM-dd`)
+- ✅ Queue resolution: prefers `Job.Queue` parameter → legacy `CurrentQueue` → state JSON
+- ✅ Queue latency: reads `Latency` from Succeeded state (where Hangfire stores it)
+- ✅ Recurring job execution history: matches `RecurringJobId` in both plain and JSON-serialized forms
+- ✅ Public `JobParameterMatching` helper in `a2n.Hangfire.Dashboard.Storage`
+- ✅ Analytics: `await` tasks instead of `.Result` after `WhenAll` (async best practice)
+- ✅ Collapsible sidebar navigation groups
+
 ---
 
 ## Phase 3 — Extensibility & Integration
@@ -232,6 +250,7 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v2.1 | Search & query refactor + JobDisplayName + SQL Server fixes | ✅ Done |
 | v2.1.1 | WebSocket fix for Startup-pattern host apps (Generic Host compatibility) | ✅ Done |
 | v2.2 | UX improvements: progress circle, Fetched page, delete modals, mobile nav fix | ✅ Done |
+| v2.2.1 | Security & auth hardening: authorization defaults, SignalR auth, SQL validation | ✅ Done |
 | v3.0 | Phase 3 — extensibility & integration | Planned |
 
 ---

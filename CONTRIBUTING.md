@@ -8,6 +8,7 @@ Thank you for your interest in contributing! This project is open source and wel
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download) or later
 - A code editor (Visual Studio, VS Code, Rider, etc.)
+- For PostgreSQL adapter tests: a local PostgreSQL instance (see `tests/a2n.Hangfire.Dashboard.PostgreSql.Tests/appsettings.json`)
 
 ### Setting Up the Development Environment
 
@@ -24,14 +25,30 @@ cd a2n.Hangfire.Dashboard
 dotnet build src/Hangfire\ Dashboard.slnx
 ```
 
-3. Run the sample app:
+3. Run the tests:
+
+```bash
+dotnet test
+```
+
+4. Run the sample app:
 
 ```bash
 cd samples/SampleApp
 dotnet run
 ```
 
-4. Open `https://localhost:5001/serviceJob` in your browser.
+5. Open `https://localhost:7100/hangfire` in your browser.
+
+Other sample apps:
+
+| Sample | Purpose |
+|--------|---------|
+| `samples/SampleAppAuth` | Cookie authentication with login page |
+| `samples/SampleAppMvc` | ASP.NET Core MVC host integration |
+| `samples/SampleAppRazor` | Razor Pages host integration |
+| `samples/SampleAppBlazor` | Blazor host integration |
+| `samples/SampleAppOrig` | Legacy `Startup`-pattern host |
 
 ## How to Contribute
 
@@ -89,19 +106,21 @@ git commit -m "feat: add your feature description"
 | Directory | Purpose |
 |-----------|---------|
 | `src/a2n.Hangfire.Dashboard/` | Main dashboard project |
+| `src/a2n.Hangfire.Dashboard.SqlServer/` | SQL Server storage adapter (analytics + optimized queries) |
+| `src/a2n.Hangfire.Dashboard.PostgreSql/` | PostgreSQL storage adapter (analytics + optimized queries) |
 | `src/a2n.Hangfire.Console/` | Console integration (drop-in replacement) |
 | `src/a2n.Hangfire.Tags/` | Tags integration (drop-in replacement) |
-| `tests/` | Unit tests |
-| `samples/SampleApp/` | Demo application |
+| `tests/` | Unit and integration tests |
+| `samples/` | Demo applications for different host types |
 
 ## Pull Request Guidelines
 
 - Keep PRs focused — one feature or fix per PR.
 - Include a clear description of what changed and why.
 - Reference related issues (e.g., "Closes #42").
-- Ensure the build passes before requesting review.
+- Ensure the build and tests pass before requesting review.
 - Be responsive to feedback during code review.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contributions will be licensed under the [LGPL-3.0-or-later License](LICENSE).
