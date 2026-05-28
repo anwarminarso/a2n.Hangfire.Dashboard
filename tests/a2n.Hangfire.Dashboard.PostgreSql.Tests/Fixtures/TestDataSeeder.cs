@@ -189,7 +189,7 @@ public static class TestDataSeeder
             var queue = GetQueue(id);
             await connection.ExecuteAsync($@"
                 INSERT INTO {jobParamTable} (jobid, name, value)
-                VALUES (@JobId, 'CurrentQueue', @Value)",
+                VALUES (@JobId, 'Job.Queue', @Value)",
                 new { JobId = id, Value = queue });
 
             // RecurringJobId (only for some jobs)
@@ -319,9 +319,9 @@ public static class TestDataSeeder
             "Failed" => FailedStateData(
                 ExceptionTypes[(id - 1) % ExceptionTypes.Length],
                 ExceptionMessages[(id - 1) % ExceptionMessages.Length]),
-            "Processing" => ProcessingStateData(GetServer(id)),
+            "Processing" => ProcessingStateData(GetServer(id), GetQueue(id)),
             "Scheduled" => "{}",
-            "Enqueued" => $"{{\"EnqueuedAt\":\"{GetCreatedAt(id):o}\"}}",
+            "Enqueued" => $"{{\"Queue\":\"{GetQueue(id)}\",\"EnqueuedAt\":\"{GetCreatedAt(id):o}\"}}",
             _ => "{}"
         };
     }
@@ -345,8 +345,11 @@ public static class TestDataSeeder
         return $"{{\"Type\":\"{typeName}, SampleApp\",\"Method\":\"{methodName}\",\"ParameterTypes\":\"[]\",\"Arguments\":\"[]\"}}";
     }
 
-    private static string StateData(double duration, double latency)
+    private static string StateData(double duration, double latency, string queue = null)
     {
+        if (!string.IsNullOrEmpty(queue))
+            return $"{{\"PerformanceDuration\":\"{duration}\",\"Latency\":\"{latency}\",\"Queue\":\"{queue}\"}}";
+
         return $"{{\"PerformanceDuration\":\"{duration}\",\"Latency\":\"{latency}\"}}";
     }
 
@@ -356,9 +359,9 @@ public static class TestDataSeeder
         return $"{{\"ExceptionType\":\"{exceptionType}\",\"ExceptionMessage\":\"{escapedMessage}\",\"ExceptionDetails\":\"at SomeMethod()\"}}";
     }
 
-    private static string ProcessingStateData(string serverId)
+    private static string ProcessingStateData(string serverId, string queue)
     {
-        return $"{{\"ServerId\":\"{serverId}\",\"StartedAt\":\"{DateTime.UtcNow:o}\"}}";
+        return $"{{\"ServerId\":\"{serverId}\",\"Queue\":\"{queue}\",\"StartedAt\":\"{DateTime.UtcNow:o}\"}}";
     }
 
     #endregion

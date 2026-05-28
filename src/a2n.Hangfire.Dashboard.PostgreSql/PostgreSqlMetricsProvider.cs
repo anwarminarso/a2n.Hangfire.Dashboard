@@ -26,7 +26,7 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
     public PostgreSqlMetricsProvider(string connectionString, string schema = "hangfire")
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
-        _schema = schema ?? "hangfire";
+        _schema = PgHelper.ValidateIdentifier(schema ?? "hangfire", nameof(schema));
     }
 
     private NpgsqlConnection CreateConnection() => new(_connectionString);
@@ -55,6 +55,8 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
     public async Task<IReadOnlyList<ThroughputDataPoint>> GetThroughputTimelineAsync(
         DateTimeOffset from, DateTimeOffset to, MetricsInterval interval, CancellationToken ct)
     {
+        // Date filtering is done in C# after parse — daily keys (yyyy-MM-dd) and hourly keys
+        // (yyyy-MM-dd-HH) are not lexicographically comparable with a single stamp range.
         var sql = $@"
             SELECT key, value
             FROM {CounterTable}
@@ -149,9 +151,11 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
     public async Task<IReadOnlyList<JobDurationStatsDto>> GetJobDurationStatsAsync(
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
+        var typeMethod = PgHelper.InvocationDataTypeMethodSql();
+
         var sql = $@"
             WITH DurationData AS (
-                SELECT j.invocationdata AS jobtype,
+                SELECT {typeMethod} AS jobtype,
                        (s.data::json ->> 'PerformanceDuration')::numeric AS durationms
                 FROM {StateTable} s
                 INNER JOIN {JobTable} j ON j.id = s.jobid
@@ -176,10 +180,9 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         var rows = await connection.QueryAsync<JobDurationStatsDto>(
             new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct));
 
-        // Parse invocationdata JSON into readable job type names
         var results = rows.ToList();
         foreach (var r in results)
-            r.JobType = PgHelper.ExtractJobName(r.JobType);
+            r.JobType = PgHelper.ExtractJobTypeName(r.JobType);
         return results;
     }
 
@@ -189,13 +192,10 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
     {
         var sql = $@"
             WITH LatencyData AS (
-                SELECT COALESCE(jp.value, 'default') AS queuename,
+                SELECT COALESCE(s.data::json ->> 'Queue', 'default') AS queuename,
                        (s.data::json ->> 'Latency')::numeric AS latencyms
                 FROM {StateTable} s
-                INNER JOIN {JobTable} j ON j.id = s.jobid
-                LEFT JOIN {JobParameterTable} jp
-                    ON jp.jobid = j.id AND jp.name = 'Queue'
-                WHERE s.name = 'Succeeded'
+                WHERE s.name = 'Processing'
                   AND s.createdat >= @From AND s.createdat < @To
                   AND s.data::json ->> 'Latency' IS NOT NULL
             )
@@ -222,7 +222,11 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
     {
         var sql = $@"
             SELECT j.id::text AS ""JobId"",
-                   j.invocationdata AS ""JobName"",
+                   CONCAT(
+                       COALESCE(j.invocationdata::json ->> 'Type', j.invocationdata::json ->> 't', ''),
+                       '|',
+                       COALESCE(j.invocationdata::json ->> 'Method', j.invocationdata::json ->> 'm', '')
+                   ) AS ""JobName"",
                    (s.data::json ->> 'PerformanceDuration')::numeric AS ""DurationMs"",
                    s.createdat AS ""CompletedAt""
             FROM {StateTable} s
@@ -239,10 +243,10 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         var rows = await connection.QueryAsync<SlowestJobDto>(
             new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime, Count = count }, cancellationToken: ct));
 
-        // Parse invocationdata JSON into readable job names
+        // Extract readable class.method name from the pipe-separated type|method string
         var results = rows.ToList();
         foreach (var r in results)
-            r.JobName = PgHelper.ExtractJobName(r.JobName);
+            r.JobName = PgHelper.ExtractJobTypeName(r.JobName);
         return results;
     }
 
@@ -250,14 +254,16 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
     public async Task<IReadOnlyList<JobTypeFailureRateDto>> GetFailureRateByJobTypeAsync(
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
+        var typeMethod = PgHelper.InvocationDataTypeMethodSql();
+
         var sql = $@"
             WITH JobCounts AS (
-                SELECT j.invocationdata AS jobtype,
+                SELECT {typeMethod} AS jobtype,
                        COUNT(*) AS totalcount,
                        SUM(CASE WHEN j.statename = 'Failed' THEN 1 ELSE 0 END) AS failedcount
                 FROM {JobTable} j
                 WHERE j.createdat >= @From AND j.createdat < @To
-                GROUP BY j.invocationdata
+                GROUP BY {typeMethod}
             )
             SELECT jobtype AS ""JobType"",
                    totalcount AS ""TotalCount"",
@@ -275,10 +281,9 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         var rows = await connection.QueryAsync<JobTypeFailureRateDto>(
             new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct));
 
-        // Parse invocationdata JSON into readable job type names
         var results = rows.ToList();
         foreach (var r in results)
-            r.JobType = PgHelper.ExtractJobName(r.JobType);
+            r.JobType = PgHelper.ExtractJobTypeName(r.JobType);
         return results;
     }
 
@@ -340,13 +345,13 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
             WHERE lastheartbeat > NOW() - INTERVAL '5 minutes'";
 
         var busySql = $@"
-            SELECT COALESCE(s.data::json ->> 'ServerId', '') AS servername,
+            SELECT COALESCE(s.data::json ->> 'ServerId', s.data::json ->> 'ServerName', '') AS servername,
                    COUNT(*) AS busycount
             FROM {StateTable} s
             INNER JOIN {JobTable} j ON j.id = s.jobid
             WHERE s.name = 'Processing'
               AND s.id = j.stateid
-            GROUP BY s.data::json ->> 'ServerId'";
+            GROUP BY COALESCE(s.data::json ->> 'ServerId', s.data::json ->> 'ServerName', '')";
 
         using var connection = CreateConnection();
         await connection.OpenAsync(ct);
@@ -363,15 +368,16 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         {
             var totalWorkers = ParseWorkerCount(server.Data);
             var busy = busyWorkers.GetValueOrDefault(server.ServerName ?? "", 0);
+            var cappedBusy = totalWorkers > 0 ? Math.Min(busy, totalWorkers) : busy;
             var utilization = totalWorkers > 0
-                ? Math.Round((double)busy / totalWorkers * 100.0, 1)
+                ? Math.Round((double)cappedBusy / totalWorkers * 100.0, 1)
                 : 0.0;
 
             results.Add(new ServerUtilizationDto
             {
                 ServerName = server.ServerName,
                 TotalWorkers = totalWorkers,
-                BusyWorkers = busy,
+                BusyWorkers = cappedBusy,
                 UtilizationPercent = utilization
             });
         }
@@ -388,14 +394,19 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         CancellationToken ct)
     {
         var sql = $@"
-            SELECT COALESCE(jp.value, 'default') AS ""QueueName"",
+            SELECT COALESCE(
+                       (SELECT jp.value FROM {JobParameterTable} jp
+                        WHERE jp.jobid = j.id AND jp.name IN ({PgHelper.JobQueueParameterInList})
+                        ORDER BY CASE jp.name WHEN '{PgHelper.JobQueueParameterName}' THEN 0 ELSE 1 END
+                        LIMIT 1),
+                       s.data::json ->> 'Queue',
+                       'default') AS ""QueueName"",
                    SUM(CASE WHEN j.statename = 'Enqueued' THEN 1 ELSE 0 END) AS ""EnqueuedCount"",
                    SUM(CASE WHEN j.statename = 'Processing' THEN 1 ELSE 0 END) AS ""FetchedCount""
             FROM {JobTable} j
-            LEFT JOIN {JobParameterTable} jp
-                ON jp.jobid = j.id AND jp.name = 'Queue'
+            LEFT JOIN {StateTable} s ON s.id = j.stateid
             WHERE j.statename IN ('Enqueued', 'Processing')
-            GROUP BY COALESCE(jp.value, 'default')";
+            GROUP BY 1";
 
         using var connection = CreateConnection();
         await connection.OpenAsync(ct);
@@ -418,15 +429,19 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
 
         var sql = $@"
             SELECT {truncExpr} AS bucket,
-                   COALESCE(jp.value, 'default') AS queuename,
+                   COALESCE(
+                       (SELECT jp.value FROM {JobParameterTable} jp
+                        WHERE jp.jobid = j.id AND jp.name IN ({PgHelper.JobQueueParameterInList})
+                        ORDER BY CASE jp.name WHEN '{PgHelper.JobQueueParameterName}' THEN 0 ELSE 1 END
+                        LIMIT 1),
+                       s.data::json ->> 'Queue',
+                       'default') AS queuename,
                    COUNT(*) AS succeededcount
             FROM {StateTable} s
             INNER JOIN {JobTable} j ON j.id = s.jobid
-            LEFT JOIN {JobParameterTable} jp
-                ON jp.jobid = j.id AND jp.name = 'Queue'
             WHERE s.name = 'Succeeded'
               AND s.createdat >= @From AND s.createdat < @To
-            GROUP BY {truncExpr}, COALESCE(jp.value, 'default')
+            GROUP BY {truncExpr}, 2
             ORDER BY bucket";
 
         using var connection = CreateConnection();
@@ -590,19 +605,32 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         var rows = await connection.QueryAsync<HourlyActivityDto>(
             new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct));
 
-        return rows.ToList();
+        var byHour = rows.ToDictionary(r => r.Hour, r => r.JobCount);
+        var results = new List<HourlyActivityDto>();
+        for (var hour = 0; hour < 24; hour++)
+        {
+            results.Add(new HourlyActivityDto
+            {
+                Hour = hour,
+                JobCount = byHour.GetValueOrDefault(hour, 0)
+            });
+        }
+
+        return results;
     }
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<JobTypeVolumeDto>> GetJobTypeVolumeAsync(
         int count, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
+        var typeMethod = PgHelper.InvocationDataTypeMethodSql();
+
         var sql = $@"
-            SELECT j.invocationdata AS ""JobType"",
+            SELECT {typeMethod} AS ""JobType"",
                    COUNT(*) AS ""ExecutionCount""
             FROM {JobTable} j
             WHERE j.createdat >= @From AND j.createdat < @To
-            GROUP BY j.invocationdata
+            GROUP BY {typeMethod}
             ORDER BY ""ExecutionCount"" DESC
             LIMIT @Count";
 
@@ -612,10 +640,9 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         var rows = await connection.QueryAsync<JobTypeVolumeDto>(
             new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime, Count = count }, cancellationToken: ct));
 
-        // Parse invocationdata JSON into readable job type names
         var results = rows.ToList();
         foreach (var r in results)
-            r.JobType = PgHelper.ExtractJobName(r.JobType);
+            r.JobType = PgHelper.ExtractJobTypeName(r.JobType);
         return results;
     }
 
@@ -627,10 +654,10 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
 
         // Format: stats:{category}:{date} or stats:{category}:{date}-{hour}
         var parts = key.Split(':');
-        if (parts.Length != 3) return null;
+        if (parts.Length < 3) return null;
 
         var category = parts[1]; // succeeded, failed, deleted
-        var dateStr = parts[2];
+        var dateStr = string.Join(":", parts.Skip(2));
 
         // Try hourly format: yyyy-MM-dd-HH
         if (dateStr.Length == 13 &&

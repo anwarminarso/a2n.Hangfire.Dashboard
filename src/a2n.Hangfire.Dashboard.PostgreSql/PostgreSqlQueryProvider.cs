@@ -31,7 +31,7 @@ public class PostgreSqlQueryProvider : IStorageQueryProvider
     public PostgreSqlQueryProvider(string connectionString, string schema = "hangfire")
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
-        _schema = schema ?? "hangfire";
+        _schema = PgHelper.ValidateIdentifier(schema ?? "hangfire", nameof(schema));
 
         _jobTable = PgHelper.Table(_schema, "job");
         _stateTable = PgHelper.Table(_schema, "state");
@@ -371,9 +371,19 @@ LIMIT @Count";
         // Queue filter
         if (!string.IsNullOrWhiteSpace(criteria.Queue))
         {
-            conditions.Add($@"EXISTS (
-                SELECT 1 FROM {_jobParameterTable} jp
-                WHERE jp.jobid = j.id AND jp.name = 'CurrentQueue' AND jp.value = @Queue
+            conditions.Add($@"(
+                EXISTS (
+                    SELECT 1 FROM {_jobParameterTable} jp
+                    WHERE jp.jobid = j.id
+                      AND jp.name IN ({PgHelper.JobQueueParameterInList})
+                      AND jp.value = @Queue
+                )
+                OR EXISTS (
+                    SELECT 1 FROM {_stateTable} s_q
+                    WHERE s_q.jobid = j.id
+                      AND s_q.name IN ('Enqueued', 'Processing')
+                      AND COALESCE(s_q.data::json ->> 'Queue', '') = @Queue
+                )
             )");
             parameters.Add("Queue", criteria.Queue);
         }
