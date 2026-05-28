@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace a2n.Hangfire.Dashboard.SqlServer.Internal;
 
 /// <summary>
@@ -6,6 +8,25 @@ namespace a2n.Hangfire.Dashboard.SqlServer.Internal;
 /// </summary>
 internal static class SqlHelper
 {
+    public const string JobQueueParameterName = "Job.Queue";
+    /// <summary>Legacy dashboard parameter only — Hangfire core uses <see cref="JobQueueParameterName"/>.</summary>
+    public const string LegacyCurrentQueueParameterName = "CurrentQueue";
+
+    private static readonly Regex IdentifierRegex = new(@"^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled);
+
+    public static string JobQueueParameterInList => $"'{JobQueueParameterName}', '{LegacyCurrentQueueParameterName}'";
+
+    /// <summary>
+    /// Validates schema/table identifiers used in SQL fragments (prevents identifier injection via config).
+    /// </summary>
+    public static string ValidateIdentifier(string identifier, string paramName)
+    {
+        if (string.IsNullOrWhiteSpace(identifier) || !IdentifierRegex.IsMatch(identifier))
+            throw new ArgumentException($"Invalid SQL identifier for {paramName}.", paramName);
+
+        return identifier;
+    }
+
     /// <summary>
     /// Escapes LIKE pattern special characters: %, _, [
     /// Must be called before embedding user input into a LIKE pattern parameter.
@@ -15,6 +36,9 @@ internal static class SqlHelper
     /// <returns>Escaped string safe for use in LIKE patterns</returns>
     public static string EscapeLikePattern(string input)
     {
+        if (input == null)
+            return string.Empty;
+
         return input
             .Replace("[", "[[]")
             .Replace("%", "[%]")

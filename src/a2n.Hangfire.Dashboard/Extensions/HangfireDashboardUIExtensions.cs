@@ -8,6 +8,7 @@ using Hangfire;
 using Hangfire.Dashboard;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -47,6 +48,10 @@ public static class HangfireDashboardUIExtensions
         services.AddSingleton(new DashboardUIOptions());
 
         services.AddHttpContextAccessor();
+        services.AddMemoryCache();
+        services.AddSingleton<MetricsQueryCache>();
+        services.AddSingleton<DashboardSubscriptionTracker>();
+        services.AddSingleton<IHubFilter, DashboardHubAuthorizationFilter>();
 
         // Register Blazor Server interactive components.
         // AddRazorComponents() is idempotent — safe to call even if host app already called it.
@@ -146,6 +151,8 @@ public static class HangfireDashboardUIExtensions
             registered.DefaultTheme = options.DefaultTheme;
             registered.FaviconPath = options.FaviconPath;
             registered.Authorization = options.Authorization;
+            registered.AsyncAuthorization = options.AsyncAuthorization;
+            registered.LoginPath = options.LoginPath;
         }
 
         // Normalize pathMatch to ensure it starts with / and has no trailing slash

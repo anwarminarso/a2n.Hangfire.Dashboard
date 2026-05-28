@@ -1,3 +1,4 @@
+using a2n.Hangfire.Dashboard.Security;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,24 +39,24 @@ internal class DashboardMiddleware
             return;
         }
 
-        // Blazor circuit and SignalR — pass to endpoint routing without auth
-        // (auth is handled at the Blazor component level)
-        if (path.StartsWith("/_blazor", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWith("/hubs/", StringComparison.OrdinalIgnoreCase) ||
-            path.Equals("/hubs", StringComparison.OrdinalIgnoreCase))
+        // Blazor circuit and SignalR require the same authorization as dashboard pages.
+        var requiresAuth = !path.StartsWith("/_content/", StringComparison.OrdinalIgnoreCase)
+            && !path.Equals("/_content", StringComparison.OrdinalIgnoreCase)
+            && !path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase);
+
+        if (requiresAuth && !await DashboardAuthorization.IsAuthorizedAsync(context, _options, context.RequestAborted))
         {
-            await _next(context);
+            await DashboardAuthorization.WriteUnauthorizedResponseAsync(context, _options);
             return;
         }
 
-        // All other requests: apply authorization
-        if (!Authorize(context))
-        {
-            return;
-        }
+        // SignalR/Blazor negotiate POSTs do not carry antiforgery tokens.
+        var skipAntiforgery = path.StartsWith("/_blazor", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/hubs/", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/hubs", StringComparison.OrdinalIgnoreCase);
 
         // Validate antiforgery tokens on POST requests
-        if (HttpMethods.IsPost(context.Request.Method))
+        if (!skipAntiforgery && HttpMethods.IsPost(context.Request.Method))
         {
             var antiforgery = context.RequestServices.GetService<IAntiforgery>();
             if (antiforgery != null)
@@ -74,37 +75,5 @@ internal class DashboardMiddleware
 
         // Pass to endpoint routing (Blazor page rendering)
         await _next(context);
-    }
-
-    /// <summary>
-    /// Applies all authorization filters from DashboardUIOptions.
-    /// Returns true if authorized, false if request was rejected.
-    /// </summary>
-    private bool Authorize(HttpContext context)
-    {
-        var filters = _options.Authorization;
-        if (filters == null)
-        {
-            return true;
-        }
-
-        foreach (var filter in filters)
-        {
-            if (!filter.Authorize(context))
-            {
-                if (context.User?.Identity?.IsAuthenticated == true)
-                {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                }
-                else
-                {
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                }
-
-                return false;
-            }
-        }
-
-        return true;
     }
 }

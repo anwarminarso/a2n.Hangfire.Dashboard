@@ -14,16 +14,19 @@ public class MetricsBroadcastService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHubContext<DashboardHub> _hubContext;
+    private readonly DashboardSubscriptionTracker _subscriptions;
     private readonly ILogger<MetricsBroadcastService> _logger;
     private readonly TimeSpan _interval = TimeSpan.FromSeconds(2);
 
     public MetricsBroadcastService(
         IServiceScopeFactory scopeFactory,
         IHubContext<DashboardHub> hubContext,
+        DashboardSubscriptionTracker subscriptions,
         ILogger<MetricsBroadcastService> logger)
     {
         _scopeFactory = scopeFactory;
         _hubContext = hubContext;
+        _subscriptions = subscriptions;
         _logger = logger;
     }
 
@@ -48,6 +51,9 @@ public class MetricsBroadcastService : BackgroundService
 
     private async Task BroadcastMetrics(CancellationToken ct)
     {
+        if (!_subscriptions.HasMetricsSubscribers)
+            return;
+
         using var scope = _scopeFactory.CreateScope();
         var monitor = scope.ServiceProvider.GetRequiredService<HangfireMonitorService>();
 

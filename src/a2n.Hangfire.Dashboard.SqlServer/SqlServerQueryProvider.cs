@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.SqlServer.Internal;
@@ -24,7 +25,7 @@ public class SqlServerQueryProvider : IStorageQueryProvider
     public SqlServerQueryProvider(string connectionString, string schema = "HangFire")
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
-        _schema = schema ?? throw new ArgumentNullException(nameof(schema));
+        _schema = SqlHelper.ValidateIdentifier(schema ?? throw new ArgumentNullException(nameof(schema)), nameof(schema));
     }
 
     // ─── Column definitions ──────────────────────────────────────────────────
@@ -327,9 +328,20 @@ ORDER BY CAST(JSON_VALUE(s.[Data], '$.PerformanceDuration') AS BIGINT) DESC;";
 
         if (!string.IsNullOrWhiteSpace(criteria.Queue))
         {
-            conditions.Add($@"EXISTS (
-                SELECT 1 FROM {jobParamTable} jp
-                WHERE jp.JobId = j.Id AND jp.Name = 'CurrentQueue' AND jp.Value = @Queue
+            var stateTable = SqlHelper.Table(_schema, "State");
+            conditions.Add($@"(
+                EXISTS (
+                    SELECT 1 FROM {jobParamTable} jp
+                    WHERE jp.JobId = j.Id
+                      AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+                      AND jp.Value = @Queue
+                )
+                OR EXISTS (
+                    SELECT 1 FROM {stateTable} s_q
+                    WHERE s_q.JobId = j.Id
+                      AND s_q.Name IN ('Enqueued', 'Processing')
+                      AND COALESCE(JSON_VALUE(s_q.Data, '$.Queue'), '') = @Queue
+                )
             )");
             parameters.Add("Queue", criteria.Queue);
         }
@@ -338,9 +350,10 @@ ORDER BY CAST(JSON_VALUE(s.[Data], '$.PerformanceDuration') AS BIGINT) DESC;";
         {
             conditions.Add($@"EXISTS (
                 SELECT 1 FROM {jobParamTable} jp
-                WHERE jp.JobId = j.Id AND jp.Name = 'RecurringJobId' AND jp.Value = @RecurringJobId
+                WHERE jp.JobId = j.Id AND jp.Name = 'RecurringJobId' AND jp.Value IN @RecurringJobIdValues
             )");
-            parameters.Add("RecurringJobId", criteria.RecurringJobId);
+            parameters.Add("RecurringJobIdValues",
+                JobParameterMatching.AllValueForms(new[] { criteria.RecurringJobId }));
         }
 
         if (criteria.Tags != null && criteria.Tags.Count > 0)

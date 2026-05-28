@@ -288,9 +288,36 @@ else
             labels = _durationTrendLabels,
             datasets = new object[]
             {
-                new { label = "P50", data = topTypes.Select(t => t.P50Ms).ToArray() },
-                new { label = "P95", data = topTypes.Select(t => t.P95Ms).ToArray() },
-                new { label = "P99", data = topTypes.Select(t => t.P99Ms).ToArray() }
+                new
+                {
+                    label = "P50",
+                    data = topTypes.Select(t => t.P50Ms).ToArray(),
+                    borderWidth = 2,
+                    fill = false,
+                    tension = 0.3,
+                    pointRadius = 4,
+                    pointHoverRadius = 6
+                },
+                new
+                {
+                    label = "P95",
+                    data = topTypes.Select(t => t.P95Ms).ToArray(),
+                    borderWidth = 2,
+                    fill = false,
+                    tension = 0.3,
+                    pointRadius = 4,
+                    pointHoverRadius = 6
+                },
+                new
+                {
+                    label = "P99",
+                    data = topTypes.Select(t => t.P99Ms).ToArray(),
+                    borderWidth = 2,
+                    fill = false,
+                    tension = 0.3,
+                    pointRadius = 4,
+                    pointHoverRadius = 6
+                }
             }
         };
 
@@ -303,6 +330,10 @@ else
             },
             scales = new
             {
+                x = new
+                {
+                    ticks = new { maxRotation = 45, minRotation = 0 }
+                },
                 y = new
                 {
                     title = new { display = true, text = "ms" },

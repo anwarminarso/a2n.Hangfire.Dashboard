@@ -1,3 +1,4 @@
+using a2n.Hangfire.Dashboard.Services;
 using Microsoft.AspNetCore.SignalR;
 
 namespace a2n.Hangfire.Dashboard.Hubs;
@@ -7,12 +8,21 @@ namespace a2n.Hangfire.Dashboard.Hubs;
 /// </summary>
 public class DashboardHub : Hub
 {
+    private readonly DashboardSubscriptionTracker _subscriptions;
+
+    public DashboardHub(DashboardSubscriptionTracker subscriptions)
+    {
+        _subscriptions = subscriptions;
+    }
+
     /// <summary>
     /// Client can subscribe to metric updates.
     /// </summary>
     public async Task SubscribeToMetrics()
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, "metrics");
+        if (Context.Items.TryAdd("metrics", true))
+            _subscriptions.AddMetricsSubscriber();
     }
 
     /// <summary>
@@ -21,6 +31,8 @@ public class DashboardHub : Hub
     public async Task UnsubscribeFromMetrics()
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, "metrics");
+        if (Context.Items.Remove("metrics"))
+            _subscriptions.RemoveMetricsSubscriber();
     }
 
     /// <summary>
@@ -29,6 +41,8 @@ public class DashboardHub : Hub
     public async Task SubscribeToAnalytics()
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, "analytics");
+        if (Context.Items.TryAdd("analytics", true))
+            _subscriptions.AddAnalyticsSubscriber();
     }
 
     /// <summary>
@@ -37,5 +51,18 @@ public class DashboardHub : Hub
     public async Task UnsubscribeFromAnalytics()
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, "analytics");
+        if (Context.Items.Remove("analytics"))
+            _subscriptions.RemoveAnalyticsSubscriber();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception exception)
+    {
+        if (Context.Items.Remove("metrics"))
+            _subscriptions.RemoveMetricsSubscriber();
+
+        if (Context.Items.Remove("analytics"))
+            _subscriptions.RemoveAnalyticsSubscriber();
+
+        await base.OnDisconnectedAsync(exception);
     }
 }

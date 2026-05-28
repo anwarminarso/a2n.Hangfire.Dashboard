@@ -185,6 +185,36 @@
         return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
     }
 
+    function isPercentileLineChart(type, data) {
+        if (type !== 'line' || !data || !data.datasets || data.datasets.length !== 3) {
+            return false;
+        }
+        var labels = data.datasets.map(function (ds) {
+            return (ds.label || '').toUpperCase();
+        });
+        return labels.indexOf('P50') >= 0 && labels.indexOf('P95') >= 0 && labels.indexOf('P99') >= 0;
+    }
+
+    function applyPercentileDatasetColors(datasets, palette) {
+        datasets.forEach(function (ds, i) {
+            if (i === 0) {
+                ds.borderColor = palette.primary;
+                ds.backgroundColor = hexToRgba(palette.primary, 0.1);
+            } else if (i === 1) {
+                ds.borderColor = palette.warning;
+                ds.backgroundColor = hexToRgba(palette.warning, 0.1);
+            } else if (i === 2) {
+                ds.borderColor = palette.danger;
+                ds.backgroundColor = hexToRgba(palette.danger, 0.1);
+            }
+            if (ds.borderWidth === undefined) ds.borderWidth = 2;
+            if (ds.fill === undefined) ds.fill = false;
+            if (ds.tension === undefined) ds.tension = 0.3;
+            if (ds.pointRadius === undefined) ds.pointRadius = 4;
+            if (ds.pointHoverRadius === undefined) ds.pointHoverRadius = 6;
+        });
+    }
+
     // ========================================================================
     // Public API: window.analyticsCharts
     // ========================================================================
@@ -216,11 +246,21 @@
 
             var mergedOptions = mergeOptions(defaults, options || {});
 
+            var chartMeta = null;
+            if (isPercentileLineChart(type, data)) {
+                chartMeta = { type: 'percentile' };
+                applyPercentileDatasetColors(data.datasets, palette);
+            }
+
             var chart = new Chart(canvas, {
                 type: type,
                 data: data,
                 options: mergedOptions
             });
+
+            if (chartMeta) {
+                chart._analyticsChartMeta = chartMeta;
+            }
 
             chartInstances.set(canvasId, chart);
             return true;

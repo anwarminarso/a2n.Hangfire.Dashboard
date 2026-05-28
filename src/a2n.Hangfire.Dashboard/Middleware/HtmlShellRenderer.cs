@@ -59,6 +59,7 @@ internal class HtmlShellRenderer
             <body>
                 {antiforgeryHtml}
                 <script src="{prefix}/_content/js/theme.js"></script>
+                <script src="{prefix}/_content/js/nav.js"></script>
                 <script src="{prefix}/_content/js/moment.min.js"></script>
                 <script src="{prefix}/_content/js/chart.umd.min.js"></script>
                 <script src="{prefix}/_content/js/chartjs-adapter-moment.min.js"></script>

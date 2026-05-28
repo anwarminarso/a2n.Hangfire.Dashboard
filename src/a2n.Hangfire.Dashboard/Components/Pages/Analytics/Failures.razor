@@ -178,13 +178,13 @@ else
 
             await Task.WhenAll(failureRateTask, topExceptionsTask, retryDistTask, throughputTask, recentFailuresTask);
 
-            _failureRateByTypeData = failureRateTask.Result;
-            _topExceptionsData = topExceptionsTask.Result;
-            _retryDistributionData = retryDistTask.Result;
-            _recentFailures = recentFailuresTask.Result.Items.ToList();
+            _failureRateByTypeData = await failureRateTask;
+            _topExceptionsData = await topExceptionsTask;
+            _retryDistributionData = await retryDistTask;
+            _recentFailures = (await recentFailuresTask).Items.ToList();
 
             // Compute stat cards from failure rate data and throughput
-            ComputeStatCards(failureRateTask.Result, throughputTask.Result);
+            ComputeStatCards(await failureRateTask, await throughputTask);
 
             // Build chart data objects
             BuildFailureRateByTypeChart();

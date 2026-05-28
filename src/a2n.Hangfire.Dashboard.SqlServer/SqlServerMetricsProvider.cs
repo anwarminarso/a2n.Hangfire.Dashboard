@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.SqlServer.Internal;
@@ -32,7 +33,7 @@ public class SqlServerMetricsProvider : IStorageMetricsProvider
     public SqlServerMetricsProvider(string connectionString, string schema = "HangFire")
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
-        _schema = schema ?? "HangFire";
+        _schema = SqlHelper.ValidateIdentifier(schema ?? "HangFire", nameof(schema));
     }
 
     private SqlConnection CreateConnection() => new SqlConnection(_connectionString);
@@ -105,12 +106,6 @@ SELECT JobType,
 FROM DurationData
 GROUP BY JobType";
 
-        using var connection = CreateConnection();
-        var basicStats = (await connection.QueryAsync<DurationBasicRow>(
-            new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct)))
-            .ToList();
-
-        // Calculate percentiles per job type using PERCENTILE_CONT
         var percentileSql = $@"
 WITH DurationData AS (
     SELECT CONCAT(
@@ -131,6 +126,11 @@ SELECT DISTINCT JobType,
        PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY DurationMs) OVER (PARTITION BY JobType) AS P99Ms
 FROM DurationData";
 
+        using var connection = CreateConnection();
+        var basicStats = (await connection.QueryAsync<DurationBasicRow>(
+            new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct)))
+            .ToList();
+
         var percentiles = (await connection.QueryAsync<PercentileRow>(
             new CommandDefinition(percentileSql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct)))
             .ToDictionary(p => p.JobType ?? string.Empty);
@@ -138,12 +138,10 @@ FROM DurationData";
         var results = new List<JobDurationStatsDto>();
         foreach (var stat in basicStats)
         {
-            var jobType = ExtractJobTypeName(stat.JobType);
             percentiles.TryGetValue(stat.JobType ?? string.Empty, out var pct);
-
             results.Add(new JobDurationStatsDto
             {
-                JobType = jobType,
+                JobType = ExtractJobTypeName(stat.JobType),
                 AverageMs = stat.AverageMs,
                 MinMs = stat.MinMs,
                 MaxMs = stat.MaxMs,
@@ -161,12 +159,18 @@ FROM DurationData";
     public async Task<IReadOnlyList<QueueLatencyStatsDto>> GetQueueLatencyStatsAsync(
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
+        // Hangfire writes Latency on Succeeded state (time from job creation to processing start).
+        // Queue name comes from Job.Queue job parameter, not Succeeded state data.
         var sql = $@"
 WITH LatencyData AS (
-    SELECT COALESCE(JSON_VALUE(s.Data, '$.Queue'), 'default') AS QueueName,
+    SELECT COALESCE(
+               (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+                WHERE jp.JobId = s.JobId AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+                ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+               'default') AS QueueName,
            CAST(JSON_VALUE(s.Data, '$.Latency') AS BIGINT) AS LatencyMs
     FROM {Table("State")} s
-    WHERE s.Name = 'Processing'
+    WHERE s.Name = 'Succeeded'
       AND s.CreatedAt >= @From AND s.CreatedAt < @To
       AND JSON_VALUE(s.Data, '$.Latency') IS NOT NULL
 )
@@ -178,10 +182,14 @@ GROUP BY QueueName";
 
         var percentileSql = $@"
 WITH LatencyData AS (
-    SELECT COALESCE(JSON_VALUE(s.Data, '$.Queue'), 'default') AS QueueName,
+    SELECT COALESCE(
+               (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+                WHERE jp.JobId = s.JobId AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+                ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+               'default') AS QueueName,
            CAST(JSON_VALUE(s.Data, '$.Latency') AS BIGINT) AS LatencyMs
     FROM {Table("State")} s
-    WHERE s.Name = 'Processing'
+    WHERE s.Name = 'Succeeded'
       AND s.CreatedAt >= @From AND s.CreatedAt < @To
       AND JSON_VALUE(s.Data, '$.Latency') IS NOT NULL
 )
@@ -224,7 +232,11 @@ FROM LatencyData";
         var sql = $@"
 SELECT TOP (@Count)
        j.Id AS JobId,
-       j.InvocationData AS JobName,
+       CONCAT(
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Type'), JSON_VALUE(j.InvocationData, '$.t'), ''),
+           '|',
+           COALESCE(JSON_VALUE(j.InvocationData, '$.Method'), JSON_VALUE(j.InvocationData, '$.m'), '')
+       ) AS JobName,
        CAST(JSON_VALUE(s.Data, '$.PerformanceDuration') AS BIGINT) AS DurationMs,
        s.CreatedAt AS CompletedAt
 FROM {Table("State")} s
@@ -338,12 +350,12 @@ WHERE LastHeartbeat > DATEADD(MINUTE, -5, GETUTCDATE())";
 
         // Count processing jobs per server
         var busySql = $@"
-SELECT JSON_VALUE(s.Data, '$.ServerId') AS ServerName,
+SELECT COALESCE(JSON_VALUE(s.Data, '$.ServerId'), JSON_VALUE(s.Data, '$.ServerName'), '') AS ServerName,
        COUNT(*) AS BusyCount
 FROM {Table("State")} s
 INNER JOIN {Table("Job")} j ON j.Id = s.JobId AND j.StateId = s.Id
 WHERE s.Name = 'Processing'
-GROUP BY JSON_VALUE(s.Data, '$.ServerId')";
+GROUP BY COALESCE(JSON_VALUE(s.Data, '$.ServerId'), JSON_VALUE(s.Data, '$.ServerName'), '')";
 
         using var connection = CreateConnection();
         var servers = (await connection.QueryAsync<ServerRow>(
@@ -383,12 +395,23 @@ GROUP BY JSON_VALUE(s.Data, '$.ServerId')";
     {
         var sql = $@"
 SELECT j.StateName,
-       COALESCE(JSON_VALUE(s.Data, '$.Queue'), 'default') AS QueueName,
+       COALESCE(
+           (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+            WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+            ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+           JSON_VALUE(s.Data, '$.Queue'),
+           'default') AS QueueName,
        COUNT(*) AS Cnt
 FROM {Table("Job")} j
 LEFT JOIN {Table("State")} s ON s.Id = j.StateId
 WHERE j.StateName IN ('Enqueued', 'Processing')
-GROUP BY j.StateName, COALESCE(JSON_VALUE(s.Data, '$.Queue'), 'default')";
+GROUP BY j.StateName,
+         COALESCE(
+           (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+            WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+            ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+           JSON_VALUE(s.Data, '$.Queue'),
+           'default')";
 
         using var connection = CreateConnection();
         var rows = (await connection.QueryAsync<QueueDepthRow>(
@@ -417,12 +440,24 @@ GROUP BY j.StateName, COALESCE(JSON_VALUE(s.Data, '$.Queue'), 'default')";
 
         var sql = $@"
 SELECT {groupExpr} AS Bucket,
-       COALESCE(JSON_VALUE(s.Data, '$.Queue'), 'default') AS QueueName,
+       COALESCE(
+           (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+            WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+            ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+           JSON_VALUE(s.Data, '$.Queue'),
+           'default') AS QueueName,
        COUNT(*) AS SucceededCount
 FROM {Table("State")} s
+INNER JOIN {Table("Job")} j ON j.Id = s.JobId
 WHERE s.Name = 'Succeeded'
   AND s.CreatedAt >= @From AND s.CreatedAt < @To
-GROUP BY {groupExpr}, COALESCE(JSON_VALUE(s.Data, '$.Queue'), 'default')
+GROUP BY {groupExpr},
+         COALESCE(
+           (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+            WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+            ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+           JSON_VALUE(s.Data, '$.Queue'),
+           'default')
 ORDER BY Bucket";
 
         using var connection = CreateConnection();
@@ -473,35 +508,28 @@ WHERE [Key] IN @Keys";
             hashByJob.TryGetValue(hashKey, out var fields);
             fields ??= new Dictionary<string, string>();
 
-            var lastJobId = fields.GetValueOrDefault("LastJobId");
             var lastExecution = ParseDateTimeOffset(fields.GetValueOrDefault("LastExecution"));
             var nextExecution = ParseDateTimeOffset(fields.GetValueOrDefault("NextExecution"));
             var error = fields.GetValueOrDefault("Error");
 
-            // Determine health status
             var status = RecurringJobHealthStatus.Healthy;
             if (!string.IsNullOrEmpty(error))
-            {
                 status = RecurringJobHealthStatus.Error;
-            }
             else if (nextExecution.HasValue && nextExecution.Value < DateTimeOffset.UtcNow)
-            {
                 status = RecurringJobHealthStatus.Warning;
-            }
-
-            // Get last executions for this recurring job
-            var lastResults = await GetLastExecutionResultsAsync(connection, lastJobId, jobId, ct);
 
             results.Add(new RecurringJobHealthDto
             {
                 JobId = jobId,
                 Status = status,
                 LastRunTime = lastExecution,
-                AverageDurationMs = 0, // Will be computed from executions if available
+                AverageDurationMs = 0,
                 ErrorMessage = error,
-                LastExecutionResults = lastResults
+                LastExecutionResults = Array.Empty<bool>()
             });
         }
+
+        await EnrichRecurringJobHealthAsync(connection, results, jobIds, ct);
 
         return results;
     }
@@ -516,17 +544,20 @@ SELECT TOP (@Count)
        j.Id AS JobId,
        s.CreatedAt AS ExecutedAt,
        CAST(COALESCE(JSON_VALUE(s.Data, '$.PerformanceDuration'), '0') AS BIGINT) AS DurationMs,
-       s.Name AS StateName
+       s.Name AS StateName,
+       s.Reason
 FROM {Table("Job")} j
 INNER JOIN {Table("JobParameter")} jp ON jp.JobId = j.Id AND jp.Name = 'RecurringJobId'
 INNER JOIN {Table("State")} s ON s.Id = j.StateId
-WHERE jp.Value = @RecurringJobId
+WHERE jp.Value IN @RecurringJobIdValues
   AND s.Name IN ('Succeeded', 'Failed')
 ORDER BY s.CreatedAt DESC";
 
         using var connection = CreateConnection();
         var rows = await connection.QueryAsync<RecurringExecutionRow>(
-            new CommandDefinition(sql, new { RecurringJobId = recurringJobId, Count = count }, cancellationToken: ct));
+            new CommandDefinition(sql,
+                new { RecurringJobIdValues = JobParameterMatching.AllValueForms(new[] { recurringJobId }), Count = count },
+                cancellationToken: ct));
 
         return rows.Select(r => new RecurringJobExecutionDto
         {
@@ -534,7 +565,7 @@ ORDER BY s.CreatedAt DESC";
             ExecutedAt = new DateTimeOffset(r.ExecutedAt, TimeSpan.Zero),
             DurationMs = r.DurationMs,
             Succeeded = r.StateName == "Succeeded",
-            ErrorMessage = r.StateName == "Failed" ? "Failed" : null
+            ErrorMessage = r.StateName == "Failed" ? r.Reason : null
         }).ToList();
     }
 
@@ -844,22 +875,58 @@ ORDER BY COUNT(*) DESC";
         return null;
     }
 
-    private async Task<IReadOnlyList<bool>> GetLastExecutionResultsAsync(
-        SqlConnection connection, string lastJobId, string recurringJobId, CancellationToken ct)
+    private async Task EnrichRecurringJobHealthAsync(
+        SqlConnection connection,
+        List<RecurringJobHealthDto> results,
+        IReadOnlyList<string> jobIds,
+        CancellationToken ct)
     {
+        if (results.Count == 0 || jobIds.Count == 0)
+            return;
+
         var sql = $@"
-SELECT TOP (10) s.Name AS StateName
-FROM {Table("Job")} j
-INNER JOIN {Table("JobParameter")} jp ON jp.JobId = j.Id AND jp.Name = 'RecurringJobId'
-INNER JOIN {Table("State")} s ON s.Id = j.StateId
-WHERE jp.Value = @RecurringJobId
-  AND s.Name IN ('Succeeded', 'Failed')
-ORDER BY s.CreatedAt DESC";
+WITH Ranked AS (
+    SELECT jp.Value AS RecurringJobIdStored,
+           s.Name AS StateName,
+           CAST(COALESCE(JSON_VALUE(s.Data, '$.PerformanceDuration'), '0') AS FLOAT) AS DurationMs,
+           ROW_NUMBER() OVER (PARTITION BY jp.Value ORDER BY s.CreatedAt DESC) AS rn
+    FROM {Table("Job")} j
+    INNER JOIN {Table("JobParameter")} jp ON jp.JobId = j.Id AND jp.Name = 'RecurringJobId'
+    INNER JOIN {Table("State")} s ON s.Id = j.StateId
+    WHERE jp.Value IN @RecurringJobIdValues
+      AND s.Name IN ('Succeeded', 'Failed')
+)
+SELECT RecurringJobIdStored, StateName, DurationMs
+FROM Ranked
+WHERE rn <= 20
+ORDER BY RecurringJobIdStored, rn";
 
-        var rows = await connection.QueryAsync<string>(
-            new CommandDefinition(sql, new { RecurringJobId = recurringJobId }, cancellationToken: ct));
+        var rows = await connection.QueryAsync<RecurringExecutionSummaryRow>(
+            new CommandDefinition(sql,
+                new { RecurringJobIdValues = JobParameterMatching.AllValueForms(jobIds) },
+                cancellationToken: ct));
 
-        return rows.Select(s => s == "Succeeded").ToList();
+        var plainIdLookup = JobParameterMatching.BuildStoredValueToPlainIdLookup(jobIds);
+        var grouped = new Dictionary<string, List<RecurringExecutionSummaryRow>>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            var plainId = JobParameterMatching.ResolvePlainRecurringJobId(row.RecurringJobIdStored, plainIdLookup);
+            if (!grouped.TryGetValue(plainId, out var list))
+                grouped[plainId] = list = new List<RecurringExecutionSummaryRow>();
+            list.Add(row);
+        }
+
+        foreach (var dto in results)
+        {
+            if (!grouped.TryGetValue(dto.JobId, out var execs) || execs.Count == 0)
+                continue;
+
+            dto.LastExecutionResults = execs.Take(10).Select(e => e.StateName == "Succeeded").ToList();
+
+            var durations = execs.Where(e => e.DurationMs > 0).Select(e => e.DurationMs).ToList();
+            if (durations.Count > 0)
+                dto.AverageDurationMs = durations.Average();
+        }
     }
 
     #endregion
@@ -966,6 +1033,14 @@ ORDER BY s.CreatedAt DESC";
         public DateTime ExecutedAt { get; set; }
         public long DurationMs { get; set; }
         public string StateName { get; set; }
+        public string Reason { get; set; }
+    }
+
+    private class RecurringExecutionSummaryRow
+    {
+        public string RecurringJobIdStored { get; set; }
+        public string StateName { get; set; }
+        public double DurationMs { get; set; }
     }
 
     private class StateTimingRow

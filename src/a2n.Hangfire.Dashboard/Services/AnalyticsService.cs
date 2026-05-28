@@ -13,6 +13,7 @@ namespace a2n.Hangfire.Dashboard.Services;
 public class AnalyticsService
 {
     private readonly IStorageMetricsProvider _metricsProvider;
+    private readonly MetricsQueryCache _cache;
     private readonly ILogger<AnalyticsService> _logger;
 
     /// <summary>
@@ -24,8 +25,22 @@ public class AnalyticsService
     {
         // Resolve optionally — null when no metrics provider is registered
         _metricsProvider = serviceProvider.GetService<IStorageMetricsProvider>();
+        _cache = serviceProvider.GetService<MetricsQueryCache>();
         _logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<AnalyticsService>()
                   ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<AnalyticsService>.Instance;
+    }
+
+    // Cache keys are global per process. Prefix with storage/tenant id if multi-tenant hosting is added later.
+    private Task<T> QueryCachedAsync<T>(
+        string key,
+        Func<CancellationToken, Task<T>> factory,
+        CancellationToken ct,
+        bool snapshot = false)
+    {
+        if (_cache == null)
+            return factory(ct);
+
+        return _cache.GetOrCreateAsync(key, factory, ct, snapshot);
     }
 
     /// <summary>
@@ -79,7 +94,10 @@ public class AnalyticsService
 
         try
         {
-            return await _metricsProvider.GetThroughputTimelineAsync(from, to, interval, ct);
+            return await QueryCachedAsync(
+                $"throughput:{from.UtcTicks}:{to.UtcTicks}:{interval}",
+                token => _metricsProvider.GetThroughputTimelineAsync(from, to, interval, token),
+                ct);
         }
         catch (Exception ex)
         {
@@ -100,7 +118,10 @@ public class AnalyticsService
 
         try
         {
-            return await _metricsProvider.GetStateTransitionsAsync(from, to, interval, ct);
+            return await QueryCachedAsync(
+                $"state-transitions:{from.UtcTicks}:{to.UtcTicks}:{interval}",
+                token => _metricsProvider.GetStateTransitionsAsync(from, to, interval, token),
+                ct);
         }
         catch (Exception ex)
         {
@@ -123,7 +144,10 @@ public class AnalyticsService
 
         try
         {
-            return await _metricsProvider.GetJobDurationStatsAsync(from, to, ct);
+            return await QueryCachedAsync(
+                $"duration-stats:{from.UtcTicks}:{to.UtcTicks}",
+                token => _metricsProvider.GetJobDurationStatsAsync(from, to, token),
+                ct);
         }
         catch (Exception ex)
         {
@@ -144,7 +168,10 @@ public class AnalyticsService
 
         try
         {
-            return await _metricsProvider.GetQueueLatencyStatsAsync(from, to, ct);
+            return await QueryCachedAsync(
+                $"queue-latency:{from.UtcTicks}:{to.UtcTicks}",
+                token => _metricsProvider.GetQueueLatencyStatsAsync(from, to, token),
+                ct);
         }
         catch (Exception ex)
         {
@@ -257,7 +284,11 @@ public class AnalyticsService
 
         try
         {
-            return await _metricsProvider.GetServerUtilizationSnapshotAsync(ct);
+            return await QueryCachedAsync(
+                "server-utilization",
+                token => _metricsProvider.GetServerUtilizationSnapshotAsync(token),
+                ct,
+                snapshot: true);
         }
         catch (Exception ex)
         {
@@ -286,7 +317,11 @@ public class AnalyticsService
 
         try
         {
-            return await _metricsProvider.GetQueueDepthSnapshotAsync(ct);
+            return await QueryCachedAsync(
+                "queue-depth",
+                token => _metricsProvider.GetQueueDepthSnapshotAsync(token),
+                ct,
+                snapshot: true);
         }
         catch (Exception ex)
         {
