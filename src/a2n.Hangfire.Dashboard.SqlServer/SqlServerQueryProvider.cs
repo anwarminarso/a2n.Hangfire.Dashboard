@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.SqlServer.Internal;
@@ -349,9 +350,10 @@ ORDER BY CAST(JSON_VALUE(s.[Data], '$.PerformanceDuration') AS BIGINT) DESC;";
         {
             conditions.Add($@"EXISTS (
                 SELECT 1 FROM {jobParamTable} jp
-                WHERE jp.JobId = j.Id AND jp.Name = 'RecurringJobId' AND jp.Value = @RecurringJobId
+                WHERE jp.JobId = j.Id AND jp.Name = 'RecurringJobId' AND jp.Value IN @RecurringJobIdValues
             )");
-            parameters.Add("RecurringJobId", criteria.RecurringJobId);
+            parameters.Add("RecurringJobIdValues",
+                JobParameterMatching.AllValueForms(new[] { criteria.RecurringJobId }));
         }
 
         if (criteria.Tags != null && criteria.Tags.Count > 0)

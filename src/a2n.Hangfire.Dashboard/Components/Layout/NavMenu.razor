@@ -23,8 +23,9 @@
         </NavLink>
     </div>
 
-    <!-- Jobs group (spacing-only separation) -->
+    <!-- Jobs -->
     <div class="hf-nav-section">
+        <NavMenuGroup Title="Jobs" GroupId="jobs" ExpandPaths="@_jobsExpandPaths">
         <NavLink class="hf-nav-item" href="jobs/enqueued">
             <i class="bi bi-inbox hf-nav-icon"></i>
             <span>Enqueued</span>
@@ -69,10 +70,12 @@
             <i class="bi bi-hourglass-split hf-nav-icon"></i>
             <span>Awaiting</span>
         </NavLink>
+        </NavMenuGroup>
     </div>
 
-    <!-- Management group (spacing-only separation) -->
+    <!-- Management -->
     <div class="hf-nav-section">
+        <NavMenuGroup Title="Management" GroupId="management" ExpandPaths="@_managementExpandPaths">
         <NavLink class="hf-nav-item" href="recurring">
             <i class="bi bi-arrow-repeat hf-nav-icon"></i>
             <span>Recurring</span>
@@ -105,13 +108,14 @@
             <i class="bi bi-search hf-nav-icon"></i>
             <span>Search</span>
         </NavLink>
+        </NavMenuGroup>
     </div>
 
-    <!-- Analytics group (only shown when IStorageMetricsProvider is registered) -->
+    <!-- Analytics (only when IStorageMetricsProvider is registered) -->
     @if (_analyticsAvailable)
     {
         <div class="hf-nav-section">
-            <div class="hf-nav-section-header">Analytics</div>
+            <NavMenuGroup Title="Analytics" GroupId="analytics" ExpandPaths="@_analyticsExpandPaths">
             <NavLink class="hf-nav-item" href="analytics" Match="NavLinkMatch.All">
                 <i class="bi bi-graph-up hf-nav-icon"></i>
                 <span>Overview</span>
@@ -132,11 +136,16 @@
                 <i class="bi bi-arrow-repeat hf-nav-icon"></i>
                 <span>Recurring</span>
             </NavLink>
+            </NavMenuGroup>
         </div>
     }
 </nav>
 
 @code {
+    private static readonly string[] _jobsExpandPaths = { "jobs" };
+    private static readonly string[] _managementExpandPaths = { "recurring", "servers", "retries", "tags", "search" };
+    private static readonly string[] _analyticsExpandPaths = { "analytics" };
+
     private StatisticsDto _stats;
     private long _tagsCount;
     private bool _analyticsAvailable;

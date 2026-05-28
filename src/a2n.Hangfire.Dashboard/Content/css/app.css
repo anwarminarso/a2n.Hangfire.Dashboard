@@ -148,28 +148,40 @@
 
 .hf-nav-brand {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     padding: 4px 12px 20px;
 }
 
 .hf-nav-brand-icon {
     display: flex;
+    flex-shrink: 0;
+    align-self: flex-start;
     align-items: center;
     justify-content: center;
     width: 28px;
     height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
     border-radius: 8px;
     background: linear-gradient(135deg, #f59e0b, #d97706);
     color: #fff;
     font-size: 14px;
+    line-height: 1;
 }
 
 .hf-nav-brand-text {
+    flex: 1;
+    min-width: 0;
     font-weight: 700;
     font-size: 15px;
+    line-height: 1.3;
     color: var(--hf-nav-brand-color, #f1f5f9);
     letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .hf-nav-section {
@@ -195,6 +207,59 @@
     color: var(--hf-nav-text, #94a3b8);
     opacity: 0.6;
     padding: 4px 12px 6px;
+}
+
+.hf-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hf-nav-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--hf-nav-text, #94a3b8);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.85;
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.hf-nav-group-toggle:hover {
+    color: var(--hf-nav-text-hover, #e2e8f0);
+    background-color: var(--hf-nav-hover-bg, rgba(255, 255, 255, 0.06));
+    opacity: 1;
+}
+
+.hf-nav-group-title {
+    flex: 1;
+    text-align: left;
+}
+
+.hf-nav-group-chevron {
+    font-size: 11px;
+    opacity: 0.75;
+    transition: transform 0.15s ease;
+}
+
+.hf-nav-group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hf-nav-group-body[hidden] {
+    display: none !important;
 }
 
 .hf-nav-item {

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.PostgreSql.Internal;
@@ -393,9 +394,10 @@ LIMIT @Count";
         {
             conditions.Add($@"EXISTS (
                 SELECT 1 FROM {_jobParameterTable} jp
-                WHERE jp.jobid = j.id AND jp.name = 'RecurringJobId' AND jp.value = @RecurringJobId
+                WHERE jp.jobid = j.id AND jp.name = 'RecurringJobId' AND jp.value = ANY(@RecurringJobIdValues)
             )");
-            parameters.Add("RecurringJobId", criteria.RecurringJobId);
+            parameters.Add("RecurringJobIdValues",
+                JobParameterMatching.AllValueForms(new[] { criteria.RecurringJobId }));
         }
 
         // Tags filter (AND logic: job must have ALL specified tags)

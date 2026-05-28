@@ -22,6 +22,9 @@
 - Antiforgery validation skipped for `/_blazor` and `/hubs/*` negotiate endpoints.
 - PostgreSQL throughput timeline includes daily counter keys (`stats:*:yyyy-MM-dd`).
 - Queue resolution prefers `Job.Queue` job parameter, then legacy dashboard `CurrentQueue` (not Hangfire core), then state JSON on Enqueued/Processing.
+- Queue latency metrics read `Latency` from **Succeeded** state (Hangfire stores it there), with queue from `Job.Queue` parameter.
+- Recurring job execution history matches `RecurringJobId` job parameters in both plain and JSON-serialized forms (Hangfire 1.8+).
+- Public `JobParameterMatching` helper in `a2n.Hangfire.Dashboard.Storage` for storage adapter packages.
 
 ### Notes for deployments behind reverse proxy
 

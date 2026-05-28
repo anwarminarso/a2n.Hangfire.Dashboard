@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
 using Npgsql;
+using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.PostgreSql.Internal;
@@ -192,10 +193,15 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
     {
         var sql = $@"
             WITH LatencyData AS (
-                SELECT COALESCE(s.data::json ->> 'Queue', 'default') AS queuename,
+                SELECT COALESCE(
+                           (SELECT jp.value FROM {JobParameterTable} jp
+                            WHERE jp.jobid = s.jobid AND jp.name IN ({PgHelper.JobQueueParameterInList})
+                            ORDER BY CASE jp.name WHEN '{PgHelper.JobQueueParameterName}' THEN 0 ELSE 1 END
+                            LIMIT 1),
+                           'default') AS queuename,
                        (s.data::json ->> 'Latency')::numeric AS latencyms
                 FROM {StateTable} s
-                WHERE s.name = 'Processing'
+                WHERE s.name = 'Succeeded'
                   AND s.createdat >= @From AND s.createdat < @To
                   AND s.data::json ->> 'Latency' IS NOT NULL
             )
@@ -519,6 +525,8 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
             });
         }
 
+        await EnrichRecurringJobHealthAsync(connection, results, jobIds, ct);
+
         return results;
     }
 
@@ -532,13 +540,12 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
                    COALESCE((s.data::json ->> 'PerformanceDuration')::numeric, 0) AS ""DurationMs"",
                    CASE WHEN s.name = 'Succeeded' THEN true ELSE false END AS ""Succeeded"",
                    CASE WHEN s.name = 'Failed' THEN s.reason ELSE NULL END AS ""ErrorMessage""
-            FROM {StateTable} s
-            INNER JOIN {JobTable} j ON j.id = s.jobid
+            FROM {JobTable} j
             INNER JOIN {JobParameterTable} jp
                 ON jp.jobid = j.id AND jp.name = 'RecurringJobId'
-            WHERE jp.value = @RecurringJobId
+            INNER JOIN {StateTable} s ON s.id = j.stateid
+            WHERE jp.value = ANY(@RecurringJobIdValues)
               AND s.name IN ('Succeeded', 'Failed')
-              AND s.id = j.stateid
             ORDER BY s.createdat DESC
             LIMIT @Count";
 
@@ -546,9 +553,69 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         await connection.OpenAsync(ct);
 
         var rows = await connection.QueryAsync<RecurringJobExecutionDto>(
-            new CommandDefinition(sql, new { RecurringJobId = recurringJobId, Count = count }, cancellationToken: ct));
+            new CommandDefinition(sql,
+                new
+                {
+                    RecurringJobIdValues = JobParameterMatching.AllValueForms(new[] { recurringJobId }),
+                    Count = count
+                },
+                cancellationToken: ct));
 
         return rows.ToList();
+    }
+
+    private async Task EnrichRecurringJobHealthAsync(
+        NpgsqlConnection connection,
+        List<RecurringJobHealthDto> results,
+        IReadOnlyList<string> jobIds,
+        CancellationToken ct)
+    {
+        if (results.Count == 0 || jobIds.Count == 0)
+            return;
+
+        var sql = $@"
+            WITH Ranked AS (
+                SELECT jp.value AS RecurringJobIdStored,
+                       s.name AS StateName,
+                       COALESCE((s.data::json ->> 'PerformanceDuration')::numeric, 0) AS DurationMs,
+                       ROW_NUMBER() OVER (PARTITION BY jp.value ORDER BY s.createdat DESC) AS rn
+                FROM {JobTable} j
+                INNER JOIN {JobParameterTable} jp ON jp.jobid = j.id AND jp.name = 'RecurringJobId'
+                INNER JOIN {StateTable} s ON s.id = j.stateid
+                WHERE jp.value = ANY(@RecurringJobIdValues)
+                  AND s.name IN ('Succeeded', 'Failed')
+            )
+            SELECT RecurringJobIdStored, StateName, DurationMs
+            FROM Ranked
+            WHERE rn <= 20
+            ORDER BY RecurringJobIdStored, rn";
+
+        var rows = await connection.QueryAsync<RecurringExecutionSummaryRow>(
+            new CommandDefinition(sql,
+                new { RecurringJobIdValues = JobParameterMatching.AllValueForms(jobIds) },
+                cancellationToken: ct));
+
+        var plainIdLookup = JobParameterMatching.BuildStoredValueToPlainIdLookup(jobIds);
+        var grouped = new Dictionary<string, List<RecurringExecutionSummaryRow>>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            var plainId = JobParameterMatching.ResolvePlainRecurringJobId(row.RecurringJobIdStored, plainIdLookup);
+            if (!grouped.TryGetValue(plainId, out var list))
+                grouped[plainId] = list = new List<RecurringExecutionSummaryRow>();
+            list.Add(row);
+        }
+
+        foreach (var dto in results)
+        {
+            if (!grouped.TryGetValue(dto.JobId, out var execs) || execs.Count == 0)
+                continue;
+
+            dto.LastExecutionResults = execs.Take(10).Select(e => e.StateName == "Succeeded").ToList();
+
+            var durations = execs.Where(e => e.DurationMs > 0).Select(e => (double)e.DurationMs).ToList();
+            if (durations.Count > 0)
+                dto.AverageDurationMs = durations.Average();
+        }
     }
 
     /// <inheritdoc />
@@ -765,6 +832,13 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         public string Key { get; set; }
         public string Field { get; set; }
         public string Value { get; set; }
+    }
+
+    private class RecurringExecutionSummaryRow
+    {
+        public string RecurringJobIdStored { get; set; }
+        public string StateName { get; set; }
+        public decimal DurationMs { get; set; }
     }
 
     #endregion

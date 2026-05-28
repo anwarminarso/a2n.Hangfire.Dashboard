@@ -1,0 +1,129 @@
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="hf-nav-group">
+    <button type="button"
+            class="hf-nav-group-toggle"
+            aria-expanded="@_expanded"
+            aria-controls="@_bodyId"
+            @onclick="ToggleAsync">
+        <span class="hf-nav-group-title">@Title</span>
+        <i class="bi @(_expanded ? "bi-chevron-down" : "bi-chevron-right") hf-nav-group-chevron" aria-hidden="true"></i>
+    </button>
+    <div id="@_bodyId" class="hf-nav-group-body" hidden="@(!_expanded)">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    private readonly string _bodyId = $"hf-nav-group-{Guid.NewGuid():N}";
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; }
+
+    /// <summary>Stable id for persisting expanded state in localStorage.</summary>
+    [Parameter, EditorRequired]
+    public string GroupId { get; set; }
+
+    /// <summary>Route prefixes that auto-expand this group (e.g. "jobs", "analytics").</summary>
+    [Parameter]
+    public IReadOnlyList<string> ExpandPaths { get; set; } = Array.Empty<string>();
+
+    [Parameter]
+    public bool DefaultExpanded { get; set; } = true;
+
+    [Parameter]
+    public RenderFragment ChildContent { get; set; }
+
+    private bool _expanded;
+    private bool _storageLoaded;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        _expanded = DefaultExpanded;
+        if (IsRouteInGroup())
+            _expanded = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _storageLoaded)
+            return;
+
+        _storageLoaded = true;
+
+        if (IsRouteInGroup())
+            return;
+
+        try
+        {
+            var stored = await JS.InvokeAsync<bool?>("hfNav.getGroupExpanded", GroupId);
+            if (stored.HasValue)
+            {
+                _expanded = stored.Value;
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void OnLocationChanged(object sender, LocationChangedEventArgs e)
+    {
+        if (!IsRouteInGroup())
+            return;
+
+        _expanded = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleAsync()
+    {
+        _expanded = !_expanded;
+
+        try
+        {
+            await JS.InvokeVoidAsync("hfNav.setGroupExpanded", GroupId, _expanded);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private bool IsRouteInGroup()
+    {
+        if (ExpandPaths is null || ExpandPaths.Count == 0)
+            return false;
+
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri).Trim('/');
+        if (string.IsNullOrEmpty(relative))
+            return false;
+
+        foreach (var path in ExpandPaths)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                continue;
+
+            var prefix = path.Trim('/');
+            if (relative.Equals(prefix, StringComparison.OrdinalIgnoreCase)
+                || relative.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}
