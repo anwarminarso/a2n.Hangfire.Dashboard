@@ -1,0 +1,227 @@
+@using a2n.Hangfire.Dashboard.Models
+@using a2n.Hangfire.Dashboard.Services
+@inject JobGraphService GraphService
+@inject DashboardUIOptions Options
+@inject NavigationManager Navigation
+
+@if (_graph is not null && _graph.HasEdges)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <h6 class="mb-0">
+                <i class="bi bi-diagram-3"></i> Continuations
+            </h6>
+            @if (_graph.LimitReached)
+            {
+                <span class="badge text-bg-secondary"
+                      title="Graph truncated. Current limits: @_currentMaxNodes nodes, depth @_currentMaxDepth.">
+                    truncated
+                </span>
+            }
+        </div>
+        <div class="card-body p-3">
+            <div class="hf-graph-tree">
+                @RenderNode(_graph.Root, isRoot: true)
+            </div>
+            @if (_graph.LimitReached)
+            {
+                <div class="d-flex justify-content-center mt-3">
+                    @if (CanExpand())
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ExpandFurther" disabled="@_loading">
+                            @if (_loading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                <span>Loading…</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-arrows-angle-expand me-1"></i>
+                                <span>Load more (showing @_graph.NodeCount nodes)</span>
+                            }
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="text-body-secondary small fst-italic">
+                            Reached safety ceiling (@MaxAllowedNodes nodes, depth @MaxAllowedDepth) — graph may still be incomplete.
+                        </span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string JobId { get; set; }
+
+    /// <summary>Hard ceiling to prevent runaway expansion regardless of how many times the user clicks "Load more".</summary>
+    private const int MaxAllowedNodes = 200;
+    private const int MaxAllowedDepth = 12;
+
+    private JobDependencyGraph _graph;
+    private string _renderedJobId;
+    private int _currentMaxNodes;
+    private int _currentMaxDepth;
+    private bool _loading;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(JobId) || JobId == _renderedJobId) return;
+
+        _renderedJobId = JobId;
+        _currentMaxNodes = Math.Min(Options.JobGraphMaxNodes, MaxAllowedNodes);
+        _currentMaxDepth = Math.Min(Options.JobGraphMaxDepth, MaxAllowedDepth);
+        await BuildAsync();
+    }
+
+    private async Task ExpandFurther()
+    {
+        // Double the budget on each click, capped at the safety ceiling.
+        _currentMaxNodes = Math.Min(_currentMaxNodes * 2, MaxAllowedNodes);
+        _currentMaxDepth = Math.Min(_currentMaxDepth + 3, MaxAllowedDepth);
+        await BuildAsync();
+    }
+
+    private async Task BuildAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var nodes = _currentMaxNodes;
+            var depth = _currentMaxDepth;
+            await Task.Run(() => { _graph = GraphService.Build(JobId, nodes, depth); });
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private bool CanExpand() => _currentMaxNodes < MaxAllowedNodes || _currentMaxDepth < MaxAllowedDepth;
+
+    private RenderFragment RenderNode(JobGraphNode node, bool isRoot) => __builder =>
+    {
+        <div class="hf-graph-node-wrapper">
+            <div class="hf-graph-node @GetNodeClass(node)" title="@GetNodeTooltip(node)">
+                <div class="hf-graph-node-state">
+                    <i class="bi @GetStateIcon(node.StateName) @GetStateTextClass(node.StateName)"></i>
+                </div>
+                <div class="hf-graph-node-body">
+                    @if (node.NotFound)
+                    {
+                        <span class="text-body-secondary fst-italic">Job #@node.JobId not found</span>
+                    }
+                    else if (node.IsCurrent)
+                    {
+                        <span class="fw-semibold">@node.DisplayName</span>
+                    }
+                    else
+                    {
+                        <a href="@GetJobUrl(node.JobId)" class="text-decoration-none">@node.DisplayName</a>
+                    }
+                    <div class="hf-graph-node-meta">
+                        <code class="small text-body-secondary">#@node.JobId</code>
+                        @if (!string.IsNullOrEmpty(node.StateName))
+                        {
+                            <span class="hf-graph-state-pill @GetStatePillClass(node.StateName)">@node.StateName</span>
+                        }
+                    </div>
+                </div>
+            </div>
+            @if (node.Children.Count > 0)
+            {
+                <ul class="hf-graph-children">
+                    @foreach (var edge in node.Children)
+                    {
+                        <li class="hf-graph-child">
+                            @if (edge.Condition != JobContinuationCondition.OnAnyFinishedState)
+                            {
+                                <span class="hf-graph-edge-label @GetEdgeLabelClass(edge.Condition)">
+                                    @GetEdgeLabel(edge.Condition)
+                                </span>
+                            }
+                            @RenderNode(edge.Target, isRoot: false)
+                        </li>
+                    }
+                </ul>
+            }
+            @if (node.Truncated && node.Children.Count == 0)
+            {
+                <div class="hf-graph-truncated text-body-secondary small ms-4">… more continuations not shown</div>
+            }
+        </div>
+    };
+
+    private string GetJobUrl(string jobId)
+        => Navigation.ToAbsoluteUri($"jobs/details/{jobId}").PathAndQuery;
+
+    private static string GetNodeClass(JobGraphNode node)
+    {
+        var cls = "hf-graph-node-card";
+        if (node.IsCurrent) cls += " hf-graph-node-current";
+        if (node.NotFound) cls += " hf-graph-node-missing";
+        return cls;
+    }
+
+    private static string GetNodeTooltip(JobGraphNode node)
+    {
+        if (node.NotFound) return "This job has expired or was deleted.";
+        if (node.IsCurrent) return "Current job";
+        return $"Open job #{node.JobId}";
+    }
+
+    private static string GetEdgeLabel(JobContinuationCondition cond) => cond switch
+    {
+        JobContinuationCondition.OnlyOnSucceededState => "on succeeded",
+        JobContinuationCondition.OnlyOnDeletedState => "on deleted",
+        _ => "on any",
+    };
+
+    private static string GetEdgeLabelClass(JobContinuationCondition cond) => cond switch
+    {
+        JobContinuationCondition.OnlyOnSucceededState => "hf-graph-edge-success",
+        JobContinuationCondition.OnlyOnDeletedState => "hf-graph-edge-danger",
+        _ => "",
+    };
+
+    private static string GetStateIcon(string stateName) => stateName switch
+    {
+        "Succeeded" => "bi-check-circle-fill",
+        "Failed" => "bi-x-circle-fill",
+        "Processing" => "bi-gear-fill",
+        "Enqueued" => "bi-inbox-fill",
+        "Scheduled" => "bi-clock-fill",
+        "Deleted" => "bi-trash3-fill",
+        "Created" => "bi-plus-circle-fill",
+        "Awaiting" => "bi-hourglass-split",
+        _ => "bi-circle",
+    };
+
+    private static string GetStateTextClass(string stateName) => stateName switch
+    {
+        "Succeeded" => "text-success",
+        "Failed" => "text-danger",
+        "Processing" => "text-primary",
+        "Enqueued" => "text-info",
+        "Scheduled" => "text-warning",
+        "Deleted" => "text-secondary",
+        "Created" => "text-secondary",
+        "Awaiting" => "text-warning",
+        _ => "text-secondary",
+    };
+
+    private static string GetStatePillClass(string stateName) => stateName switch
+    {
+        "Succeeded" => "text-bg-success",
+        "Failed" => "text-bg-danger",
+        "Processing" => "text-bg-primary",
+        "Enqueued" => "text-bg-info",
+        "Scheduled" => "text-bg-warning",
+        "Deleted" => "text-bg-secondary",
+        "Awaiting" => "text-bg-warning",
+        _ => "text-bg-secondary",
+    };
+}

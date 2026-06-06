@@ -64,6 +64,19 @@ public class DashboardUIOptions
     public string FaviconPath { get; set; }
 
     /// <summary>
+    /// Maximum traversal depth (in either direction — ancestors or descendants) when building the
+    /// job dependency graph on the Job Details page. Each hop costs one storage lookup, so this
+    /// bounds N+1 calls. Default: 5.
+    /// </summary>
+    public int JobGraphMaxDepth { get; set; } = 5;
+
+    /// <summary>
+    /// Maximum total nodes materialized in the job dependency graph. The graph is truncated and
+    /// shows a "truncated" indicator once this limit is reached. Default: 30.
+    /// </summary>
+    public int JobGraphMaxNodes { get; set; } = 30;
+
+    /// <summary>
     /// Authorization filters for the dashboard. Defaults to <see cref="LocalRequestsOnlyAuthorizationFilter"/>
     /// (same as Hangfire's built-in dashboard). Set to an empty array to allow all requests.
     /// </summary>

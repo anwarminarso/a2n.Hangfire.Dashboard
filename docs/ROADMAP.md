@@ -137,7 +137,13 @@ services.AddHangfireDashboardUI(options =>
 - ✅ AnalyticsBroadcastService (5s interval SignalR push)
 
 ### 2.5 Enhanced Job Details
-- [ ] Job dependency graph (continuations visualized)
+- ✅ Job dependency graph (continuations visualized) — `JobGraphViewer` on Job Details page
+  - Walks up via Awaiting state's `ParentId`, then expands descendants via `Continuations` parameter
+  - Edge labels: `on succeeded`, `on deleted`, `on any` (continuation condition)
+  - Bounded traversal: `DashboardUIOptions.JobGraphMaxDepth` (default 5) and `JobGraphMaxNodes` (default 30)
+  - "Load more" button when truncated — doubles node budget and adds +3 depth per click, capped at 200 nodes / depth 12
+  - Click any node to navigate to that job's details; expired/deleted jobs render as dashed placeholders
+  - Storage-agnostic — uses `IMonitoringApi.JobDetails` only
 - [ ] Retry history with diff
 - [ ] Job execution duration chart (historical)
 
@@ -251,6 +257,7 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v2.1.1 | WebSocket fix for Startup-pattern host apps (Generic Host compatibility) | ✅ Done |
 | v2.2 | UX improvements: progress circle, Fetched page, delete modals, mobile nav fix | ✅ Done |
 | v2.2.1 | Security & auth hardening: authorization defaults, SignalR auth, SQL validation | ✅ Done |
+| v2.3 | Enhanced Job Details: continuation dependency graph (with Load more), retry diff, historical duration chart | In progress |
 | v3.0 | Phase 3 — extensibility & integration | Planned |
 
 ---
