@@ -154,6 +154,7 @@ public static class HangfireDashboardUIExtensions
             registered.FaviconPath = options.FaviconPath;
             registered.JobGraphMaxDepth = options.JobGraphMaxDepth;
             registered.JobGraphMaxNodes = options.JobGraphMaxNodes;
+            registered.SourceLink = options.SourceLink;
             registered.Authorization = options.Authorization;
             registered.AsyncAuthorization = options.AsyncAuthorization;
             registered.LoginPath = options.LoginPath;

@@ -1,5 +1,6 @@
 @page "/jobs/details/{JobId}"
 @inject HangfireMonitorService Monitor
+@inject DashboardUIOptions Options
 @implements IDisposable
 
 <PageTitle>Job @JobId</PageTitle>
@@ -85,8 +86,27 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
         </div>
 
         @* State Section *@
-        <h6 class="fw-semibold mb-3">State History</h6>
+        var retrySummary = Helpers.RetrySummary.FromHistory(_job);
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-3 gap-2">
+            <h6 class="fw-semibold mb-0">State History</h6>
+            @if (retrySummary.ShouldDisplay)
+            {
+                <div class="hf-retry-summary small">
+                    <i class="bi bi-arrow-repeat @(retrySummary.AllSameException && retrySummary.RetryCount >= 3 ? "text-warning" : "text-body-secondary")"></i>
+                    <span class="fw-semibold ms-1">@(retrySummary.RetryCount == 1 ? "Retried once" : $"Retried {retrySummary.RetryCount} times")</span>
+                    @if (retrySummary.DistinctExceptionTypes.Count > 0)
+                    {
+                        <span class="text-body-secondary"> · </span>
+                        <span class="text-body-secondary"
+                              title="@retrySummary.GetExceptionTooltip()">@retrySummary.GetExceptionPhrase()</span>
+                    }
+                </div>
+            }
+        </div>
                 @* State cards — chronological (newest first), console embedded in Processing *@
+                var attemptIndex = retrySummary.RetryCount > 0
+                    ? BuildAttemptIndex(_job.History)
+                    : null;
                 <div class="d-flex flex-column gap-2">
                     @foreach (var state in _job.History)
                     {
@@ -94,6 +114,11 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
                             <div class="card-header d-flex justify-content-between align-items-center py-2">
                                 <span class="fw-semibold">
                                     <i class="bi @GetStateIcon(state.StateName) @GetStateTextClass(state.StateName)"></i> @state.StateName
+                                    @if (attemptIndex is not null && attemptIndex.TryGetValue(state, out var attemptNum))
+                                    {
+                                        <span class="badge text-bg-secondary ms-2 align-middle hf-attempt-badge"
+                                              title="Attempt @attemptNum of @retrySummary.RetryCount">#@attemptNum</span>
+                                    }
                                 </span>
                                 <small class="text-body-secondary"><RelativeTime UtcTime="@state.CreatedAt" /></small>
                             </div>
@@ -436,23 +461,38 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
     }
 
     /// <summary>
-    /// Formats a .NET stack trace with syntax highlighting.
-    /// Highlights: method names (bold), file paths (muted), line numbers (colored).
+    /// Formats a .NET stack trace with syntax highlighting and optional source-control links.
     /// </summary>
-    private static string FormatStackTrace(string stackTrace)
-    {
-        if (string.IsNullOrEmpty(stackTrace)) return "";
+    private string FormatStackTrace(string stackTrace)
+        => Helpers.StackTraceFormatter.Format(stackTrace, Options?.SourceLink);
 
-        var escaped = System.Net.WebUtility.HtmlEncode(stackTrace);
-        // Highlight method names: word.word.MethodName(params)
-        escaped = System.Text.RegularExpressions.Regex.Replace(escaped,
-            @"(at\s+)([\w\.]+)\.([\w`\[\]]+)\(([^)]*)\)",
-            """$1<span class="hf-st-namespace">$2</span>.<span class="hf-st-method">$3</span>(<span class="hf-st-params">$4</span>)""");
-        // Highlight file paths: in filepath
-        escaped = System.Text.RegularExpressions.Regex.Replace(escaped,
-            @"\s+in\s+(.+?):line\s+(\d+)",
-            """ in <span class="hf-st-file">$1</span>:line <span class="hf-st-line">$2</span>""");
-        return escaped;
+    /// <summary>
+    /// Numbers each Failed (and the immediately-preceding Processing) state with its retry attempt index.
+    /// Returns null when there are no retries to number. The dictionary maps the original
+    /// <see cref="StateHistoryDto"/> reference to its 1-based attempt number.
+    /// </summary>
+    private static Dictionary<StateHistoryDto, int> BuildAttemptIndex(IList<StateHistoryDto> history)
+    {
+        if (history is null || history.Count == 0) return null;
+
+        // Walk in chronological order (history is stored newest-first) and assign attempt numbers
+        // every time we encounter a Processing state. The matching Failed state inherits the same number.
+        var chronological = history.Reverse().ToList();
+        var index = new Dictionary<StateHistoryDto, int>();
+        var attempt = 0;
+        foreach (var entry in chronological)
+        {
+            if (entry.StateName == "Processing")
+            {
+                attempt++;
+                index[entry] = attempt;
+            }
+            else if (entry.StateName == "Failed" && attempt > 0)
+            {
+                index[entry] = attempt;
+            }
+        }
+        return index.Count > 0 ? index : null;
     }
 
     private async Task Requeue()

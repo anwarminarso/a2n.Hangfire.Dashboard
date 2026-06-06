@@ -77,6 +77,14 @@ public class DashboardUIOptions
     public int JobGraphMaxNodes { get; set; } = 30;
 
     /// <summary>
+    /// Optional source-control link configuration. When set, file paths in stack traces become
+    /// clickable links pointing to the configured provider (GitHub, GitLab, Azure DevOps, Bitbucket,
+    /// a self-hosted Git server, or a local IDE handler such as <c>vscode://</c>). When null,
+    /// stack traces render as plain text. See <see cref="SourceLinkOptions"/> presets.
+    /// </summary>
+    public SourceLinkOptions SourceLink { get; set; }
+
+    /// <summary>
     /// Authorization filters for the dashboard. Defaults to <see cref="LocalRequestsOnlyAuthorizationFilter"/>
     /// (same as Hangfire's built-in dashboard). Set to an empty array to allow all requests.
     /// </summary>

@@ -76,7 +76,13 @@ if (!app.Environment.IsDevelopment())
 app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
     DashboardTitle = "My Dashboard",
-    EnableRecurringJobAdmin = true
+    EnableRecurringJobAdmin = true,
+
+    // Make stack-trace file references clickable. While developing locally, the Local() preset
+    // opens files in VS Code via the vscode:// protocol. For shared dashboards, swap to a remote
+    // provider preset (GitHub / GitLab / AzureDevOps / Bitbucket) so links work for everyone.
+    SourceLink = SourceLinkOptions.Local()
+        .WithPathStrip("HangfireDashboard"),
     // Authorization defaults to LocalRequestsOnlyAuthorizationFilter.
     // Set Authorization = [] to allow all hosts, or see SampleAppAuth for cookie login.
 });

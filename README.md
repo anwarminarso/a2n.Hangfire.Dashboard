@@ -48,6 +48,8 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
 | Job tags | Tagging and tag cloud (Hangfire.Tags-compatible storage) |
 | Job dependency graph | Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
+| Retry summary | Inline banner above state history showing retry count + exception consistency |
+| Stack trace links | File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
 | Global search | Search by job ID, name, queue, tag, or exception text |
 | Advanced filters | Filter by date, duration, state, server, and more |
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
@@ -131,6 +133,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     EnableRecurringJobAdmin = true,  // set false to hide Create/Edit/Stop
     JobGraphMaxDepth = 5,   // continuation graph traversal depth (default 5)
     JobGraphMaxNodes = 30,  // continuation graph node budget (default 30)
+    // SourceLink = SourceLinkOptions.GitHub("owner/repo"),  // clickable stack-trace file links
 });
 
 app.Run();
@@ -198,6 +201,73 @@ When either limit is hit, the card shows a `truncated` badge and a **Load more**
 
 ---
 
+## Stack Trace Source Links
+
+When a job fails, the Job Details page shows the exception stack trace. By default the stack trace is plain text. Set `DashboardUIOptions.SourceLink` to turn `... in {path}:line {N}` references into clickable links pointing to your source provider:
+
+```csharp
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
+{
+    DashboardTitle = "My Jobs",
+    SourceLink = SourceLinkOptions.GitHub("anwarminarso/a2n.Hangfire.Dashboard", branch: "main"),
+});
+```
+
+### Built-in presets
+
+```csharp
+SourceLinkOptions.GitHub("owner/repo");                                        // github.com
+SourceLinkOptions.GitLab("group/repo");                                        // gitlab.com
+SourceLinkOptions.GitLab("group/repo", host: "git.mycompany.com");             // self-hosted GitLab
+SourceLinkOptions.AzureDevOps("org", "project", "repo");                       // dev.azure.com
+SourceLinkOptions.Bitbucket("workspace/repo");                                 // bitbucket.org
+SourceLinkOptions.Local();                                                     // vscode://file/{path}:{line}
+SourceLinkOptions.Local(protocol: "vscode-insiders");                          // VS Code Insiders
+SourceLinkOptions.Local(protocol: "cursor");                                   // Cursor
+```
+
+### Self-hosted / proprietary providers
+
+Use `UrlPattern` directly with `{path}` and `{line}` placeholders:
+
+```csharp
+SourceLink = new SourceLinkOptions
+{
+    UrlPattern = "https://gitea.mycompany.com/team/repo/src/branch/main/{path}#L{line}",
+};
+```
+
+### Visual Studio (Windows)
+
+Visual Studio does not ship with a built-in URL protocol handler. To enable links that open files in Visual Studio, install a third-party handler such as [VsHandler](https://marketplace.visualstudio.com/items?itemName=Slvier.VsHandler) and configure:
+
+```csharp
+SourceLink = new SourceLinkOptions
+{
+    UrlPattern = "vs://open?File={absolutePath}&Line={line}",
+};
+```
+
+For VS Code (cross-platform), the built-in `Local()` preset works out of the box.
+
+### Path normalization
+
+Stack traces often contain absolute paths from the build agent (e.g. `C:\jenkins\workspace\proj\src\Foo.cs`) that don't match the repository layout. Use `WithPathStrip("src")` to strip everything before the `/src/` segment:
+
+```csharp
+SourceLink = SourceLinkOptions.GitHub("owner/repo")
+    .WithPathStrip("src");
+// "C:\jenkins\workspace\proj\src\Models\Order.cs" → "src/Models/Order.cs"
+```
+
+For more complex transforms, use `WithPathReplace(pattern, replacement)` (regex) or set `PathTransform` to a custom `Func<string, string>`.
+
+### Privacy note
+
+Linked URLs only work when the viewer has access to the source provider. Private repositories return 404 to unauthenticated users. The dashboard does not embed source content — it only generates outbound links.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -260,7 +330,7 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.1.1 | ✅ Done | WebSocket fix for Startup-pattern host apps |
 | v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
 | v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
-| v2.3 | In progress | Enhanced Job Details: continuation dependency graph (with Load more), retry diff, historical duration |
+| v2.3 | In progress | Enhanced Job Details: dependency graph, retry summary, stack trace source links |
 | v3.0 | Planned | Notifications, REST API, Prometheus metrics, theming |
 
 See the full [roadmap](docs/ROADMAP.md) for details.
