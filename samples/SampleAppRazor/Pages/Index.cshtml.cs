@@ -1,7 +1,7 @@
 using Hangfire;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using SampleAppRazor.Jobs;
+using SampleApp.SharedJobs;
 
 namespace SampleAppRazor.Pages;
 

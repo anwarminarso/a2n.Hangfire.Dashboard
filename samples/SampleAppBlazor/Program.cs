@@ -2,7 +2,7 @@ using a2n.Hangfire.Dashboard;
 using Hangfire;
 using Hangfire.Console;
 using Hangfire.Tags;
-using SampleAppBlazor.Jobs;
+using SampleApp.SharedJobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,16 +52,6 @@ app.MapRazorComponents<SampleAppBlazor.Components.App>()
     .AddInteractiveServerRenderMode();
 
 // Seed sample recurring jobs
-app.Lifetime.ApplicationStarted.Register(() =>
-{
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "simple-job", x => x.SimpleJob(), Cron.Minutely);
-
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "console-job", x => x.ConsoleJob(null!), "*/2 * * * *");
-
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "tagged-job", x => x.TaggedJob(null!), "*/3 * * * *");
-});
+app.Lifetime.ApplicationStarted.Register(SampleJobsSeeder.SeedMinimal);
 
 app.Run();
