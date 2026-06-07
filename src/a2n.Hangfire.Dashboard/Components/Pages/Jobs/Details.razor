@@ -112,7 +112,7 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
                             <div class="card-header d-flex justify-content-between align-items-center py-2">
                                 <span class="fw-semibold">
                                     <i class="bi @GetStateIcon(state.StateName) @GetStateTextClass(state.StateName)"></i> @state.StateName
-                                    @if (attemptIndex is not null && attemptIndex.TryGetValue(state, out var attemptNum))
+                                    @if (attemptIndex.TryGetValue(state, out var attemptNum))
                                     {
                                         <span class="badge text-bg-secondary ms-2 align-middle hf-attempt-badge"
                                               title="Attempt @attemptNum of @retrySummary.RetryCount">#@attemptNum</span>

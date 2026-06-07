@@ -20,8 +20,11 @@ namespace a2n.Hangfire.Dashboard.Services;
 /// of per-client polling.
 /// </para>
 /// <para>
-/// The cache resolves a scoped <see cref="HealthCheckService"/> from an injected
-/// <see cref="IServiceScopeFactory"/>, so callers do not need their own DI scope.
+/// <b>Timing relationships.</b> Three intervals cooperate to keep storage load bounded:
+/// the realtime metric broadcast (~2s, centralized), this cache's <see cref="Ttl"/> (default 5s),
+/// and the hero card's UI refresh (~10s). The cache TTL sits between the two so a hero refresh
+/// almost always hits a warm entry, while an explicit user "Refresh" click bypasses the cache via
+/// the <c>forceRefresh</c> parameter on <see cref="GetAsync"/>.
 /// </para>
 /// </remarks>
 public sealed class HealthReportCache : IDisposable
@@ -40,17 +43,14 @@ public sealed class HealthReportCache : IDisposable
     private sealed class Entry
     {
         public HealthReport Report;
-        public DateTime ComputedAtUtc;
+        // Stored as ticks and accessed via Volatile/Interlocked so the lock-free fast path in
+        // IsFresh never observes a torn DateTime on any platform.
+        public long ComputedAtTicks;
         public readonly SemaphoreSlim Gate = new(1, 1);
     }
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly Entry[] _entries =
-    [
-        new Entry(), // Live
-        new Entry(), // Ready
-        new Entry(), // Full
-    ];
+    private readonly Entry[] _entries;
 
     /// <summary>
     /// How long a computed report is reused before a fresh one is produced. Kept short so health
@@ -61,25 +61,50 @@ public sealed class HealthReportCache : IDisposable
     public HealthReportCache(IServiceScopeFactory scopeFactory)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+
+        // One entry per Mode value, indexed by (int)mode. Sized off the enum so adding a mode
+        // can't silently produce an index-out-of-range or a mismatched slot.
+        var modeCount = Enum.GetValues(typeof(Mode)).Length;
+        _entries = new Entry[modeCount];
+        for (var i = 0; i < modeCount; i++)
+            _entries[i] = new Entry();
     }
 
     /// <summary>
     /// Returns a cached report for the given <paramref name="mode"/> when one was computed within
     /// <see cref="Ttl"/>; otherwise computes a fresh report (single-flighted per mode).
     /// </summary>
-    public async Task<HealthReport> GetAsync(Mode mode, CancellationToken ct = default)
+    /// <param name="mode">Which set of checks to run.</param>
+    /// <param name="forceRefresh">
+    /// When <c>true</c>, bypasses the freshness check and always computes a new report (still
+    /// single-flighted so concurrent forced callers share one computation). Use for explicit user
+    /// actions such as the hero card's manual "Refresh" button.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task<HealthReport> GetAsync(Mode mode, bool forceRefresh = false, CancellationToken ct = default)
     {
         var entry = _entries[(int)mode];
 
-        if (IsFresh(entry))
+        if (!forceRefresh && IsFresh(entry))
             return entry.Report;
+
+        // Captured before contending for the gate. If, by the time we acquire it, the entry was
+        // computed at or after this instant, a concurrent caller already produced exactly the fresh
+        // report we wanted — reuse it instead of recomputing (coalesces forced refreshes too).
+        var requestedAtTicks = DateTime.UtcNow.Ticks;
 
         await entry.Gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            // Re-check after acquiring the gate — another caller may have just refreshed it.
-            if (IsFresh(entry))
+            if (forceRefresh)
+            {
+                if (Volatile.Read(ref entry.ComputedAtTicks) >= requestedAtTicks && entry.Report is not null)
+                    return entry.Report;
+            }
+            else if (IsFresh(entry))
+            {
                 return entry.Report;
+            }
 
             var report = await Task.Run(() =>
             {
@@ -94,7 +119,7 @@ public sealed class HealthReportCache : IDisposable
             }, ct).ConfigureAwait(false);
 
             entry.Report = report;
-            entry.ComputedAtUtc = DateTime.UtcNow;
+            Volatile.Write(ref entry.ComputedAtTicks, DateTime.UtcNow.Ticks);
             return report;
         }
         finally
@@ -104,7 +129,12 @@ public sealed class HealthReportCache : IDisposable
     }
 
     private bool IsFresh(Entry entry)
-        => entry.Report is not null && DateTime.UtcNow - entry.ComputedAtUtc < Ttl;
+    {
+        if (entry.Report is null) return false;
+        var ticks = Volatile.Read(ref entry.ComputedAtTicks);
+        if (ticks == 0) return false;
+        return DateTime.UtcNow - new DateTime(ticks, DateTimeKind.Utc) < Ttl;
+    }
 
     public void Dispose()
     {

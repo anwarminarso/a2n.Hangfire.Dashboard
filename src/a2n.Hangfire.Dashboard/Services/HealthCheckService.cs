@@ -110,11 +110,19 @@ public class HealthCheckService
         var sw = Stopwatch.StartNew();
         try
         {
-            stats = _monitor.GetStatistics();
+            stats = ProbeStatisticsWithTimeout(out var timedOut);
             sw.Stop();
 
             var elapsed = sw.ElapsedMilliseconds;
             result.Data["responseTimeMs"] = elapsed;
+
+            if (timedOut)
+            {
+                result.Status = HealthStatus.Unhealthy;
+                result.Description = $"Storage probe timed out after {_options.HealthCheckThresholds.StorageProbeTimeoutMs}ms.";
+                result.Data["timedOut"] = true;
+                return result;
+            }
 
             if (elapsed >= _options.HealthCheckThresholds.StorageResponseTimeCriticalMs)
             {
@@ -142,6 +150,32 @@ public class HealthCheckService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Runs the synchronous <c>GetStatistics</c> probe but stops waiting after
+    /// <see cref="HealthThresholds.StorageProbeTimeoutMs"/>. The underlying call cannot be
+    /// cancelled (Hangfire's monitoring API is synchronous), so the abandoned task is left to
+    /// complete on its own; we simply stop blocking the caller on it.
+    /// </summary>
+    private StatisticsDto ProbeStatisticsWithTimeout(out bool timedOut)
+    {
+        var timeoutMs = _options.HealthCheckThresholds.StorageProbeTimeoutMs;
+        if (timeoutMs <= 0)
+        {
+            timedOut = false;
+            return _monitor.GetStatistics();
+        }
+
+        var task = Task.Run(() => _monitor.GetStatistics());
+        if (task.Wait(timeoutMs))
+        {
+            timedOut = false;
+            return task.GetAwaiter().GetResult(); // surfaces any exception to the caller's catch
+        }
+
+        timedOut = true;
+        return null;
     }
 
     private HealthCheckResult CheckServers()

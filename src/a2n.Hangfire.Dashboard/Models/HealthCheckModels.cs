@@ -117,6 +117,15 @@ public class HealthThresholds
     /// Storage response time (ms) that marks the storage check Unhealthy. Default: 5000ms.
     /// </summary>
     public int StorageResponseTimeCriticalMs { get; set; } = 5000;
+
+    /// <summary>
+    /// Hard timeout (ms) for the storage probe. If the underlying <c>GetStatistics</c> call has not
+    /// returned within this window, the storage check reports Unhealthy without waiting further.
+    /// This bounds how long a hung storage backend can block health requests (and, by extension,
+    /// the shared report cache). Default: 10000ms. Must be greater than
+    /// <see cref="StorageResponseTimeCriticalMs"/> to be meaningful.
+    /// </summary>
+    public int StorageProbeTimeoutMs { get; set; } = 10000;
 }
 
 /// <summary>

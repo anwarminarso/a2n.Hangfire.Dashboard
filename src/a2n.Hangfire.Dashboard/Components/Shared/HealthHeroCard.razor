@@ -60,7 +60,7 @@ else
         </div>
         <div class="hf-health-hero-meta">
             <button type="button" class="btn btn-sm btn-outline-secondary"
-                    @onclick="RefreshAsync" disabled="@_refreshing"
+                    @onclick="RefreshNowAsync" disabled="@_refreshing"
                     aria-label="Refresh health status">
                 <i class="bi @(_refreshing ? "bi-arrow-repeat hf-spin" : "bi-arrow-clockwise")"></i>
             </button>
@@ -111,15 +111,21 @@ else
         }
     }
 
-    private async Task RefreshAsync()
+    private async Task RefreshAsync() => await RefreshCoreAsync(forceRefresh: false);
+
+    /// <summary>Explicit user-initiated refresh — bypasses the shared cache TTL for fresh data.</summary>
+    private async Task RefreshNowAsync() => await RefreshCoreAsync(forceRefresh: true);
+
+    private async Task RefreshCoreAsync(bool forceRefresh)
     {
         if (_refreshing) return;
         _refreshing = true;
         try
         {
             // Shared cache: single-flighted across all circuits and probes, so opening the Home
-            // page in multiple tabs does not multiply storage load.
-            _report = await HealthCache.GetAsync(HealthReportCache.Mode.Full);
+            // page in multiple tabs does not multiply storage load. A manual refresh forces a fresh
+            // computation so the button is never a no-op within the cache window.
+            _report = await HealthCache.GetAsync(HealthReportCache.Mode.Full, forceRefresh);
             _failingChecks = _report.Checks
                 .Where(kv => kv.Value.Status != HealthStatus.Healthy)
                 .OrderByDescending(kv => (int)kv.Value.Status)

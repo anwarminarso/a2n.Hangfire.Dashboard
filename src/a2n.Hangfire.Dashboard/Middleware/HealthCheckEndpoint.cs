@@ -89,7 +89,7 @@ internal static class HealthCheckEndpoint
             var mode = isLive ? HealthReportCache.Mode.Live
                      : isReady ? HealthReportCache.Mode.Ready
                      : HealthReportCache.Mode.Full;
-            report = await service.GetAsync(mode, context.RequestAborted);
+            report = await service.GetAsync(mode, ct: context.RequestAborted);
         }
         catch (Exception ex)
         {
