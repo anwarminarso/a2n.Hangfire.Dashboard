@@ -297,7 +297,7 @@ HTTP status follows the K8s convention: `200` for `Healthy` or `Degraded`, `503`
 ```json
 {
   "status": "Degraded",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "timestamp": "2026-06-07T01:08:18.96Z",
   "durationMs": 50,
   "checks": {
@@ -418,7 +418,8 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.1.1 | ✅ Done | WebSocket fix for Startup-pattern host apps |
 | v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
 | v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
-| v2.3 | In progress | Operational visibility, notifications, integrations & ops controls (combined release) — health ✅, hero card ✅, alerts/pause/Prometheus/OTel/REST API/audit log pending |
+| v2.3.0 | ✅ Done | Operational visibility: health checks (`/healthz` + ASP.NET Core `IHealthCheck` adapter), health hero card, collapsible metrics |
+| v2.3.x | Planned | Remaining operational scope: alerts/notifications, queue pause, Prometheus, OTel, REST API, audit log |
 | v3.0 | Planned | Stretch goals & long-term backlog (Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
 
 See the full [roadmap](docs/ROADMAP.md) for details.

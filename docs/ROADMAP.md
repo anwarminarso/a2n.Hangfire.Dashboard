@@ -322,7 +322,8 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.1.1 | WebSocket fix for Startup-pattern host apps (Generic Host compatibility) | ✅ Done |
 | v2.2 | UX improvements: progress circle, Fetched page, delete modals, mobile nav fix | ✅ Done |
 | v2.2.1 | Security & auth hardening: authorization defaults, SignalR auth, SQL validation | ✅ Done |
-| v2.3 | Operational visibility, notifications, integrations & ops controls (combined release) | In progress |
+| v2.3.0 | Operational visibility: health checks + hero card + collapsible metrics (first slice of the combined release) | ✅ Done |
+| v2.3.x | Remaining operational scope: notifications, queue pause, Prometheus, OTel, REST API, audit log | In progress |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |
 
 ---
