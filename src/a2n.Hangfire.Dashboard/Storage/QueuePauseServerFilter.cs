@@ -66,6 +66,29 @@ public class QueuePauseServerFilter : IElectStateFilter
         _logger = logger;
     }
 
+    /// <summary>
+    /// Returns true when a <see cref="QueuePauseServerFilter"/> is registered in Hangfire's global
+    /// job filters — i.e. the host called
+    /// <see cref="HangfireDashboardServerFilterExtensions.UseDashboardQueuePauseFilter"/>. The UI
+    /// uses this to decide whether to warn operators that pause toggles won't take effect.
+    /// </summary>
+    public static bool IsRegistered()
+    {
+        try
+        {
+            foreach (var filter in global::Hangfire.GlobalJobFilters.Filters)
+            {
+                if (filter.Instance is QueuePauseServerFilter) return true;
+            }
+        }
+        catch
+        {
+            // If the global filter collection can't be read, assume registered to avoid nagging.
+            return true;
+        }
+        return false;
+    }
+
     /// <inheritdoc />
     public void OnStateElection(ElectStateContext context)
     {
