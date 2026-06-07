@@ -104,9 +104,7 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
             }
         </div>
                 @* State cards — chronological (newest first), console embedded in Processing *@
-                var attemptIndex = retrySummary.RetryCount > 0
-                    ? BuildAttemptIndex(_job.History)
-                    : null;
+                var attemptIndex = retrySummary.AttemptIndex;
                 <div class="d-flex flex-column gap-2">
                     @foreach (var state in _job.History)
                     {
@@ -465,35 +463,6 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
     /// </summary>
     private string FormatStackTrace(string stackTrace)
         => Helpers.StackTraceFormatter.Format(stackTrace, Options?.SourceLink);
-
-    /// <summary>
-    /// Numbers each Failed (and the immediately-preceding Processing) state with its retry attempt index.
-    /// Returns null when there are no retries to number. The dictionary maps the original
-    /// <see cref="StateHistoryDto"/> reference to its 1-based attempt number.
-    /// </summary>
-    private static Dictionary<StateHistoryDto, int> BuildAttemptIndex(IList<StateHistoryDto> history)
-    {
-        if (history is null || history.Count == 0) return null;
-
-        // Walk in chronological order (history is stored newest-first) and assign attempt numbers
-        // every time we encounter a Processing state. The matching Failed state inherits the same number.
-        var chronological = history.Reverse().ToList();
-        var index = new Dictionary<StateHistoryDto, int>();
-        var attempt = 0;
-        foreach (var entry in chronological)
-        {
-            if (entry.StateName == "Processing")
-            {
-                attempt++;
-                index[entry] = attempt;
-            }
-            else if (entry.StateName == "Failed" && attempt > 0)
-            {
-                index[entry] = attempt;
-            }
-        }
-        return index.Count > 0 ? index : null;
-    }
 
     private async Task Requeue()
     {
