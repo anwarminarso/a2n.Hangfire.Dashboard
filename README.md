@@ -41,6 +41,7 @@ The biggest operations-focused release yet. The dashboard goes from a **viewer y
 | ⏸️ | **Queue pause / resume** | Pause a single queue from the new card-based `/queues` page. Workers reschedule jobs instead of running them — **no data loss**. [→](#operations) |
 | 🚧 | **Maintenance mode** | One global toggle pauses every queue, with a persistent banner on every page. [→](#operations) |
 | 📋 | **Audit log** | Every admin action recorded — who, when, what — on a new `/audit` page, attributed to the real signed-in user. [→](#operations) |
+| 🔗 | **Enhanced Job Details** | Continuation **dependency graph**, a **retry summary banner**, and clickable **stack-trace source links** (GitHub/GitLab/Azure DevOps/Bitbucket/local IDE). [→](#job-dependency-graph) |
 
 ```csharp
 // Liveness/readiness probes + queue-pause enforcement in one place:
@@ -72,9 +73,9 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Recurring jobs | Create, edit, start, and stop recurring jobs from the UI |
 | Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
 | Job tags | Tagging and tag cloud (Hangfire.Tags-compatible storage) |
-| Job dependency graph | Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
-| Retry summary | Inline banner above state history showing retry count + exception consistency |
-| Stack trace links | File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
+| Job dependency graph | 🆕 Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
+| Retry summary | 🆕 Inline banner above state history showing retry count + exception consistency |
+| Stack trace links | 🆕 File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
 | Global search | Search by job ID, name, queue, tag, or exception text |
 | Advanced filters | Filter by date, duration, state, server, and more |
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |

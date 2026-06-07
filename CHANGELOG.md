@@ -40,6 +40,12 @@
 - `samples/SampleAppAuth` — cookie authentication demo with login form.
 - `MetricsQueryCache` with per-key stampede protection for analytics queries.
 
+### Added — Enhanced Job Details
+
+- **Continuation dependency graph** on the Job Details page — visualizes `BackgroundJob.ContinueJobWith(...)` chains. Walks up to the root parent then expands descendants, with edge labels for the continuation condition (`on succeeded` / `on deleted` / `on any`). Clickable nodes, dashed placeholders for expired/deleted jobs, and a **Load more** button bounded by `JobGraphMaxDepth` (default 5) and `JobGraphMaxNodes` (default 30).
+- **Retry summary banner** above the state history — shows the retry count and whether every attempt failed with the same exception type (a quick signal for a persistent root cause vs flaky failures). Each Processing/Failed state is numbered with its attempt index.
+- **Stack trace source links** — file references in exception stack traces (`... in {path}:line {N}`) become clickable links to your source provider. Built-in presets for GitHub, GitLab (incl. self-hosted), Azure DevOps, Bitbucket, and local IDEs (`vscode://`, etc.), plus a custom `UrlPattern`. Configure via `DashboardUIOptions.SourceLink`; path normalization helpers `WithPathStrip(...)` / `WithPathReplace(...)`. Only safe URL schemes are rendered as links.
+
 ### Security
 
 - **BREAKING:** `DashboardUIOptions.Authorization` now defaults to `LocalRequestsOnlyAuthorizationFilter` (same as Hangfire built-in dashboard). Remote hosts receive HTTP 401 unless you set `Authorization = []` or add your own filters.
