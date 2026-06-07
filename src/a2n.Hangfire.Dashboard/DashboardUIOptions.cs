@@ -109,6 +109,18 @@ public class DashboardUIOptions
     public HealthThresholds HealthCheckThresholds { get; set; } = new HealthThresholds();
 
     /// <summary>
+    /// Audit log configuration — retention, max entries, enable/disable.
+    /// The audit log records admin actions (job requeue/delete, recurring CRUD, queue pause,
+    /// maintenance toggles) for compliance and post-mortem investigation.
+    /// </summary>
+    public AuditLogOptions AuditLog { get; set; } = new AuditLogOptions();
+
+    /// <summary>
+    /// Configuration for the queue pause / maintenance mode subsystem (v2.3.x).
+    /// </summary>
+    public QueueOperationsOptions QueueOperations { get; set; } = new QueueOperationsOptions();
+
+    /// <summary>
     /// Creates DashboardUIOptions from an existing Hangfire DashboardOptions instance.
     /// Maps relevant properties for backward compatibility.
     /// </summary>

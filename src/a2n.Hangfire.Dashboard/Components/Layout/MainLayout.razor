@@ -2,6 +2,8 @@
 @inject NavigationManager Navigation
 @inject DashboardUIOptions Options
 @inject IJSRuntime JS
+@inject IServiceProvider Services
+@inject a2n.Hangfire.Dashboard.Services.AuditActorAccessor ActorAccessor
 @implements IDisposable
 
 <div class="d-flex vh-100 overflow-hidden">
@@ -53,6 +55,7 @@
         </header>
 
         <main class="flex-grow-1 overflow-auto p-3 p-lg-4">
+            <MaintenanceBanner />
             @Body
         </main>
 
@@ -68,6 +71,48 @@
     {
         Navigation.LocationChanged += OnLocationChanged;
         UpdatePageTitle(Navigation.Uri);
+        _ = CaptureActorAsync();
+    }
+
+    // Resolve the acting user once per circuit so audit entries are attributed correctly.
+    // AuthenticationStateProvider is available on the circuit even when HttpContext is not.
+    private async Task CaptureActorAsync()
+    {
+        if (ActorAccessor.HasActor) return;
+
+        string user = null;
+        try
+        {
+            var authProvider = Services.GetService(typeof(Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider))
+                as Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider;
+            if (authProvider is not null)
+            {
+                var authState = await authProvider.GetAuthenticationStateAsync();
+                var principal = authState?.User;
+                if (principal?.Identity?.IsAuthenticated == true)
+                {
+                    user = principal.Identity.Name
+                        ?? principal.FindFirst("preferred_username")?.Value
+                        ?? principal.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
+                        ?? principal.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+                }
+            }
+        }
+        catch { /* auth not configured — fall through to anonymous */ }
+
+        if (string.IsNullOrEmpty(user)) user = "(anonymous)";
+
+        // Best-effort client IP from the initial HTTP context (available during prerender).
+        string ip = null;
+        try
+        {
+            var httpAccessor = Services.GetService(typeof(Microsoft.AspNetCore.Http.IHttpContextAccessor))
+                as Microsoft.AspNetCore.Http.IHttpContextAccessor;
+            ip = httpAccessor?.HttpContext?.Connection?.RemoteIpAddress?.ToString();
+        }
+        catch { /* ignore */ }
+
+        ActorAccessor.Set(user, ip);
     }
 
     private void OnLocationChanged(object sender, LocationChangedEventArgs e)
@@ -115,9 +160,11 @@
             "/jobs/awaiting" => "Awaiting Jobs",
             "/recurring" => "Recurring Jobs",
             "/servers" => "Servers",
+            "/queues" => "Queues",
             "/retries" => "Retries",
             "/tags" => "Tags",
             "/search" => "Search",
+            "/audit" => "Audit Log",
             "/analytics" => "Analytics Dashboard",
             _ when path.StartsWith("/analytics/") => "Analytics Dashboard",
             _ when path.StartsWith("/jobs/details/") => $"Job #{path.Split('/').Last()}",

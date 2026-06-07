@@ -1,0 +1,251 @@
+@page "/audit"
+@inject AuditLogService AuditLog
+@inject DashboardUIOptions Options
+@implements IDisposable
+
+<PageTitle>Audit Log</PageTitle>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+    <div>
+        <h2 class="fw-semibold mb-1">Audit Log</h2>
+        <p class="text-body-secondary mb-0">
+            Records of admin actions performed through the dashboard.
+            Retention: @((int)Options.AuditLog.Retention.TotalDays) day(s), max @Options.AuditLog.MaxEntries.ToString("N0") entries.
+        </p>
+    </div>
+</div>
+
+@if (!Options.AuditLog.Enabled)
+{
+    <EmptyState Icon="exclamation-triangle" Color="warning"
+                Message="Audit log is disabled."
+                Subtitle="Set DashboardUIOptions.AuditLog.Enabled = true to record admin actions." />
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-12 col-md-3">
+                    <label class="form-label small fw-semibold mb-1">Action</label>
+                    <select class="form-select form-select-sm" @bind="_actionPrefix" @bind:after="ApplyFilters">
+                        <option value="">All actions</option>
+                        <option value="job.">Job actions (requeue / delete)</option>
+                        <option value="jobs.">Batch job actions</option>
+                        <option value="recurring.">Recurring job actions</option>
+                        <option value="queue.">Queue pause / resume</option>
+                        <option value="maintenance.">Maintenance mode</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label small fw-semibold mb-1">User</label>
+                    <input type="text" class="form-control form-control-sm" maxlength="200"
+                           placeholder="contains..." @bind="_userFilter" @bind:event="oninput"
+                           @bind:after="DebouncedApplyFilters" />
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label small fw-semibold mb-1">Target</label>
+                    <input type="text" class="form-control form-control-sm" maxlength="200"
+                           placeholder="job id, queue, recurring id..." @bind="_targetFilter" @bind:event="oninput"
+                           @bind:after="DebouncedApplyFilters" />
+                </div>
+                <div class="col-12 col-md-3 d-flex align-items-end">
+                    <button type="button" class="btn btn-sm btn-outline-secondary w-100" @onclick="ResetFilters">
+                        Reset filters
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_entries is null)
+    {
+        <p class="text-body-secondary">Loading...</p>
+    }
+    else if (_entries.Count == 0)
+    {
+        <EmptyState Icon="clipboard-check" Color="secondary"
+                    Message="No audit entries match the current filters."
+                    Subtitle="Admin actions performed through the dashboard appear here." />
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 14rem;">When</th>
+                                <th style="width: 13rem;">Action</th>
+                                <th style="width: 12rem;">User</th>
+                                <th>Target</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in _entries)
+                            {
+                                <tr>
+                                    <td title="@e.TimestampUtc.ToString("O")">
+                                        <RelativeTime UtcTime="@e.TimestampUtc" />
+                                    </td>
+                                    <td>
+                                        <span class="badge @ActionBadgeClass(e.Action)">@e.Action</span>
+                                    </td>
+                                    <td>
+                                        @e.User
+                                        @if (!string.IsNullOrEmpty(e.ClientIp))
+                                        {
+                                            <br /><small class="text-body-secondary font-monospace">@e.ClientIp</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(e.Target))
+                                        {
+                                            <code>@e.Target</code>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(e.Reason))
+                                        {
+                                            <div>@e.Reason</div>
+                                        }
+                                        @if (e.Metadata is { Count: > 0 })
+                                        {
+                                            <div class="small text-body-secondary">
+                                                @foreach (var kv in e.Metadata)
+                                                {
+                                                    <span class="me-2"><strong>@kv.Key:</strong> @kv.Value</span>
+                                                }
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+            <div class="text-body-secondary small">
+                Showing @_entries.Count entr@(_entries.Count == 1 ? "y" : "ies")
+                @if (_pageOffset > 0)
+                {
+                    <text> · skipping first @_pageOffset</text>
+                }
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" disabled="@(_pageOffset == 0)" @onclick="PrevPage">
+                    <i class="bi bi-chevron-left"></i> Previous
+                </button>
+                <button class="btn btn-outline-secondary" disabled="@(_entries.Count < _pageSize)" @onclick="NextPage">
+                    Next <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private const int _pageSize = 50;
+    private const int _debounceMs = 350;
+
+    private IReadOnlyList<AuditLogEntry> _entries;
+    private int _pageOffset;
+
+    private string _actionPrefix = string.Empty;
+    private string _userFilter = string.Empty;
+    private string _targetFilter = string.Empty;
+
+    private CancellationTokenSource _debounceCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var filter = BuildFilter();
+        _entries = await Task.Run(() => AuditLog.Query(filter, _pageOffset, _pageSize));
+    }
+
+    private AuditLogFilter BuildFilter() => new()
+    {
+        ActionPrefix = string.IsNullOrEmpty(_actionPrefix) ? null : _actionPrefix,
+        User = string.IsNullOrEmpty(_userFilter) ? null : _userFilter,
+        Target = string.IsNullOrEmpty(_targetFilter) ? null : _targetFilter,
+    };
+
+    // Coalesces rapid keystrokes into a single query instead of hitting storage on every key.
+    private async Task DebouncedApplyFilters()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+
+        try
+        {
+            await Task.Delay(_debounceMs, token);
+            if (token.IsCancellationRequested) return;
+            await ApplyFilters();
+        }
+        catch (TaskCanceledException)
+        {
+            // Superseded by a newer keystroke — ignore.
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        _pageOffset = 0;
+        await LoadAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        _actionPrefix = string.Empty;
+        _userFilter = string.Empty;
+        _targetFilter = string.Empty;
+        _pageOffset = 0;
+        await LoadAsync();
+    }
+
+    private async Task PrevPage()
+    {
+        if (_pageOffset == 0) return;
+        _pageOffset = Math.Max(0, _pageOffset - _pageSize);
+        await LoadAsync();
+    }
+
+    private async Task NextPage()
+    {
+        _pageOffset += _pageSize;
+        await LoadAsync();
+    }
+
+    private static string ActionBadgeClass(string action)
+    {
+        if (string.IsNullOrEmpty(action)) return "bg-secondary";
+        if (action.StartsWith("maintenance.")) return "bg-warning text-dark";
+        if (action.StartsWith("queue.")) return "bg-info text-dark";
+        if (action.StartsWith("recurring.")) return "bg-primary";
+        if (action == AuditAction.JobDeleted || action == AuditAction.JobsDeletedBatch) return "bg-danger";
+        if (action == AuditAction.JobRequeued || action == AuditAction.JobsRequeuedBatch) return "bg-success";
+        return "bg-secondary";
+    }
+
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+    }
+}

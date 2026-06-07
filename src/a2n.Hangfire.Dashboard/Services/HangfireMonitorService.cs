@@ -11,10 +11,12 @@ namespace a2n.Hangfire.Dashboard.Services;
 public class HangfireMonitorService
 {
     private readonly JobStorage _storage;
+    private readonly AuditLogService _audit;
 
-    public HangfireMonitorService(JobStorage storage)
+    public HangfireMonitorService(JobStorage storage, AuditLogService audit = null)
     {
         _storage = storage;
+        _audit = audit;
     }
 
     /// <summary>
@@ -129,7 +131,9 @@ public class HangfireMonitorService
     public bool RequeueJob(string jobId)
     {
         var client = new BackgroundJobClient(_storage);
-        return client.ChangeState(jobId, new EnqueuedState());
+        var ok = client.ChangeState(jobId, new EnqueuedState());
+        if (ok) _audit?.Log(AuditAction.JobRequeued, target: jobId);
+        return ok;
     }
 
     /// <summary>
@@ -138,7 +142,9 @@ public class HangfireMonitorService
     public bool DeleteJob(string jobId)
     {
         var client = new BackgroundJobClient(_storage);
-        return client.ChangeState(jobId, new DeletedState { Reason = "Deleted via Dashboard" });
+        var ok = client.ChangeState(jobId, new DeletedState { Reason = "Deleted via Dashboard" });
+        if (ok) _audit?.Log(AuditAction.JobDeleted, target: jobId);
+        return ok;
     }
 
     /// <summary>
@@ -147,11 +153,20 @@ public class HangfireMonitorService
     public int RequeueJobs(IEnumerable<string> jobIds)
     {
         var client = new BackgroundJobClient(_storage);
+        var idList = jobIds?.ToList() ?? [];
         var count = 0;
-        foreach (var jobId in jobIds)
+        foreach (var jobId in idList)
         {
             if (client.ChangeState(jobId, new EnqueuedState()))
                 count++;
+        }
+        if (idList.Count > 0)
+        {
+            _audit?.Log(AuditAction.JobsRequeuedBatch, metadata: new Dictionary<string, string>
+            {
+                ["requested"] = idList.Count.ToString(),
+                ["succeeded"] = count.ToString(),
+            });
         }
         return count;
     }
@@ -162,11 +177,20 @@ public class HangfireMonitorService
     public int DeleteJobs(IEnumerable<string> jobIds)
     {
         var client = new BackgroundJobClient(_storage);
+        var idList = jobIds?.ToList() ?? [];
         var count = 0;
-        foreach (var jobId in jobIds)
+        foreach (var jobId in idList)
         {
             if (client.ChangeState(jobId, new DeletedState { Reason = "Deleted via Dashboard" }))
                 count++;
+        }
+        if (idList.Count > 0)
+        {
+            _audit?.Log(AuditAction.JobsDeletedBatch, metadata: new Dictionary<string, string>
+            {
+                ["requested"] = idList.Count.ToString(),
+                ["succeeded"] = count.ToString(),
+            });
         }
         return count;
     }
@@ -202,6 +226,15 @@ public class HangfireMonitorService
             QueueName = queue ?? "default"
         });
 #pragma warning restore CS0618
+
+        _audit?.Log(AuditAction.RecurringUpdated, target: jobId, metadata: new Dictionary<string, string>
+        {
+            ["typeName"] = typeName,
+            ["methodName"] = methodName,
+            ["cron"] = cron,
+            ["queue"] = queue ?? "default",
+            ["timeZone"] = timeZoneId ?? "UTC",
+        });
     }
 
     /// <summary>
@@ -211,6 +244,7 @@ public class HangfireMonitorService
     {
         var manager = new RecurringJobManager(_storage);
         manager.Trigger(recurringJobId);
+        _audit?.Log(AuditAction.RecurringTriggered, target: recurringJobId);
     }
 
     /// <summary>
@@ -220,6 +254,7 @@ public class HangfireMonitorService
     {
         var manager = new RecurringJobManager(_storage);
         manager.RemoveIfExists(recurringJobId);
+        _audit?.Log(AuditAction.RecurringDeleted, target: recurringJobId);
     }
 
     /// <summary>
@@ -228,8 +263,17 @@ public class HangfireMonitorService
     public void TriggerRecurringJobs(IEnumerable<string> recurringJobIds)
     {
         var manager = new RecurringJobManager(_storage);
-        foreach (var id in recurringJobIds)
+        var ids = recurringJobIds?.ToList() ?? [];
+        foreach (var id in ids)
             manager.Trigger(id);
+        if (ids.Count > 0)
+        {
+            _audit?.Log(AuditAction.RecurringTriggered, metadata: new Dictionary<string, string>
+            {
+                ["count"] = ids.Count.ToString(),
+                ["ids"] = string.Join(",", ids.Take(20)) + (ids.Count > 20 ? $",+{ids.Count - 20}" : string.Empty),
+            });
+        }
     }
 
     /// <summary>
@@ -238,8 +282,17 @@ public class HangfireMonitorService
     public void RemoveRecurringJobs(IEnumerable<string> recurringJobIds)
     {
         var manager = new RecurringJobManager(_storage);
-        foreach (var id in recurringJobIds)
+        var ids = recurringJobIds?.ToList() ?? [];
+        foreach (var id in ids)
             manager.RemoveIfExists(id);
+        if (ids.Count > 0)
+        {
+            _audit?.Log(AuditAction.RecurringDeleted, metadata: new Dictionary<string, string>
+            {
+                ["count"] = ids.Count.ToString(),
+                ["ids"] = string.Join(",", ids.Take(20)) + (ids.Count > 20 ? $",+{ids.Count - 20}" : string.Empty),
+            });
+        }
     }
 
     // ===== Recurring Job Start/Stop =====
@@ -279,6 +332,8 @@ public class HangfireMonitorService
         // Remove the recurring job from the scheduler
         var manager = new RecurringJobManager(_storage);
         manager.RemoveIfExists(recurringJobId);
+
+        _audit?.Log(AuditAction.RecurringStopped, target: recurringJobId);
     }
 
     /// <summary>
@@ -308,6 +363,8 @@ public class HangfireMonitorService
         // Mark the hash as deleted by overwriting with a flag
         transaction.SetRangeInHash(hashKey, [new KeyValuePair<string, string>("_deleted", "true")]);
         transaction.Commit();
+
+        _audit?.Log(AuditAction.RecurringStarted, target: recurringJobId);
     }
 
     /// <summary>

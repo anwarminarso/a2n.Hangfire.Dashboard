@@ -1,10 +1,14 @@
 @using a2n.Hangfire.Dashboard.Interfaces
+@using a2n.Hangfire.Dashboard.Services
+@using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Extensions.DependencyInjection
 @inject HangfireMonitorService Monitor
 @inject TagsDataReader TagsReader
+@inject QueueOperationsStateCache StateCache
 @inject IServiceProvider ServiceProvider
+@inject NavigationManager Navigation
 @inject DashboardUIOptions Options
-@implements IDisposable
+@implements IAsyncDisposable
 
 <nav class="hf-nav">
     <!-- Brand -->
@@ -92,6 +96,14 @@
                 <span class="hf-nav-counter">@_stats.Servers</span>
             }
         </NavLink>
+        <NavLink class="hf-nav-item" href="queues">
+            <i class="bi bi-collection hf-nav-icon"></i>
+            <span>Queues</span>
+            @if (_pausedQueueCount > 0)
+            {
+                <span class="hf-nav-counter hf-nav-counter--alert">@_pausedQueueCount</span>
+            }
+        </NavLink>
         <NavLink class="hf-nav-item" href="retries">
             <i class="bi bi-arrow-counterclockwise hf-nav-icon"></i>
             <span>Retries</span>
@@ -107,6 +119,10 @@
         <NavLink class="hf-nav-item" href="search">
             <i class="bi bi-search hf-nav-icon"></i>
             <span>Search</span>
+        </NavLink>
+        <NavLink class="hf-nav-item" href="audit">
+            <i class="bi bi-clipboard-check hf-nav-icon"></i>
+            <span>Audit Log</span>
         </NavLink>
         </NavMenuGroup>
     </div>
@@ -143,13 +159,16 @@
 
 @code {
     private static readonly string[] _jobsExpandPaths = { "jobs" };
-    private static readonly string[] _managementExpandPaths = { "recurring", "servers", "retries", "tags", "search" };
+    private static readonly string[] _managementExpandPaths = { "recurring", "servers", "queues", "retries", "tags", "search", "audit" };
     private static readonly string[] _analyticsExpandPaths = { "analytics" };
 
     private StatisticsDto _stats;
     private long _tagsCount;
+    private int _pausedQueueCount;
     private bool _analyticsAvailable;
-    private Timer _refreshTimer;
+    private HubConnection _hubConnection;
+    private Timer _fallbackTimer;
+    private Timer _slowTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -157,34 +176,100 @@
 
         await LoadStats();
 
-        _refreshTimer = new Timer(async _ =>
+        // Stats come from the centralized SignalR metrics broadcast (the same stream the Home page
+        // and MetricsBroadcastService use) rather than a per-circuit GetStatistics() poll. This
+        // avoids multiplying storage load by the number of open tabs.
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("hubs/dashboard"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<Dictionary<string, object>>("MetricsUpdated", async metrics =>
+        {
+            await InvokeAsync(() =>
+            {
+                ApplyMetrics(metrics);
+                StateHasChanged();
+            });
+        });
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            await _hubConnection.InvokeAsync("SubscribeToMetrics");
+        }
+        catch
+        {
+            // SignalR unavailable — fall back to a lightweight stats poll.
+            _fallbackTimer = new Timer(async _ =>
+            {
+                try
+                {
+                    var stats = await Task.Run(() => Monitor.GetStatistics());
+                    await InvokeAsync(() => { _stats = stats; StateHasChanged(); });
+                }
+                catch { }
+            }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        }
+
+        // Tags count and paused-queue count aren't part of the metrics broadcast and change rarely.
+        // Refresh them on a slow timer; the paused count reads the shared (cached) state, so this is
+        // cheap regardless of how many tabs are open.
+        _slowTimer = new Timer(async _ =>
         {
             try
             {
-                var stats = Monitor.GetStatistics();
-                var tagsCount = TagsReader.GetTagsCount();
+                var tagsCount = await Task.Run(() => TagsReader.GetTagsCount());
+                var ops = await StateCache.GetAsync();
+                var paused = ops.MaintenanceMode ? 0 : ops.PausedQueues.Count;
                 await InvokeAsync(() =>
                 {
-                    _stats = stats;
                     _tagsCount = tagsCount;
+                    _pausedQueueCount = paused;
                     StateHasChanged();
                 });
             }
             catch { }
-        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private void ApplyMetrics(Dictionary<string, object> metrics)
+    {
+        _stats ??= new StatisticsDto();
+        _stats.Enqueued = GetLong(metrics, "enqueued");
+        _stats.Processing = GetLong(metrics, "processing");
+        _stats.Scheduled = GetLong(metrics, "scheduled");
+        _stats.Failed = GetLong(metrics, "failed");
+        _stats.Recurring = GetLong(metrics, "recurring");
+        _stats.Servers = GetLong(metrics, "servers");
+    }
+
+    private static long GetLong(Dictionary<string, object> metrics, string key)
+    {
+        if (!metrics.TryGetValue(key, out var value) || value is null) return 0;
+        if (value is System.Text.Json.JsonElement json)
+            return json.TryGetInt64(out var l) ? l : 0;
+        return Convert.ToInt64(value);
     }
 
     private async Task LoadStats()
     {
-        await Task.Run(() =>
-        {
-            _stats = Monitor.GetStatistics();
-            _tagsCount = TagsReader.GetTagsCount();
-        });
+        var stats = await Task.Run(() => Monitor.GetStatistics());
+        var tagsCount = await Task.Run(() => TagsReader.GetTagsCount());
+        var ops = await StateCache.GetAsync();
+        _stats = stats;
+        _tagsCount = tagsCount;
+        _pausedQueueCount = ops.MaintenanceMode ? 0 : ops.PausedQueues.Count;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _refreshTimer?.Dispose();
+        _fallbackTimer?.Dispose();
+        _slowTimer?.Dispose();
+        if (_hubConnection is not null)
+        {
+            try { await _hubConnection.DisposeAsync(); }
+            catch { }
+        }
     }
 }

@@ -1,0 +1,231 @@
+@page "/queues"
+@inject HangfireMonitorService Monitor
+@inject QueueOperationsService Operations
+@inject QueueOperationsStateCache StateCache
+@inject DashboardUIOptions Options
+@using a2n.Hangfire.Dashboard.Services
+@implements IDisposable
+
+<PageTitle>Queues</PageTitle>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+    <div>
+        <h2 class="fw-semibold mb-1">Queues</h2>
+        <p class="text-body-secondary mb-0">
+            Pause individual queues to stop workers from picking up new jobs, or enable
+            maintenance mode to pause all queues at once.
+        </p>
+    </div>
+
+    @if (!Options.IsReadOnly && Options.QueueOperations.Enabled)
+    {
+        @if (_state?.MaintenanceMode == true)
+        {
+            <button type="button" class="btn btn-warning" @onclick="DisableMaintenance">
+                <i class="bi bi-play-fill me-1"></i>
+                Disable maintenance mode
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#maintenanceModal">
+                <i class="bi bi-cone-striped me-1"></i>
+                Enable maintenance mode
+            </button>
+        }
+    }
+</div>
+
+@if (_state is null || _queues is null)
+{
+    <p class="text-body-secondary">Loading...</p>
+}
+else if (_queues.Count == 0)
+{
+    <EmptyState Icon="inbox" Color="secondary"
+                Message="No queues found."
+                Subtitle="Queues appear here once jobs are enqueued or servers are configured." />
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Queue</th>
+                            <th class="text-end">Enqueued</th>
+                            <th class="text-end">Fetched</th>
+                            <th>Status</th>
+                            <th class="text-end" style="width: 1%; white-space: nowrap;">&nbsp;</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in _queues)
+                        {
+                            var paused = _state.PausedQueues.Contains(q.Name);
+                            var maintenance = _state.MaintenanceMode;
+
+                            <tr class="@(paused || maintenance ? "table-warning" : "")">
+                                <td>
+                                    <code>@q.Name</code>
+                                </td>
+                                <td class="text-end">@q.Length.ToString("N0")</td>
+                                <td class="text-end">@(q.Fetched?.ToString("N0") ?? "—")</td>
+                                <td>
+                                    @if (maintenance)
+                                    {
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="bi bi-cone-striped"></i> Maintenance
+                                        </span>
+                                    }
+                                    else if (paused)
+                                    {
+                                        <span class="badge bg-secondary">
+                                            <i class="bi bi-pause-fill"></i> Paused
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">
+                                            <i class="bi bi-check-circle"></i> Active
+                                        </span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    @if (!Options.IsReadOnly && Options.QueueOperations.Enabled && !maintenance)
+                                    {
+                                        @if (paused)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-success"
+                                                    @onclick="() => ResumeQueue(q.Name)">
+                                                <i class="bi bi-play-fill"></i> Resume
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="() => PauseQueue(q.Name)">
+                                                <i class="bi bi-pause-fill"></i> Pause
+                                            </button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @if (Options.QueueOperations.Enabled)
+    {
+        <p class="text-body-secondary small mt-3 mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            Paused queues stop workers from executing jobs. Workers that fetch a paused job
+            @(Options.QueueOperations.Behavior == PausedJobBehavior.Reschedule
+                ? $"reschedule it +{(int)Options.QueueOperations.RescheduleDelay.TotalSeconds}s and continue with other queues."
+                : "re-enqueue it immediately.")
+            Requires the host to register
+            <code>UseDashboardQueuePauseFilter()</code> in its Hangfire configuration.
+        </p>
+    }
+}
+
+@* Maintenance mode confirmation modal *@
+<div class="modal fade" id="maintenanceModal" tabindex="-1" aria-labelledby="maintenanceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="maintenanceModalLabel">
+                    <i class="bi bi-cone-striped text-warning me-2"></i>
+                    Enable maintenance mode
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will pause <strong>all queues</strong>. Workers will stop executing jobs and reschedule them while maintenance is active.</p>
+                <div class="mb-3">
+                    <label class="form-label">Reason (optional)</label>
+                    <input type="text" class="form-control" maxlength="200" @bind="_maintenanceReason" placeholder="e.g. DB migration, hotfix deploy"/>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" data-bs-dismiss="modal" @onclick="EnableMaintenance">
+                    Enable maintenance mode
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private QueueOperationsState _state;
+    private IList<global::Hangfire.Storage.Monitoring.QueueWithTopEnqueuedJobsDto> _queues;
+    private Timer _refreshTimer;
+    private string _maintenanceReason = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadAsync();
+                    StateHasChanged();
+                });
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task LoadAsync()
+    {
+        await Task.Run(() =>
+        {
+            _queues = Monitor.GetQueues();
+        });
+        _state = await StateCache.GetAsync();
+    }
+
+    private async Task PauseQueue(string queueName)
+    {
+        await Task.Run(() => Operations.PauseQueue(queueName));
+        StateCache.Invalidate();
+        await LoadAsync();
+    }
+
+    private async Task ResumeQueue(string queueName)
+    {
+        await Task.Run(() => Operations.ResumeQueue(queueName));
+        StateCache.Invalidate();
+        await LoadAsync();
+    }
+
+    private async Task EnableMaintenance()
+    {
+        var reason = _maintenanceReason;
+        await Task.Run(() => Operations.EnableMaintenanceMode(reason));
+        _maintenanceReason = string.Empty;
+        StateCache.Invalidate();
+        await LoadAsync();
+    }
+
+    private async Task DisableMaintenance()
+    {
+        await Task.Run(() => Operations.DisableMaintenanceMode());
+        StateCache.Invalidate();
+        await LoadAsync();
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}
