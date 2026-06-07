@@ -262,11 +262,11 @@ Granular plan replacing the original single-bullet "Webhook notifications".
 - [ ] "Test webhook" button (dry-run send with sample payload)
 - [ ] Notification history page (last N fires, success/failure)
 
-#### Operations (P0)
+#### Operations (P0) ✅
 
-- [ ] **Pause/Resume per queue** — `QueuePauseFilter` (IServerFilter) reading from a paused-queues set. Dashboard toggle on Servers/Queues page. Audit-logged.
-- [ ] **Maintenance mode** — global pause-all toggle from header. Persistent yellow banner. Optional "until X time" auto-resume scheduler.
-- [ ] **Audit log** — every admin action (delete, requeue, recurring CRUD, pause, …) recorded with user, timestamp, target. New `/audit` page with filter. Storage via Hangfire's KV store under `audit:*`.
+- ✅ **Pause/Resume per queue** — `QueuePauseServerFilter` (`IElectStateFilter`) intercepts the transition into Processing and reschedules paused jobs (default +30s, configurable via `QueueOperationsOptions`) — never cancels them, so no job is ever deleted. Dashboard toggle on the new `/queues` page. Audit-logged. Requires the host to call `config.UseDashboardQueuePauseFilter()` so running servers respect the pause.
+- ✅ **Maintenance mode** — global pause-all toggle from the Queues page. Persistent yellow banner with reason field rendered on every dashboard page.
+- ✅ **Audit log** — every admin action (delete, requeue, batch ops, recurring CRUD, recurring stop/start, queue pause/resume, maintenance toggles) recorded with user, timestamp, target, client IP, and metadata. User attribution uses a per-circuit `AuditActorAccessor` (from `AuthenticationStateProvider`) since Blazor circuit actions have no `HttpContext`. New `/audit` page with filter by action prefix, user, target. Storage uses Hangfire's KV primitives — no schema changes. Configurable retention (default 30d) and max entries (default 10K).
 
 #### Integrations (P1)
 
@@ -323,7 +323,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.2 | UX improvements: progress circle, Fetched page, delete modals, mobile nav fix | ✅ Done |
 | v2.2.1 | Security & auth hardening: authorization defaults, SignalR auth, SQL validation | ✅ Done |
 | v2.3.0 | Operational visibility: health checks + hero card + collapsible metrics (first slice of the combined release) | ✅ Done |
-| v2.3.x | Remaining operational scope: notifications, queue pause, Prometheus, OTel, REST API, audit log | In progress |
+| v2.3.x | Remaining operational scope: notifications, queue pause + maintenance + audit log ✅, Prometheus, OTel, REST API | In progress |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |
 
 ---

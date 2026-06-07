@@ -42,6 +42,11 @@ builder.Services.AddHangfire(config =>
 
     config.UseConsole();
     config.UseTags();
+
+    // Enable the dashboard's queue-pause / maintenance-mode filter so toggling pause in the UI
+    // takes effect on this Hangfire server. Without this call the dashboard still records the
+    // pause but jobs would keep executing on running servers until restart.
+    config.UseDashboardQueuePauseFilter();
 });
 
 builder.Services.AddHangfireServer(options =>
