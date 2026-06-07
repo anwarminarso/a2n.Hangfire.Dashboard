@@ -96,6 +96,19 @@ public class DashboardUIOptions
     public IEnumerable<IDashboardAsyncAuthorizationFilter> AsyncAuthorization { get; set; } = [];
 
     /// <summary>
+    /// Authorization mode for the health check endpoint (<c>/healthz</c>, <c>/healthz/ready</c>,
+    /// <c>/healthz/full</c>). Defaults to <see cref="HealthCheckAuthorization.AllowAnonymous"/> so
+    /// Kubernetes liveness/readiness probes work without configuring authentication on the prober.
+    /// </summary>
+    public HealthCheckAuthorization HealthCheckAuthorizationMode { get; set; } = HealthCheckAuthorization.AllowAnonymous;
+
+    /// <summary>
+    /// Configurable thresholds for the dashboard's built-in health checks.
+    /// Modify individual properties to tune what counts as Degraded vs Unhealthy.
+    /// </summary>
+    public HealthThresholds HealthCheckThresholds { get; set; } = new HealthThresholds();
+
+    /// <summary>
     /// Creates DashboardUIOptions from an existing Hangfire DashboardOptions instance.
     /// Maps relevant properties for backward compatibility.
     /// </summary>

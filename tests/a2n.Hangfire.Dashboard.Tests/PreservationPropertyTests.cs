@@ -347,7 +347,11 @@ public class PreservationPropertyTests
         // Act
         var cut = ctx.RenderComponent<Home>();
 
-        // Wait for async initialization to complete
+        // Wait for async initialization to complete (stats loaded → toggle button appears)
+        cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TimeSpan.FromSeconds(5));
+
+        // The 8-card detailed grid is collapsed by default behind the "Detailed metrics" toggle.
+        cut.Find(".hf-stats-toggle").Click();
         cut.WaitForState(() => cut.Markup.Contains("Servers"), TimeSpan.FromSeconds(5));
 
         // Assert - verify all 8 stat cards render with correct labels
@@ -378,7 +382,11 @@ public class PreservationPropertyTests
         // Act
         var cut = ctx.RenderComponent<Home>();
 
-        // Wait for async initialization to complete
+        // Wait for async initialization to complete (stats loaded → toggle button appears)
+        cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TimeSpan.FromSeconds(5));
+
+        // The 8-card detailed grid is collapsed by default behind the "Detailed metrics" toggle.
+        cut.Find(".hf-stats-toggle").Click();
         cut.WaitForState(() => cut.Markup.Contains("Servers"), TimeSpan.FromSeconds(5));
 
         // Assert - all 8 labels are present
@@ -535,6 +543,14 @@ public class PreservationPropertyTests
     {
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
 
+        var options = new DashboardUIOptions();
+        ctx.Services.AddSingleton(options);
         ctx.Services.AddSingleton(new HangfireMonitorService(_storage));
+        // HealthHeroCard (embedded in the Home page) depends on these.
+        ctx.Services.AddScoped(sp => new HealthCheckService(
+            sp.GetRequiredService<HangfireMonitorService>(),
+            sp.GetRequiredService<DashboardUIOptions>(),
+            null));
+        ctx.Services.AddSingleton<HealthReportCache>();
     }
 }

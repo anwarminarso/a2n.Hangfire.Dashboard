@@ -72,6 +72,18 @@ public static class HangfireDashboardUIExtensions
             return new HangfireMonitorService(storage);
         });
 
+        services.AddScoped<HealthCheckService>(sp =>
+        {
+            var monitor = sp.GetRequiredService<HangfireMonitorService>();
+            var options = sp.GetRequiredService<DashboardUIOptions>();
+            var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<HealthCheckService>();
+            return new HealthCheckService(monitor, options, logger);
+        });
+
+        // Process-wide cache so concurrent circuits (hero card) and K8s probes share a single
+        // computed report per mode within a short TTL, instead of each hitting storage independently.
+        services.AddSingleton<HealthReportCache>();
+
         services.AddScoped<ConsoleDataReader>(sp =>
         {
             var storage = sp.GetRequiredService<JobStorage>();
@@ -158,6 +170,8 @@ public static class HangfireDashboardUIExtensions
             registered.Authorization = options.Authorization;
             registered.AsyncAuthorization = options.AsyncAuthorization;
             registered.LoginPath = options.LoginPath;
+            registered.HealthCheckAuthorizationMode = options.HealthCheckAuthorizationMode;
+            registered.HealthCheckThresholds = options.HealthCheckThresholds ?? new HealthThresholds();
         }
 
         // Normalize pathMatch to ensure it starts with / and has no trailing slash

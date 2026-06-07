@@ -24,6 +24,15 @@ internal class DashboardMiddleware
     {
         var path = context.Request.Path.Value ?? string.Empty;
 
+        // Health endpoint is handled before any auth/antiforgery so K8s probes can reach it.
+        // The endpoint applies its own authorization mode based on
+        // DashboardUIOptions.HealthCheckAuthorizationMode.
+        if (path.StartsWith("/healthz", StringComparison.OrdinalIgnoreCase))
+        {
+            if (await HealthCheckEndpoint.TryHandleAsync(context, _options))
+                return;
+        }
+
         // Serve embedded static resources (CSS, JS, fonts, images) — no auth required for assets
         if (path.StartsWith("/_content/", StringComparison.OrdinalIgnoreCase) ||
             path.Equals("/_content", StringComparison.OrdinalIgnoreCase))
