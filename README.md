@@ -31,6 +31,31 @@ Navigate to `/hangfire`. Done.
 
 ---
 
+## 🚀 What's New in 2.3.0 — Operational Visibility & Controls
+
+The biggest operations-focused release yet. The dashboard goes from a **viewer you open when something breaks** to a **first-class operational tool**.
+
+| | Feature | What you get |
+|---|---------|--------------|
+| 🩺 | **Health checks** | `/healthz` · `/healthz/ready` · `/healthz/full` endpoints for Kubernetes & load balancers, an ASP.NET Core `IHealthCheck` adapter, and a traffic-light **hero card** on the Home page. [→](#health-checks) |
+| ⏸️ | **Queue pause / resume** | Pause a single queue from the new card-based `/queues` page. Workers reschedule jobs instead of running them — **no data loss**. [→](#operations) |
+| 🚧 | **Maintenance mode** | One global toggle pauses every queue, with a persistent banner on every page. [→](#operations) |
+| 📋 | **Audit log** | Every admin action recorded — who, when, what — on a new `/audit` page, attributed to the real signed-in user. [→](#operations) |
+
+```csharp
+// Liveness/readiness probes + queue-pause enforcement in one place:
+builder.Services.AddHangfire(config => config
+    .UseSqlServerStorage(connStr)
+    .UseDashboardQueuePauseFilter());        // honour pause toggles on running servers
+
+builder.Services.AddHealthChecks()
+    .AddHangfireDashboard(tags: new[] { "ready" });   // unified /health endpoint
+```
+
+See the full [2.3.0 changelog](CHANGELOG.md) for every option and detail.
+
+---
+
 ## About
 
 Hangfire ships a capable monitoring UI out of the box. Many teams extend it with community packages for additional dashboard features — for example [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console), [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags), and [Hangfire.RecurringJobAdmin](https://github.com/bamotav/Hangfire.RecurringJobAdmin). Dashboard analytics are also available in [Hangfire Pro](https://www.hangfire.io/pricing/).
@@ -53,9 +78,9 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Global search | Search by job ID, name, queue, tag, or exception text |
 | Advanced filters | Filter by date, duration, state, server, and more |
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
-| Health checks | `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
-| Queue pause / maintenance | Pause individual queues or enable global maintenance mode — see [Operations](#operations) |
-| Audit log | Every admin action recorded (who, when, what) — see [Operations](#operations) |
+| Health checks | 🆕 `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
+| Queue pause / maintenance | 🆕 Pause individual queues or enable global maintenance mode — see [Operations](#operations) |
+| Audit log | 🆕 Every admin action recorded (who, when, what) — see [Operations](#operations) |
 | Realtime updates | Live metrics via SignalR |
 | Authorization | Local-only default (same as Hangfire); optional async filters and `LoginPath` redirect |
 | Theming | Dark, light, or auto; responsive layout |
@@ -481,8 +506,8 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.1.1 | ✅ Done | WebSocket fix for Startup-pattern host apps |
 | v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
 | v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
-| v2.3.0 | ✅ Done | Operational visibility: health checks (`/healthz` + ASP.NET Core `IHealthCheck` adapter), health hero card, collapsible metrics |
-| v2.3.x | In progress | Operations P0 ✅ (queue pause/resume, maintenance mode, audit log). Pending: alerts/notifications, Prometheus, OTel, REST API |
+| v2.3.0 | ✅ Done | **Operational visibility & controls** — health checks (`/healthz` + `IHealthCheck` adapter) & hero card, queue pause/resume, maintenance mode, audit log |
+| v2.3.x | Planned | Alerts/notifications, Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API |
 | v3.0 | Planned | Stretch goals & long-term backlog (Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
 
 See the full [roadmap](docs/ROADMAP.md) for details.

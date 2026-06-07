@@ -214,9 +214,11 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Analytics: `await` tasks instead of `.Result` after `WhenAll` (async best practice)
 - ✅ Collapsible sidebar navigation groups
 
-### v2.3 — Operational Visibility, Notifications & Integrations ⏳
+### v2.3 — Operational Visibility, Notifications & Integrations
 
 **Goal**: Move from "viewer you open when something breaks" to "first-class operational tool" — at-a-glance health, alerts when things go wrong, daily ops controls, and integration with the modern observability stack.
+
+> **v2.3.0 shipped ✅** — health checks, health hero card, queue pause/resume, maintenance mode, and audit log are all released. The remaining items below (notifications, Prometheus, OpenTelemetry, REST API) are planned for subsequent v2.3.x releases.
 
 #### Health Check ✅
 - ✅ HTTP endpoints `/{dashboard}/healthz` (liveness), `/healthz/ready` (readiness), `/healthz/full` (full report)
@@ -322,8 +324,8 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.1.1 | WebSocket fix for Startup-pattern host apps (Generic Host compatibility) | ✅ Done |
 | v2.2 | UX improvements: progress circle, Fetched page, delete modals, mobile nav fix | ✅ Done |
 | v2.2.1 | Security & auth hardening: authorization defaults, SignalR auth, SQL validation | ✅ Done |
-| v2.3.0 | Operational visibility: health checks + hero card + collapsible metrics (first slice of the combined release) | ✅ Done |
-| v2.3.x | Remaining operational scope: notifications, queue pause + maintenance + audit log ✅, Prometheus, OTel, REST API | In progress |
+| v2.3.0 | **Operational visibility & controls**: health checks + hero card, queue pause/resume, maintenance mode, audit log | ✅ Done |
+| v2.3.x | Alerts/notifications, Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |
 
 ---
