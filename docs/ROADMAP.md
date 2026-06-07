@@ -305,7 +305,6 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 - [ ] **Smart Insights card** — auto-generated observations on Home page using simple anomaly detection (z-score).
 - [ ] **Tag-based Analytics** — filter all analytics by tag, failure rate per tag, tag cloud with metrics overlay.
 - [ ] **Historical server utilization & queue depth** — requires custom snapshot storage.
-- [ ] **Source code linking** — `DashboardUIOptions.SourceLink` (already shipped).
 
 ---
 
