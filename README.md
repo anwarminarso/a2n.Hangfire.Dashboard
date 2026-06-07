@@ -53,6 +53,7 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Global search | Search by job ID, name, queue, tag, or exception text |
 | Advanced filters | Filter by date, duration, state, server, and more |
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
+| Health checks | `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
 | Realtime updates | Live metrics via SignalR |
 | Authorization | Local-only default (same as Hangfire); optional async filters and `LoginPath` redirect |
 | Theming | Dark, light, or auto; responsive layout |
@@ -268,6 +269,93 @@ Linked URLs only work when the viewer has access to the source provider. Private
 
 ---
 
+## Health Checks
+
+The dashboard exposes a structured health endpoint suitable for Kubernetes probes, load balancer health checks, and status pages.
+
+| Endpoint | Use case | Checks |
+|----------|----------|--------|
+| `GET /{dashboard}/healthz` | Liveness probe (K8s) | Storage probe |
+| `GET /{dashboard}/healthz/ready` | Readiness probe (K8s) | Storage + servers |
+| `GET /{dashboard}/healthz/full` | Status pages, dashboard hero card | All six checks below |
+
+HTTP status follows the K8s convention: `200` for `Healthy` or `Degraded`, `503` for `Unhealthy`.
+
+### Built-in checks
+
+| Key | What it covers |
+|-----|----------------|
+| `storage` | Round-trip time of a `GetStatistics()` call to the Hangfire storage backend |
+| `servers` | Total vs alive vs stale heartbeat (per `ServerHeartbeatTolerance`) |
+| `queue_depth` | Highest queue length compared to warn/critical thresholds |
+| `stuck_processing` | Processing jobs older than `StuckProcessingMinutes` (sample size: 200) |
+| `failure_rate` | Last-hour failure percentage from Hangfire's hourly counters |
+| `recurring_jobs` | Recurring jobs whose `NextExecution` is older than `RecurringMissedTolerance` |
+
+### Sample response (`/hangfire/healthz/full`)
+
+```json
+{
+  "status": "Degraded",
+  "version": "2.2.1",
+  "timestamp": "2026-06-07T01:08:18.96Z",
+  "durationMs": 50,
+  "checks": {
+    "storage":          { "status": "Healthy",  "data": { "responseTimeMs": 3 } },
+    "servers":          { "status": "Degraded", "description": "1 of 2 server(s) have stale heartbeats." },
+    "queue_depth":      { "status": "Healthy",  "data": { "maxDepth": 0 } },
+    "stuck_processing": { "status": "Healthy",  "data": { "stuckCount": 0, "totalProcessing": 0 } },
+    "failure_rate":     { "status": "Degraded", "description": "Failure rate 20.0% in last hour (warn threshold 10%)." },
+    "recurring_jobs":   { "status": "Healthy",  "data": { "total": 7, "missed": 0 } }
+  }
+}
+```
+
+### Configuration
+
+```csharp
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
+{
+    // AllowAnonymous (default) so K8s/LB probes work without auth.
+    // Use LocalOnly for loopback-only probes, or RequireDashboardAuth for the full filter chain.
+    HealthCheckAuthorizationMode = HealthCheckAuthorization.AllowAnonymous,
+
+    HealthCheckThresholds = new HealthThresholds
+    {
+        StuckProcessingMinutes      = 30,
+        QueueDepthWarn              = 1000,
+        QueueDepthCritical          = 10000,
+        FailureRatePercent          = 10.0,   // Degraded threshold
+        FailureRateCritical         = 25.0,   // Unhealthy threshold
+        RecurringMissedTolerance    = TimeSpan.FromMinutes(5),
+        ServerHeartbeatTolerance    = TimeSpan.FromSeconds(60),
+        StorageResponseTimeWarnMs   = 1000,
+        StorageResponseTimeCriticalMs = 5000,
+    }
+});
+```
+
+### Plug into ASP.NET Core HealthChecks
+
+If your host already exposes a unified `/health` endpoint aggregating multiple dependencies (database, message broker, Hangfire, ...), register the dashboard as an `IHealthCheck`:
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddHangfireDashboard(tags: new[] { "ready" });
+
+app.MapHealthChecks("/health");                                   // all checks
+app.MapHealthChecks("/health/ready",                               // readiness subset
+    new() { Predicate = c => c.Tags.Contains("ready") });
+```
+
+The adapter reuses the same `HealthCheckService.CheckFull()` so results match what the dashboard's own endpoint and hero card show.
+
+### Hero card
+
+The Home page shows a top-of-page traffic light (Healthy / Degraded / Critical) with per-issue descriptions and deep-link actions ("View processing →", "View failed →"). Auto-refreshes every 10 seconds. The detailed 8-card stat grid is now collapsed behind a "Detailed metrics" toggle to keep the hero front-and-center.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -330,8 +418,8 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.1.1 | ✅ Done | WebSocket fix for Startup-pattern host apps |
 | v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
 | v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
-| v2.3 | In progress | Enhanced Job Details: dependency graph, retry summary, stack trace source links |
-| v3.0 | Planned | Notifications, REST API, Prometheus metrics, theming |
+| v2.3 | In progress | Operational visibility, notifications, integrations & ops controls (combined release) — health ✅, hero card ✅, alerts/pause/Prometheus/OTel/REST API/audit log pending |
+| v3.0 | Planned | Stretch goals & long-term backlog (Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
 
 See the full [roadmap](docs/ROADMAP.md) for details.
 

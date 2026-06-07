@@ -2,18 +2,24 @@
 
 ## Unreleased
 
+### Added
+
+- **Health check endpoint** at `/{dashboard}/healthz`, `/healthz/ready`, and `/healthz/full`. Returns a structured JSON `HealthReport` covering storage availability, server liveness, queue depth, stuck processing jobs, last-hour failure rate, and missed recurring schedules. HTTP 200 for `Healthy`/`Degraded`, HTTP 503 for `Unhealthy` (K8s probe convention).
+- **Health hero card** on the Home page — at-a-glance traffic light (Healthy / Degraded / Critical) with per-issue descriptions, deep-link actions, and an auto-refresh every 10 seconds. The detailed 8-card stat grid is now collapsible behind a "Detailed metrics" toggle.
+- `DashboardUIOptions.HealthCheckAuthorizationMode` (`AllowAnonymous` default for K8s, `LocalOnly`, or `RequireDashboardAuth`).
+- `DashboardUIOptions.HealthCheckThresholds` to tune what counts as Degraded vs Unhealthy (queue depth, failure rate, stuck-processing minutes, server heartbeat tolerance, recurring missed tolerance, storage response time).
+- `HealthCheckService` (DI-registered) — also usable from host code if you want to wire the report into your own ASP.NET Core HealthCheck pipeline.
+- `services.AddHealthChecks().AddHangfireDashboard()` adapter — register the dashboard as a single ASP.NET Core `IHealthCheck` for hosts that prefer a unified `/health` endpoint aggregating multiple dependencies. Per-check status surfaces via `HealthCheckResult.Data`.
+- `IDashboardAsyncAuthorizationFilter` and Hangfire filter adapters.
+- `DashboardUIOptions.LoginPath` for redirecting unauthenticated users to a login page.
+- `samples/SampleAppAuth` — cookie authentication demo with login form.
+- `MetricsQueryCache` with per-key stampede protection for analytics queries.
+
 ### Security
 
 - **BREAKING:** `DashboardUIOptions.Authorization` now defaults to `LocalRequestsOnlyAuthorizationFilter` (same as Hangfire built-in dashboard). Remote hosts receive HTTP 401 unless you set `Authorization = []` or add your own filters.
 - SignalR hub and Blazor circuit paths now require the same authorization as dashboard pages.
 - Schema/table identifiers from configuration are validated (`^[a-zA-Z_][a-zA-Z0-9_]*$`) before use in SQL.
-
-### Added
-
-- `IDashboardAsyncAuthorizationFilter` and Hangfire filter adapters.
-- `DashboardUIOptions.LoginPath` for redirecting unauthenticated users to a login page.
-- `samples/SampleAppAuth` — cookie authentication demo with login form.
-- `MetricsQueryCache` with per-key stampede protection for analytics queries.
 
 ### Fixed
 

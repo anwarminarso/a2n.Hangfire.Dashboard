@@ -64,6 +64,12 @@ builder.Services.AddHangfireDashboardUI(options =>
     }
 });
 
+// Register the Hangfire dashboard as a single ASP.NET Core IHealthCheck so it shows up in the
+// host's unified /health endpoint (mapped below) alongside any other dependencies. Tagged "ready"
+// so you can expose a readiness-only subset via MapHealthChecks(predicate: r => r.Tags.Contains("ready")).
+builder.Services.AddHealthChecks()
+    .AddHangfireDashboard(tags: new[] { "ready" });
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -83,6 +89,19 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     // provider preset (GitHub / GitLab / AzureDevOps / Bitbucket) so links work for everyone.
     SourceLink = SourceLinkOptions.Local()
         .WithPathStrip("HangfireDashboard"),
+
+    // Health endpoints exposed inside the dashboard branch:
+    //   GET /hangfire/healthz       — liveness  (storage probe only)
+    //   GET /hangfire/healthz/ready — readiness (storage + servers)
+    //   GET /hangfire/healthz/full  — full report (used by the Home page hero card)
+    // Default = AllowAnonymous so K8s / load balancer probes work without auth.
+    HealthCheckAuthorizationMode = HealthCheckAuthorization.AllowAnonymous,
+    HealthCheckThresholds = new HealthThresholds
+    {
+        StuckProcessingMinutes = 30,
+        QueueDepthWarn = 1000,
+        FailureRatePercent = 10.0,
+    },
     // Authorization defaults to LocalRequestsOnlyAuthorizationFilter.
     // Set Authorization = [] to allow all hosts, or see SampleAppAuth for cookie login.
 });
@@ -90,6 +109,15 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 // Seed sample recurring jobs (full demo set: basic + long-running + continuation pipeline)
 app.Lifetime.ApplicationStarted.Register(SampleJobsSeeder.SeedAll);
 
-app.MapGet("/health", () => Results.Ok("healthy"));
+// Two health surfaces, each with a distinct purpose:
+//
+//   GET /health           — host-wide aggregate via ASP.NET Core HealthChecks. Covers every
+//                           registered IHealthCheck, including the Hangfire dashboard adapter
+//                           (tagged "ready") wired up above. Use this for app-level probes.
+//
+//   GET /hangfire/healthz — Hangfire-only probe served inside the dashboard branch (liveness).
+//                           Also /hangfire/healthz/ready and /hangfire/healthz/full. Use these
+//                           when you want to probe Hangfire specifically without the rest of the app.
+app.MapHealthChecks("/health");
 
 app.Run();
