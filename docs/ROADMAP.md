@@ -153,8 +153,8 @@ services.AddHangfireDashboardUI(options =>
   - Custom via `UrlPattern` with `{path}` / `{absolutePath}` / `{line}` placeholders
   - `PathTransform` + `WithPathStrip(folderName)` / `WithPathReplace(regex, repl)` helpers for build-agent path normalization
   - Default null → behavior unchanged; opt-in
-  - ~~Retry history with diff~~ — superseded by retry summary banner above (full diff view dropped from scope)
-- [ ] Job execution duration chart (historical) — overlap with `/analytics/performance`; deferred
+  - ~~Retry history with diff~~ — **dropped.** Superseded by the retry summary banner; retried jobs run with identical arguments (so an argument diff is almost always empty), and per-attempt stack traces are already expandable in the state history.
+- ~~Job execution duration chart (historical, on Job Details page)~~ — **dropped.** Duplicates `/analytics/performance` (duration trend p50/p95/p99 + duration by type); a per-instance page is the wrong place for type-level aggregates.
 
 ### Bug Fixes (post v2.0)
 - ✅ Fixed realtime chart on Home page not animating (chartjs-plugin-streaming globally disabled by analyticsCharts.js)
@@ -238,8 +238,10 @@ services.AddHangfireDashboardUI(options =>
 
 #### Enhanced Job Details (carryover from earlier scope)
 - ✅ Continuation dependency graph (with Load more) — `JobGraphViewer`
-- [ ] Retry history with diff (compare arguments / stack trace / duration across attempts)
-- [ ] Job execution duration chart per type (historical, on Job Details page)
+- ✅ Retry summary banner — retry count + exception consistency + per-attempt badges
+- ✅ Stack trace source links — `DashboardUIOptions.SourceLink`
+- ~~Retry history with diff~~ — **dropped** (superseded by the retry banner; retry arguments are identical, per-attempt stack traces already expandable)
+- ~~Job execution duration chart per type (on Job Details page)~~ — **dropped** (duplicates `/analytics/performance`; wrong place for type-level aggregates)
 
 #### Notifications & Alert Rules (P0)
 
