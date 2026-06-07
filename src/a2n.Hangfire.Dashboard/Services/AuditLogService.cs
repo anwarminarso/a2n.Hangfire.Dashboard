@@ -121,7 +121,12 @@ public class AuditLogService
             // `results.Count >= count` break and the `maxScan` cap, so a large set never triggers
             // thousands of hash round-trips on a single page request.
             var maxScan = Math.Max((from + count) * 4, 200);
-            var ids = storageConnection.GetRangeFromSet(SetKey, 0, int.MaxValue);
+            // NOTE: endingAt must stay below int.MaxValue. SQL Server / PostgreSQL providers compute
+            // "@endingAt + 1" internally, so passing int.MaxValue overflows to a negative bound and
+            // returns ZERO rows (the audit page would always look empty on those storages, even
+            // though InMemory tolerates it). Use a large-but-safe upper bound instead.
+            const int maxIndex = int.MaxValue - 1;
+            var ids = storageConnection.GetRangeFromSet(SetKey, 0, maxIndex);
             // Hangfire doesn't expose ZREVRANGE; we sort by id descending (id begins with ticks).
             var sortedIds = ids
                 .OrderByDescending(s => s, StringComparer.Ordinal)
@@ -180,7 +185,8 @@ public class AuditLogService
 
             var total = storageConnection.GetSetCount(SetKey);
             var cutoffTicks = (DateTime.UtcNow - _options.AuditLog.Retention).Ticks;
-            var ids = storageConnection.GetRangeFromSet(SetKey, 0, int.MaxValue);
+            // See note in Query(): int.MaxValue overflows the SQL providers' "@endingAt + 1".
+            var ids = storageConnection.GetRangeFromSet(SetKey, 0, int.MaxValue - 1);
 
             // Find ids to remove: too old OR over the count cap (keep newest `MaxEntries`).
             var sorted = ids.OrderBy(s => s, StringComparer.Ordinal).ToList(); // ascending = oldest first
