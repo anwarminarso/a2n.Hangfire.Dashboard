@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard.PostgreSql\a2n.Hangfire.Dashboard.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\a2n.Hangfire.Console\a2n.Hangfire.Console.csproj" />
     <ProjectReference Include="..\..\src\a2n.Hangfire.Tags\a2n.Hangfire.Tags.csproj" />
+    <ProjectReference Include="..\SampleApp.SharedJobs\SampleApp.SharedJobs.csproj" />
   </ItemGroup>
 
 </Project>

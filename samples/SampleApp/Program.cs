@@ -3,7 +3,7 @@ using Hangfire;
 using Hangfire.Console;
 using Hangfire.Tags;
 using Hangfire.PostgreSql;
-using SampleApp.Jobs;
+using SampleApp.SharedJobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,44 +76,19 @@ if (!app.Environment.IsDevelopment())
 app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
     DashboardTitle = "My Dashboard",
-    EnableRecurringJobAdmin = true
+    EnableRecurringJobAdmin = true,
+
+    // Make stack-trace file references clickable. While developing locally, the Local() preset
+    // opens files in VS Code via the vscode:// protocol. For shared dashboards, swap to a remote
+    // provider preset (GitHub / GitLab / AzureDevOps / Bitbucket) so links work for everyone.
+    SourceLink = SourceLinkOptions.Local()
+        .WithPathStrip("HangfireDashboard"),
     // Authorization defaults to LocalRequestsOnlyAuthorizationFilter.
     // Set Authorization = [] to allow all hosts, or see SampleAppAuth for cookie login.
 });
 
-// Seed sample recurring jobs
-app.Lifetime.ApplicationStarted.Register(() =>
-{
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "simple-job",
-        x => x.SimpleJob(),
-        Cron.Minutely);
-
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "console-job",
-        x => x.ConsoleJob(null!),
-        "*/2 * * * *");
-
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "tagged-job",
-        x => x.TaggedJob(null!),
-        "*/3 * * * *");
-
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "failing-job",
-        x => x.FailingJob(),
-        "*/5 * * * *");
-
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "long-running-job",
-        x => x.LongRunningJob(null!),
-        "*/10 * * * *");
-
-    RecurringJob.AddOrUpdate<SampleJobs>(
-        "long-running-job-label",
-        x => x.LongRunningJobLabel(null!),
-        "*/10 * * * *");
-});
+// Seed sample recurring jobs (full demo set: basic + long-running + continuation pipeline)
+app.Lifetime.ApplicationStarted.Register(SampleJobsSeeder.SeedAll);
 
 app.MapGet("/health", () => Results.Ok("healthy"));
 

@@ -1,6 +1,6 @@
 using Hangfire;
 using Microsoft.AspNetCore.Mvc;
-using SampleAppMvc.Jobs;
+using SampleApp.SharedJobs;
 
 namespace SampleAppMvc.Controllers;
 

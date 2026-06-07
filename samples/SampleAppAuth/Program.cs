@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using SampleAppAuth.Auth;
-using SampleAppAuth.Jobs;
+using SampleApp.SharedJobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -138,9 +138,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 
 app.Lifetime.ApplicationStarted.Register(() =>
 {
-    RecurringJob.AddOrUpdate<SampleJobs>("simple-job", x => x.SimpleJob(), Cron.Minutely);
-    RecurringJob.AddOrUpdate<SampleJobs>("console-job", x => x.ConsoleJob(null!), "*/2 * * * *");
-    RecurringJob.AddOrUpdate<SampleJobs>("failing-job", x => x.FailingJob(), "*/5 * * * *");
+    SampleJobsSeeder.SeedBasic();
 });
 
 app.MapGet("/health", () => Results.Ok("healthy"));

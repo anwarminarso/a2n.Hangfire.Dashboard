@@ -84,6 +84,8 @@ public static class HangfireDashboardUIExtensions
             return new TagsDataReader(storage);
         });
 
+        services.AddScoped<JobGraphService>();
+
         services.AddScoped<SearchService>(sp =>
         {
             var storage = sp.GetRequiredService<JobStorage>();
@@ -150,6 +152,9 @@ public static class HangfireDashboardUIExtensions
             registered.DefaultRecordsPerPage = options.DefaultRecordsPerPage;
             registered.DefaultTheme = options.DefaultTheme;
             registered.FaviconPath = options.FaviconPath;
+            registered.JobGraphMaxDepth = options.JobGraphMaxDepth;
+            registered.JobGraphMaxNodes = options.JobGraphMaxNodes;
+            registered.SourceLink = options.SourceLink;
             registered.Authorization = options.Authorization;
             registered.AsyncAuthorization = options.AsyncAuthorization;
             registered.LoginPath = options.LoginPath;

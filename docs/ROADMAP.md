@@ -137,9 +137,24 @@ services.AddHangfireDashboardUI(options =>
 - ✅ AnalyticsBroadcastService (5s interval SignalR push)
 
 ### 2.5 Enhanced Job Details
-- [ ] Job dependency graph (continuations visualized)
-- [ ] Retry history with diff
-- [ ] Job execution duration chart (historical)
+- ✅ Job dependency graph (continuations visualized) — `JobGraphViewer` on Job Details page
+  - Walks up via Awaiting state's `ParentId`, then expands descendants via `Continuations` parameter
+  - Edge labels: `on succeeded`, `on deleted`, `on any` (continuation condition)
+  - Bounded traversal: `DashboardUIOptions.JobGraphMaxDepth` (default 5) and `JobGraphMaxNodes` (default 30)
+  - "Load more" button when truncated — doubles node budget and adds +3 depth per click, capped at 200 nodes / depth 12
+  - Click any node to navigate to that job's details; expired/deleted jobs render as dashed placeholders
+  - Storage-agnostic — uses `IMonitoringApi.JobDetails` only
+- ✅ Retry summary banner — inline pill above state history
+  - Shows retry count, exception consistency (same / different / N unique types), with hover tooltip listing distinct exception types
+  - Per-attempt badge (`#1`, `#2`, ...) on Failed/Processing state cards
+  - Hidden when there are no retries (zero noise for healthy jobs)
+- ✅ Stack trace source links — `DashboardUIOptions.SourceLink`
+  - Presets: `GitHub`, `GitLab` (with self-hosted host override), `AzureDevOps`, `Bitbucket`, `Local` (vscode://, cursor://, vs://, ...)
+  - Custom via `UrlPattern` with `{path}` / `{absolutePath}` / `{line}` placeholders
+  - `PathTransform` + `WithPathStrip(folderName)` / `WithPathReplace(regex, repl)` helpers for build-agent path normalization
+  - Default null → behavior unchanged; opt-in
+  - ~~Retry history with diff~~ — superseded by retry summary banner above (full diff view dropped from scope)
+- [ ] Job execution duration chart (historical) — overlap with `/analytics/performance`; deferred
 
 ### Bug Fixes (post v2.0)
 - ✅ Fixed realtime chart on Home page not animating (chartjs-plugin-streaming globally disabled by analyticsCharts.js)
@@ -251,6 +266,7 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v2.1.1 | WebSocket fix for Startup-pattern host apps (Generic Host compatibility) | ✅ Done |
 | v2.2 | UX improvements: progress circle, Fetched page, delete modals, mobile nav fix | ✅ Done |
 | v2.2.1 | Security & auth hardening: authorization defaults, SignalR auth, SQL validation | ✅ Done |
+| v2.3 | Enhanced Job Details: continuation dependency graph (with Load more), retry diff, historical duration chart | In progress |
 | v3.0 | Phase 3 — extensibility & integration | Planned |
 
 ---

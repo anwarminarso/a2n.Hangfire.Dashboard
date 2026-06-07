@@ -14,6 +14,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="../samples/SampleApp/SampleApp.csproj" />
+    <Project Path="../samples/SampleApp.SharedJobs/SampleApp.SharedJobs.csproj" />
     <Project Path="../samples/SampleAppAuth/SampleAppAuth.csproj" />
     <Project Path="../samples/SampleAppRazor/SampleAppRazor.csproj" />
     <Project Path="../samples/SampleAppMvc/SampleAppMvc.csproj" />
