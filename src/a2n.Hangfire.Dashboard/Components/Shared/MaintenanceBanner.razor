@@ -1,0 +1,85 @@
+@inject QueueOperationsStateCache StateCache
+@inject DashboardUIOptions Options
+@inject NavigationManager Navigation
+@using a2n.Hangfire.Dashboard.Services
+@implements IDisposable
+
+@if (_state is not null && _state.MaintenanceMode)
+{
+    <div class="hf-maintenance-banner" role="alert" aria-live="polite">
+        <div class="hf-maintenance-banner-icon" aria-hidden="true">
+            <i class="bi bi-cone-striped"></i>
+        </div>
+        <div class="hf-maintenance-banner-body">
+            <strong>Maintenance mode active</strong>
+            @if (_state.MaintenanceEnabledAtUtc.HasValue)
+            {
+                <span class="hf-maintenance-banner-meta">
+                    — enabled @FormatRelative(_state.MaintenanceEnabledAtUtc.Value)
+                    @if (!string.IsNullOrEmpty(_state.MaintenanceEnabledBy))
+                    {
+                        <text> by @_state.MaintenanceEnabledBy</text>
+                    }
+                </span>
+            }
+            @if (!string.IsNullOrEmpty(_state.MaintenanceReason))
+            {
+                <div class="hf-maintenance-banner-reason">@_state.MaintenanceReason</div>
+            }
+            <div class="hf-maintenance-banner-help">
+                All workers are skipping job execution and rescheduling jobs back into the queue.
+            </div>
+        </div>
+        @if (!Options.IsReadOnly && Options.QueueOperations.Enabled)
+        {
+            <a href="queues" class="btn btn-sm btn-warning hf-maintenance-banner-action">
+                Manage →
+            </a>
+        }
+    </div>
+}
+
+@code {
+    private QueueOperationsState _state;
+    private Timer _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    await Refresh();
+                    StateHasChanged();
+                });
+            }
+            catch { /* swallow — banner stays in last known state */ }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task Refresh()
+    {
+        _state = await StateCache.GetAsync();
+    }
+
+    private static string FormatRelative(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            < 86400 => $"{(int)diff.TotalHours}h ago",
+            _ => $"{(int)diff.TotalDays}d ago"
+        };
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

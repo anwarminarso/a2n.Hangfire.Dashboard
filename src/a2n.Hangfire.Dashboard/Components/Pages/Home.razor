@@ -6,9 +6,46 @@
 
 <PageTitle>Dashboard</PageTitle>
 
+<HealthHeroCard />
+
 @if (_stats is not null)
 {
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <button type="button"
+                class="hf-stats-toggle @(_statsExpanded ? "hf-stats-toggle--expanded" : "")"
+                @onclick="ToggleStats"
+                aria-expanded="@_statsExpanded.ToString().ToLowerInvariant()"
+                aria-controls="hf-detailed-metrics">
+            <i class="bi bi-chevron-right"></i>
+            <span>Detailed metrics</span>
+            <span class="hf-stats-toggle-count">8</span>
+        </button>
+    </div>
+}
+
+@if (_stats is null)
+{
+    @* Initial load — show skeleton until first data arrives *@
     <div class="row g-3 mb-4">
+        @for (var i = 0; i < 8; i++)
+        {
+            <div class="col-6 col-md-4 col-xl-3">
+                <div class="card">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <span class="placeholder col-2"></span>
+                        <div class="flex-grow-1">
+                            <span class="placeholder col-4 placeholder-lg"></span>
+                            <span class="placeholder col-6 placeholder-sm"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else if (_statsExpanded)
+{
+    <div class="row g-3 mb-4" id="hf-detailed-metrics">
         <div class="col-6 col-md-4 col-xl-3">
             <div class="card hf-stat-border-secondary">
                 <div class="card-body d-flex align-items-center gap-3">
@@ -99,25 +136,6 @@
         </div>
     </div>
 }
-else
-{
-    <div class="row g-3 mb-4">
-        @for (var i = 0; i < 8; i++)
-        {
-            <div class="col-6 col-md-4 col-xl-3">
-                <div class="card">
-                    <div class="card-body d-flex align-items-center gap-3">
-                        <span class="placeholder col-2"></span>
-                        <div class="flex-grow-1">
-                            <span class="placeholder col-4 placeholder-lg"></span>
-                            <span class="placeholder col-6 placeholder-sm"></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
-    </div>
-}
 
 <div class="row g-3 mb-4">
     <div class="col-12 col-lg-6">
@@ -200,12 +218,27 @@ else
     private long _prevFailed;
     private bool _chartsInitialized;
     private string _historyPeriod = "day";
+    // Detailed metrics grid is expanded by default. The user's choice is persisted to
+    // localStorage (see prefs.js) and restored on first render, mirroring the theme preference.
+    private bool _statsExpanded = true;
+    private const string StatsExpandedPrefKey = "home.statsExpanded";
 
     private string GetHistoryBtnClass(string period) =>
         _historyPeriod == period ? "btn-secondary" : "btn-outline-secondary";
 
     private Task OnDayClick() => SwitchHistoryPeriod("day");
     private Task OnWeekClick() => SwitchHistoryPeriod("week");
+
+    private async Task ToggleStats()
+    {
+        _statsExpanded = !_statsExpanded;
+        try
+        {
+            await JS.InvokeVoidAsync("dashboardPrefs.setBool", StatsExpandedPrefKey, _statsExpanded);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -308,6 +341,18 @@ else
     {
         if (firstRender)
         {
+            // Restore the persisted "Detailed metrics" expand/collapse preference (default: expanded).
+            try
+            {
+                var expanded = await JS.InvokeAsync<bool>("dashboardPrefs.getBool", StatsExpandedPrefKey, true);
+                if (expanded != _statsExpanded)
+                {
+                    _statsExpanded = expanded;
+                    StateHasChanged();
+                }
+            }
+            catch { }
+
             _chartsInitialized = true;
             await JS.InvokeVoidAsync("dashboardCharts.initRealtimeChart", "realtimeChart");
 

@@ -153,8 +153,8 @@ services.AddHangfireDashboardUI(options =>
   - Custom via `UrlPattern` with `{path}` / `{absolutePath}` / `{line}` placeholders
   - `PathTransform` + `WithPathStrip(folderName)` / `WithPathReplace(regex, repl)` helpers for build-agent path normalization
   - Default null → behavior unchanged; opt-in
-  - ~~Retry history with diff~~ — superseded by retry summary banner above (full diff view dropped from scope)
-- [ ] Job execution duration chart (historical) — overlap with `/analytics/performance`; deferred
+  - ~~Retry history with diff~~ — **dropped.** Superseded by the retry summary banner; retried jobs run with identical arguments (so an argument diff is almost always empty), and per-attempt stack traces are already expandable in the state history.
+- ~~Job execution duration chart (historical, on Job Details page)~~ — **dropped.** Duplicates `/analytics/performance` (duration trend p50/p95/p99 + duration by type); a per-instance page is the wrong place for type-level aggregates.
 
 ### Bug Fixes (post v2.0)
 - ✅ Fixed realtime chart on Home page not animating (chartjs-plugin-streaming globally disabled by analyticsCharts.js)
@@ -214,38 +214,97 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Analytics: `await` tasks instead of `.Result` after `WhenAll` (async best practice)
 - ✅ Collapsible sidebar navigation groups
 
+### v2.3 — Operational Visibility, Notifications & Integrations
+
+**Goal**: Move from "viewer you open when something breaks" to "first-class operational tool" — at-a-glance health, alerts when things go wrong, daily ops controls, and integration with the modern observability stack.
+
+> **v2.3.0 shipped ✅** — health checks, health hero card, queue pause/resume, maintenance mode, and audit log are all released. The remaining items below (notifications, Prometheus, OpenTelemetry, REST API) are planned for subsequent v2.3.x releases.
+
+#### Health Check ✅
+- ✅ HTTP endpoints `/{dashboard}/healthz` (liveness), `/healthz/ready` (readiness), `/healthz/full` (full report)
+- ✅ Six built-in checks: storage probe, server liveness, queue depth, stuck processing, last-hour failure rate, recurring missed schedules
+- ✅ HTTP 200 for `Healthy`/`Degraded`, HTTP 503 for `Unhealthy` (K8s probe convention)
+- ✅ `DashboardUIOptions.HealthCheckAuthorizationMode` (`AllowAnonymous` default for K8s probes, `LocalOnly`, or `RequireDashboardAuth`)
+- ✅ `DashboardUIOptions.HealthCheckThresholds` for tuning Degraded vs Unhealthy boundaries
+- ✅ `HealthCheckService` (DI-registered, reusable from host code)
+- ✅ ASP.NET Core `IHealthCheck` adapter via `services.AddHealthChecks().AddHangfireDashboard()` for unified `/health` endpoints
+
+#### Health Hero Card ✅
+- ✅ Top-of-page traffic light (Healthy / Degraded / Critical) on the Home page
+- ✅ Per-issue descriptions with deep-link actions (e.g., "View processing →")
+- ✅ Auto-refresh every 10s, manual refresh button, relative timestamp
+- ✅ Skeleton loader, mobile-responsive (stacked layout)
+- ✅ 8-card detailed stat grid collapsed behind a "Detailed metrics" toggle
+
+#### Enhanced Job Details (carryover from earlier scope)
+- ✅ Continuation dependency graph (with Load more) — `JobGraphViewer`
+- ✅ Retry summary banner — retry count + exception consistency + per-attempt badges
+- ✅ Stack trace source links — `DashboardUIOptions.SourceLink`
+- ~~Retry history with diff~~ — **dropped** (superseded by the retry banner; retry arguments are identical, per-attempt stack traces already expandable)
+- ~~Job execution duration chart per type (on Job Details page)~~ — **dropped** (duplicates `/analytics/performance`; wrong place for type-level aggregates)
+
+#### Notifications & Alert Rules (P0)
+
+Granular plan replacing the original single-bullet "Webhook notifications".
+
+- [ ] `NotificationRule` model + storage (Hangfire hash/set, no schema changes)
+- [ ] `INotificationChannel` abstraction
+- [ ] Built-in channels: Slack, Microsoft Teams, Discord, generic HTTP webhook, SMTP email
+- [ ] Eight built-in trigger types:
+  - [ ] Failure count (>N failed in last X minutes)
+  - [ ] Failure rate (>N% failed in last X minutes)
+  - [ ] Stuck processing (single job processing >X minutes)
+  - [ ] Queue depth (queue Y has >N enqueued)
+  - [ ] Server offline (no heartbeat for X seconds)
+  - [ ] Recurring missed (recurring job not fired in expected window)
+  - [ ] Specific exception (job throws exception matching regex)
+  - [ ] Long-running job (single job duration >X minutes)
+- [ ] `NotificationRuleProcessor` background service (poll, evaluate, dispatch with cooldown)
+- [ ] Mustache-style message template engine (`{count}`, `{topException}`, `{dashboardUrl}`, ...)
+- [ ] Per-rule cooldown (default 15 min) to prevent alert spam
+- [ ] Dashboard pages: `/notifications` (rules CRUD list) and rule editor with live preview
+- [ ] "Test webhook" button (dry-run send with sample payload)
+- [ ] Notification history page (last N fires, success/failure)
+
+#### Operations (P0) ✅
+
+- ✅ **Pause/Resume per queue** — `QueuePauseServerFilter` (`IElectStateFilter`) intercepts the transition into Processing and reschedules paused jobs (default +30s, configurable via `QueueOperationsOptions`) — never cancels them, so no job is ever deleted. Dashboard toggle on the new `/queues` page. Audit-logged. Requires the host to call `config.UseDashboardQueuePauseFilter()` so running servers respect the pause.
+- ✅ **Maintenance mode** — global pause-all toggle from the Queues page. Persistent yellow banner with reason field rendered on every dashboard page.
+- ✅ **Audit log** — every admin action (delete, requeue, batch ops, recurring CRUD, recurring stop/start, queue pause/resume, maintenance toggles) recorded with user, timestamp, target, client IP, and metadata. User attribution uses a per-circuit `AuditActorAccessor` (from `AuthenticationStateProvider`) since Blazor circuit actions have no `HttpContext`. New `/audit` page with filter by action prefix, user, target. Storage uses Hangfire's KV primitives — no schema changes. Configurable retention (default 30d) and max entries (default 10K).
+
+#### Integrations (P1)
+
+- [ ] **OpenTelemetry trace linking** — capture `traceparent` on enqueue, restore as child span on execute, render "View distributed trace →" link on Job Details. Shipped as `a2n.Hangfire.Dashboard.OpenTelemetry` package. `DashboardUIOptions.TraceLinkBuilder` for Tempo/Jaeger/Honeycomb URL templates.
+- [ ] **Prometheus `/metrics` endpoint** — text format 0.0.4. Exposes `hangfire_jobs_total`, `hangfire_jobs_in_state_count`, `hangfire_queue_length`, `hangfire_servers_count`, `hangfire_workers_count`, `hangfire_recurring_jobs_count`, `hangfire_job_duration_seconds` (histogram). No heavy library — plain string formatter. Sample Grafana dashboard JSON shipped in repo.
+- [ ] **REST API** (read-only first, optional package) — wraps existing `IStorageQueryProvider` services with Minimal API endpoints. JWT auth. OpenAPI spec auto-generated.
+- [ ] **CSV / JSON export** — stream-based, respects current search criteria.
+
+#### Customization
+
+- [ ] White-label theming (custom colors via Bootstrap CSS variables, logo upload via `DashboardUIOptions`)
+- [ ] Hide/show built-in pages via options (e.g., disable Analytics for tenants without metrics provider)
+- [ ] Saved views — filter + sort + columns saved as named views per user, pinnable to sidebar
+
 ---
 
-## Phase 3 — Extensibility & Integration
+## Stretch / Backlog
 
-**Goal**: Features for extensibility and integration with external tools.
+Items considered but explicitly **not prioritized**. Will be reconsidered when 5+ users explicitly request them.
 
-### 3.1 Notifications & Alerts
-- [ ] Webhook notifications (Slack, Teams, Discord, generic HTTP)
-- [ ] Browser push notifications
-- [ ] Configurable alert rules
-- [ ] Notification history log
-
-### 3.2 API & Metrics
-- [ ] REST API for job data (optional package)
-- [ ] Prometheus /metrics endpoint
-- [ ] Export to CSV/JSON
-
-### 3.3 Customization
-- [ ] Theming (custom colors, logo)
-- [ ] Configurable homepage widgets
-- [ ] Hide/show pages via options
-
----
-
-## Stretch Goals
-
-Items that may be implemented if there is demand, but are not prioritized.
-
-- [ ] Job Execution Timeline — Gantt-like view for concurrent job execution + server workload distribution
-- [ ] Visual cron builder component (interactive UI)
-- [ ] Historical server utilization & queue depth (requires custom snapshot storage)
-- [ ] Tag-based Analytics — filter all analytics by tag, failure rate per tag, duration per tag, tag cloud with metrics overlay
+- [ ] **Job Execution Timeline (Gantt)** — visually impressive but adoption is estimated to be low for typical small/medium deployments. Reconsider after v2.3 ships and based on demand.
+- [ ] **Multi-instance federation** — dashboard switcher for dev/staging/prod or sharded Hangfire deployments. Storage adapter is already modular, so the architecture is ready when demand appears.
+- [ ] **Replay with modified arguments** — failed-job rerun with edited arguments (powerful but easy to misuse without RBAC; gate behind the audit log shipped in v2.3 Operations).
+- [ ] **Failure clustering / fingerprint** — group Failed page by exception fingerprint (Sentry-style). Significant debug-experience improvement; defer until the v2.3 trigger-engine stabilizes the data path.
+- [ ] **Search by job argument value** — index `Job.Arguments` for support-case lookups (`customerId == "C-12345"`). Requires storage adapter changes per provider.
+- [ ] **Visual cron builder** — interactive recurring-job editor instead of plain cron string input.
+- [ ] **Browser push notifications** — explicitly **out of scope**. Ops teams don't monitor via browser tabs; webhook + email cover the use case.
+- [ ] **Configurable homepage widgets** — over-engineered for a focused dashboard; revisit only on explicit demand.
+- [ ] **CLI companion** (`hangfire-cli` global tool) — depends on the v2.3 REST API.
+- [ ] **Public status-page mode** — read-only `/status` route showing health summary without sensitive job data.
+- [ ] **Predictive alerts** — queue overflow ETA, anomaly detection on duration/failure rate.
+- [ ] **Smart Insights card** — auto-generated observations on Home page using simple anomaly detection (z-score).
+- [ ] **Tag-based Analytics** — filter all analytics by tag, failure rate per tag, tag cloud with metrics overlay.
+- [ ] **Historical server utilization & queue depth** — requires custom snapshot storage.
 
 ---
 
@@ -266,8 +325,9 @@ Items that may be implemented if there is demand, but are not prioritized.
 | v2.1.1 | WebSocket fix for Startup-pattern host apps (Generic Host compatibility) | ✅ Done |
 | v2.2 | UX improvements: progress circle, Fetched page, delete modals, mobile nav fix | ✅ Done |
 | v2.2.1 | Security & auth hardening: authorization defaults, SignalR auth, SQL validation | ✅ Done |
-| v2.3 | Enhanced Job Details: continuation dependency graph (with Load more), retry diff, historical duration chart | In progress |
-| v3.0 | Phase 3 — extensibility & integration | Planned |
+| v2.3.0 | **Operational visibility & controls**: health checks + hero card, queue pause/resume, maintenance mode, audit log | ✅ Done |
+| v2.3.x | Alerts/notifications, Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API | Planned |
+| v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |
 
 ---
 

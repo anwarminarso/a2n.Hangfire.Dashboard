@@ -1,0 +1,237 @@
+@using a2n.Hangfire.Dashboard
+@using a2n.Hangfire.Dashboard.Services
+@inject HealthReportCache HealthCache
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@if (_report is null)
+{
+    <div class="hf-health-hero hf-health-hero--loading mb-4">
+        <div class="hf-health-hero-icon">
+            <span class="placeholder-glow">
+                <span class="placeholder rounded-circle" style="width:28px;height:28px;display:inline-block;"></span>
+            </span>
+        </div>
+        <div class="hf-health-hero-body">
+            <div class="hf-health-hero-title">
+                <span class="placeholder col-3"></span>
+            </div>
+            <div class="hf-health-hero-summary placeholder-glow">
+                <span class="placeholder col-7"></span>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="hf-health-hero @StatusCssClass mb-4" role="region" aria-label="System health summary">
+        <div class="hf-health-hero-icon" aria-hidden="true">
+            <i class="bi @StatusIcon"></i>
+        </div>
+        <div class="hf-health-hero-body">
+            <div class="hf-health-hero-title">
+                @StatusHeadline
+                @if (_failingChecks.Count > 0)
+                {
+                    <span class="hf-health-hero-count">— @_failingChecks.Count issue@(_failingChecks.Count == 1 ? "" : "s") detected</span>
+                }
+            </div>
+
+            @if (_failingChecks.Count == 0)
+            {
+                <div class="hf-health-hero-summary">@HealthySummary</div>
+            }
+            else
+            {
+                <ul class="hf-health-hero-issues">
+                    @foreach (var (key, check) in _failingChecks)
+                    {
+                        <li>
+                            <i class="bi @IssueIcon(check.Status)" aria-hidden="true"></i>
+                            <span>@check.Description</span>
+                            @if (TryGetActionLink(key, out var href, out var label))
+                            {
+                                <a href="@href" class="hf-health-hero-action">@label →</a>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+        <div class="hf-health-hero-meta">
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    @onclick="RefreshNowAsync" disabled="@_refreshing"
+                    aria-label="Refresh health status">
+                <i class="bi @(_refreshing ? "bi-arrow-repeat hf-spin" : "bi-arrow-clockwise")"></i>
+            </button>
+            <small class="text-body-secondary d-block mt-1" title="@_report.Timestamp.ToString("u")">
+                Updated @FormatRelative(_report.Timestamp)
+            </small>
+        </div>
+    </div>
+}
+
+@code {
+    private HealthReport _report;
+    private List<KeyValuePair<string, HealthCheckResult>> _failingChecks = new();
+    private PeriodicTimer _timer;
+    private CancellationTokenSource _cts;
+    private bool _refreshing;
+
+    /// <summary>
+    /// Refresh interval in milliseconds. Defaults to 10s.
+    /// </summary>
+    [Parameter] public int RefreshIntervalMs { get; set; } = 10_000;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+
+        _cts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromMilliseconds(RefreshIntervalMs));
+        _ = PollAsync(_cts.Token);
+    }
+
+    private async Task PollAsync(CancellationToken token)
+    {
+        try
+        {
+            while (await _timer.WaitForNextTickAsync(token))
+            {
+                await InvokeAsync(RefreshAsync);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed — stop polling.
+        }
+        catch
+        {
+            // Swallow — UI continues with last known good state.
+        }
+    }
+
+    private async Task RefreshAsync() => await RefreshCoreAsync(forceRefresh: false);
+
+    /// <summary>Explicit user-initiated refresh — bypasses the shared cache TTL for fresh data.</summary>
+    private async Task RefreshNowAsync() => await RefreshCoreAsync(forceRefresh: true);
+
+    private async Task RefreshCoreAsync(bool forceRefresh)
+    {
+        if (_refreshing) return;
+        _refreshing = true;
+        try
+        {
+            // Shared cache: single-flighted across all circuits and probes, so opening the Home
+            // page in multiple tabs does not multiply storage load. A manual refresh forces a fresh
+            // computation so the button is never a no-op within the cache window.
+            _report = await HealthCache.GetAsync(HealthReportCache.Mode.Full, forceRefresh);
+            _failingChecks = _report.Checks
+                .Where(kv => kv.Value.Status != HealthStatus.Healthy)
+                .OrderByDescending(kv => (int)kv.Value.Status)
+                .ToList();
+        }
+        catch
+        {
+            // Keep previous _report; don't blank out the card on transient failures.
+        }
+        finally
+        {
+            _refreshing = false;
+            StateHasChanged();
+        }
+    }
+
+    private string StatusCssClass => _report?.Status switch
+    {
+        HealthStatus.Unhealthy => "hf-health-hero--critical",
+        HealthStatus.Degraded => "hf-health-hero--degraded",
+        _ => "hf-health-hero--healthy"
+    };
+
+    private string StatusIcon => _report?.Status switch
+    {
+        HealthStatus.Unhealthy => "bi-x-octagon-fill",
+        HealthStatus.Degraded => "bi-exclamation-triangle-fill",
+        _ => "bi-check-circle-fill"
+    };
+
+    private string StatusHeadline => _report?.Status switch
+    {
+        HealthStatus.Unhealthy => "Critical — Immediate attention required",
+        HealthStatus.Degraded => "Degraded performance",
+        _ => "All systems operational"
+    };
+
+    private string HealthySummary
+    {
+        get
+        {
+            if (_report is null) return string.Empty;
+            var parts = new List<string>();
+            if (_report.Checks.TryGetValue("servers", out var servers) &&
+                servers.Data?.TryGetValue("alive", out var alive) == true)
+            {
+                parts.Add($"{alive} server(s) active");
+            }
+            if (_report.Checks.TryGetValue("queue_depth", out var qd) &&
+                qd.Data?.TryGetValue("maxDepth", out var max) == true)
+            {
+                parts.Add($"max queue depth {max}");
+            }
+            if (_report.Checks.TryGetValue("recurring_jobs", out var rec) &&
+                rec.Data?.TryGetValue("total", out var total) == true)
+            {
+                parts.Add($"{total} recurring on schedule");
+            }
+            return parts.Count > 0
+                ? string.Join(" · ", parts)
+                : "All checks passed.";
+        }
+    }
+
+    private string IssueIcon(HealthStatus s) => s switch
+    {
+        HealthStatus.Unhealthy => "bi-x-circle-fill text-danger",
+        HealthStatus.Degraded => "bi-exclamation-circle-fill text-warning",
+        _ => "bi-info-circle text-info"
+    };
+
+    private bool TryGetActionLink(string checkKey, out string href, out string label)
+    {
+        switch (checkKey)
+        {
+            case "stuck_processing":
+                href = "jobs/processing"; label = "View processing"; return true;
+            case "queue_depth":
+                href = "servers"; label = "View queues"; return true;
+            case "failure_rate":
+                href = "jobs/failed"; label = "View failed"; return true;
+            case "recurring_jobs":
+                href = "recurring"; label = "View recurring"; return true;
+            case "servers":
+                href = "servers"; label = "View servers"; return true;
+            default:
+                href = null; label = null; return false;
+        }
+    }
+
+    private static string FormatRelative(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        return diff.TotalSeconds switch
+        {
+            < 5 => "just now",
+            < 60 => $"{(int)diff.TotalSeconds}s ago",
+            < 3600 => $"{(int)diff.TotalMinutes}m ago",
+            _ => $"{(int)diff.TotalHours}h ago"
+        };
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _timer?.Dispose();
+        _cts?.Dispose();
+    }
+}

@@ -347,7 +347,11 @@ public class PreservationPropertyTests
         // Act
         var cut = ctx.RenderComponent<Home>();
 
-        // Wait for async initialization to complete
+        // Wait for async initialization to complete (stats loaded → toggle button appears)
+        cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TimeSpan.FromSeconds(5));
+
+        // The 8-card detailed grid is collapsed by default behind the "Detailed metrics" toggle.
+        cut.Find(".hf-stats-toggle").Click();
         cut.WaitForState(() => cut.Markup.Contains("Servers"), TimeSpan.FromSeconds(5));
 
         // Assert - verify all 8 stat cards render with correct labels
@@ -378,7 +382,11 @@ public class PreservationPropertyTests
         // Act
         var cut = ctx.RenderComponent<Home>();
 
-        // Wait for async initialization to complete
+        // Wait for async initialization to complete (stats loaded → toggle button appears)
+        cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TimeSpan.FromSeconds(5));
+
+        // The 8-card detailed grid is collapsed by default behind the "Detailed metrics" toggle.
+        cut.Find(".hf-stats-toggle").Click();
         cut.WaitForState(() => cut.Markup.Contains("Servers"), TimeSpan.FromSeconds(5));
 
         // Assert - all 8 labels are present
@@ -523,8 +531,7 @@ public class PreservationPropertyTests
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
 
         ctx.Services.AddSingleton(options);
-        ctx.Services.AddSingleton(new HangfireMonitorService(_storage));
-        ctx.Services.AddSingleton(new TagsDataReader(_storage));
+        RegisterDashboardServices(ctx);
     }
 
     /// <summary>
@@ -535,6 +542,39 @@ public class PreservationPropertyTests
     {
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
 
-        ctx.Services.AddSingleton(new HangfireMonitorService(_storage));
+        var options = new DashboardUIOptions();
+        ctx.Services.AddSingleton(options);
+        RegisterDashboardServices(ctx);
+        // HealthHeroCard (embedded in the Home page) depends on these.
+        ctx.Services.AddScoped(sp => new HealthCheckService(
+            sp.GetRequiredService<HangfireMonitorService>(),
+            sp.GetRequiredService<DashboardUIOptions>(),
+            null));
+        ctx.Services.AddSingleton<HealthReportCache>();
+    }
+
+    /// <summary>
+    /// Registers the common service graph shared by MainLayout and Home page renders, including the
+    /// audit/queue-operations services, their shared caches, and the per-circuit actor accessor.
+    /// </summary>
+    private void RegisterDashboardServices(Bunit.TestContext ctx)
+    {
+        ctx.Services.AddSingleton<Microsoft.AspNetCore.Http.IHttpContextAccessor>(
+            new Microsoft.AspNetCore.Http.HttpContextAccessor());
+        ctx.Services.AddScoped<AuditActorAccessor>();
+        ctx.Services.AddScoped<AuditLogService>(sp => new AuditLogService(
+            _storage,
+            sp.GetRequiredService<DashboardUIOptions>(),
+            sp.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>(),
+            sp.GetService<AuditActorAccessor>()));
+        ctx.Services.AddScoped<QueueOperationsService>(sp => new QueueOperationsService(
+            _storage,
+            sp.GetRequiredService<DashboardUIOptions>(),
+            sp.GetRequiredService<AuditLogService>(),
+            sp.GetService<AuditActorAccessor>()));
+        ctx.Services.AddSingleton<QueueOperationsStateCache>();
+        ctx.Services.AddScoped<HangfireMonitorService>(sp => new HangfireMonitorService(
+            _storage, sp.GetRequiredService<AuditLogService>()));
+        ctx.Services.AddSingleton(new TagsDataReader(_storage));
     }
 }

@@ -86,7 +86,27 @@ public static class StackTraceFormatter
             .Replace("{absolutePath}", Uri.EscapeDataString(absolute).Replace("%2F", "/"))
             .Replace("{line}", rawLine ?? "1");
 
-        return url;
+        // Defense-in-depth: only emit links for safe schemes. UrlPattern comes from host
+        // configuration, but a misconfiguration (or a copy-pasted "javascript:" template) must
+        // never become a clickable link in the rendered stack trace.
+        return IsSafeScheme(url) ? url : null;
+    }
+
+    private static bool IsSafeScheme(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+
+        var colon = url.IndexOf(':');
+        if (colon <= 0) return false; // no scheme — reject (we always build absolute URLs)
+
+        var scheme = url[..colon].ToLowerInvariant();
+        return scheme switch
+        {
+            "http" or "https" => true,
+            // Common local IDE protocol handlers used by the Local() preset.
+            "vscode" or "vscode-insiders" or "cursor" or "vs" or "windsurf" or "idea" or "rider" or "fleet" or "zed" => true,
+            _ => false,
+        };
     }
 
     private static string NormalizeSeparators(string path)

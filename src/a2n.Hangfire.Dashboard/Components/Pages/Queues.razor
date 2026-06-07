@@ -1,0 +1,372 @@
+@page "/queues"
+@inject HangfireMonitorService Monitor
+@inject QueueOperationsService Operations
+@inject QueueOperationsStateCache StateCache
+@inject DashboardUIOptions Options
+@using a2n.Hangfire.Dashboard.Services
+@implements IDisposable
+
+<PageTitle>Queues</PageTitle>
+
+<div class="hf-queues-header mb-4">
+    <div class="hf-queues-header-text">
+        <h2 class="fw-semibold mb-1 d-flex align-items-center gap-2">
+            <span class="hf-queues-title-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="4" rx="1"></rect>
+                    <rect x="3" y="10" width="18" height="4" rx="1"></rect>
+                    <rect x="3" y="16" width="18" height="4" rx="1"></rect>
+                </svg>
+            </span>
+            Queues
+        </h2>
+        <p class="text-body-secondary mb-0">
+            Pause individual queues to stop workers from picking up new jobs, or enable
+            maintenance mode to pause everything at once.
+        </p>
+    </div>
+
+    @if (!Options.IsReadOnly && Options.QueueOperations.Enabled)
+    {
+        @if (_state?.MaintenanceMode == true)
+        {
+            <button type="button" class="btn btn-warning d-inline-flex align-items-center gap-2" @onclick="DisableMaintenance">
+                <i class="bi bi-play-fill"></i>
+                <span>Disable maintenance mode</span>
+            </button>
+        }
+        else
+        {
+            <button type="button" class="hf-maintenance-trigger" data-bs-toggle="modal" data-bs-target="#maintenanceModal">
+                <i class="bi bi-cone-striped"></i>
+                <span>Maintenance mode</span>
+            </button>
+        }
+    }
+</div>
+
+@if (_state is null || _rows is null)
+{
+    <div class="hf-queue-grid">
+        @for (var i = 0; i < 3; i++)
+        {
+            <div class="hf-queue-card hf-queue-card--loading" aria-hidden="true">
+                <div class="hf-queue-card-top">
+                    <span class="placeholder col-5 rounded"></span>
+                    <span class="placeholder col-3 rounded"></span>
+                </div>
+                <div class="hf-queue-card-stats">
+                    <span class="placeholder col-4 rounded"></span>
+                    <span class="placeholder col-4 rounded"></span>
+                </div>
+            </div>
+        }
+    </div>
+}
+else if (_rows.Count == 0)
+{
+    <EmptyState Icon="inbox" Color="secondary"
+                Message="No queues found."
+                Subtitle="Queues appear here once jobs are enqueued or a worker server is configured." />
+}
+else
+{
+    var maintenance = _state.MaintenanceMode;
+    var total = _rows.Count;
+    var pausedCount = maintenance ? total : _rows.Count(r => _state.PausedQueues.Contains(r.Name));
+    var activeCount = maintenance ? 0 : total - pausedCount;
+    var totalEnqueued = _rows.Sum(r => r.Length ?? 0);
+
+    <div class="hf-queue-summary mb-4">
+        <div class="hf-queue-summary-item">
+            <span class="hf-queue-summary-value">@total.ToString("N0")</span>
+            <span class="hf-queue-summary-label">@(total == 1 ? "Queue" : "Queues")</span>
+        </div>
+        <div class="hf-queue-summary-divider" aria-hidden="true"></div>
+        <div class="hf-queue-summary-item">
+            <span class="hf-queue-summary-value text-success">
+                <span class="hf-queue-summary-dot hf-queue-summary-dot--active" aria-hidden="true"></span>
+                @activeCount.ToString("N0")
+            </span>
+            <span class="hf-queue-summary-label">Active</span>
+        </div>
+        <div class="hf-queue-summary-item">
+            <span class="hf-queue-summary-value @(pausedCount > 0 ? "text-warning-emphasis" : "text-body-secondary")">
+                <span class="hf-queue-summary-dot hf-queue-summary-dot--paused" aria-hidden="true"></span>
+                @pausedCount.ToString("N0")
+            </span>
+            <span class="hf-queue-summary-label">@(maintenance ? "Held (maintenance)" : "Paused")</span>
+        </div>
+        <div class="hf-queue-summary-divider" aria-hidden="true"></div>
+        <div class="hf-queue-summary-item">
+            <span class="hf-queue-summary-value">@totalEnqueued.ToString("N0")</span>
+            <span class="hf-queue-summary-label">Jobs enqueued</span>
+        </div>
+
+        @if (maintenance)
+        {
+            <div class="hf-queue-summary-status hf-queue-summary-status--maintenance">
+                <i class="bi bi-cone-striped"></i>
+                <span>Maintenance mode active</span>
+            </div>
+        }
+        else if (pausedCount > 0)
+        {
+            <div class="hf-queue-summary-status hf-queue-summary-status--paused">
+                <i class="bi bi-pause-circle"></i>
+                <span>@pausedCount paused</span>
+            </div>
+        }
+        else
+        {
+            <div class="hf-queue-summary-status hf-queue-summary-status--ok">
+                <i class="bi bi-check-circle"></i>
+                <span>All queues running</span>
+            </div>
+        }
+    </div>
+
+    <div class="hf-queue-grid @(maintenance ? "hf-queue-grid--maintenance" : "")">
+        @foreach (var q in _rows)
+        {
+            var paused = _state.PausedQueues.Contains(q.Name);
+            var status = maintenance ? "maintenance" : paused ? "paused" : "active";
+
+            <div class="hf-queue-card hf-queue-card--@status">
+                <div class="hf-queue-card-top">
+                    <div class="hf-queue-name">
+                        <span class="hf-queue-status-dot hf-queue-status-dot--@status" aria-hidden="true"></span>
+                        <code>@q.Name</code>
+                    </div>
+                    <span class="hf-queue-badge hf-queue-badge--@status">
+                        @if (maintenance)
+                        {
+                            <i class="bi bi-cone-striped"></i>
+                            <span>Maintenance</span>
+                        }
+                        else if (paused)
+                        {
+                            <i class="bi bi-pause-fill"></i>
+                            <span>Paused</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-check-circle-fill"></i>
+                            <span>Active</span>
+                        }
+                    </span>
+                </div>
+
+                <div class="hf-queue-card-stats">
+                    <div class="hf-queue-stat">
+                        <span class="hf-queue-stat-value">@(q.Length?.ToString("N0") ?? "—")</span>
+                        <span class="hf-queue-stat-label">Enqueued</span>
+                    </div>
+                    <div class="hf-queue-stat">
+                        <span class="hf-queue-stat-value">@(q.Fetched?.ToString("N0") ?? "—")</span>
+                        <span class="hf-queue-stat-label">Fetched</span>
+                    </div>
+                </div>
+
+                <div class="hf-queue-card-footer">
+                    <span class="hf-queue-hint">
+                        @if (maintenance)
+                        {
+                            <text>Paused by maintenance mode</text>
+                        }
+                        else if (paused)
+                        {
+                            @(Options.QueueOperations.Behavior == PausedJobBehavior.Reschedule
+                                ? $"Reschedules +{(int)Options.QueueOperations.RescheduleDelay.TotalSeconds}s while paused"
+                                : "Re-enqueues while paused")
+                        }
+                        else
+                        {
+                            <text>Accepting jobs</text>
+                        }
+                    </span>
+
+                    @if (!Options.IsReadOnly && Options.QueueOperations.Enabled && !maintenance)
+                    {
+                        @if (paused)
+                        {
+                            <button type="button" class="btn btn-sm btn-success d-inline-flex align-items-center gap-1"
+                                    @onclick="() => ResumeQueue(q.Name)">
+                                <i class="bi bi-play-fill"></i> Resume
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                                    @onclick="() => PauseQueue(q.Name)">
+                                <i class="bi bi-pause-fill"></i> Pause
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (Options.QueueOperations.Enabled && !_filterRegistered)
+    {
+        <div class="alert alert-warning d-flex align-items-start gap-2 mt-3 mb-0" role="alert">
+            <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+            <div>
+                <strong>Pausing has no effect yet.</strong>
+                Queues can be paused here, but the running worker servers are not enforcing it.
+                Ask your developer to enable the dashboard's queue-pause filter in the app configuration.
+            </div>
+        </div>
+    }
+}
+
+@* Maintenance mode confirmation modal *@
+<div class="modal fade" id="maintenanceModal" tabindex="-1" aria-labelledby="maintenanceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="maintenanceModalLabel">
+                    <i class="bi bi-cone-striped text-warning me-2"></i>
+                    Enable maintenance mode
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will pause <strong>all queues</strong>. Workers will stop executing jobs and reschedule them while maintenance is active.</p>
+                <div class="mb-3">
+                    <label class="form-label">Reason (optional)</label>
+                    <input type="text" class="form-control" maxlength="200" @bind="_maintenanceReason" placeholder="e.g. DB migration, hotfix deploy"/>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" data-bs-dismiss="modal" @onclick="EnableMaintenance">
+                    Enable maintenance mode
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private QueueOperationsState _state;
+    private List<QueueRow> _rows;
+    private Timer _refreshTimer;
+    private string _maintenanceReason = string.Empty;
+    private bool _filterRegistered = true;
+
+    private sealed class QueueRow
+    {
+        public string Name { get; init; }
+        public long? Length { get; init; }
+        public long? Fetched { get; init; }
+    }
+
+    // For queues not returned by IMonitoringApi.Queues() (idle queues known only from server config
+    // or the paused set), fetch the real enqueued/fetched counts so the card shows "0" instead of
+    // a misleading "—". Falls back to null only if the count probe itself fails.
+    private QueueRow BuildRowWithCounts(string name)
+    {
+        long? enqueued = null;
+        long? fetched = null;
+        try { enqueued = Monitor.GetEnqueuedCount(name); } catch { }
+        try { fetched = Monitor.GetFetchedCount(name); } catch { }
+        return new QueueRow { Name = name, Length = enqueued, Fetched = fetched };
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _filterRegistered = a2n.Hangfire.Dashboard.Storage.QueuePauseServerFilter.IsRegistered();
+        await LoadAsync();
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadAsync();
+                    StateHasChanged();
+                });
+            }
+            catch { }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task LoadAsync()
+    {
+        var state = await StateCache.GetAsync();
+
+        var rows = await Task.Run(() =>
+        {
+            // Hangfire's IMonitoringApi.Queues() only returns queues that currently hold jobs, so a
+            // paused but empty queue (or a configured queue with no pending jobs) would otherwise
+            // vanish from the page — leaving the operator unable to see or resume it. Merge three
+            // sources by name: monitor queues (with counts), server-configured queues, and paused
+            // queues from state.
+            var byName = new Dictionary<string, QueueRow>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var q in Monitor.GetQueues() ?? new List<global::Hangfire.Storage.Monitoring.QueueWithTopEnqueuedJobsDto>())
+            {
+                if (string.IsNullOrEmpty(q.Name)) continue;
+                byName[q.Name] = new QueueRow { Name = q.Name, Length = q.Length, Fetched = q.Fetched };
+            }
+
+            foreach (var server in Monitor.GetServers() ?? new List<global::Hangfire.Storage.Monitoring.ServerDto>())
+            {
+                if (server.Queues is null) continue;
+                foreach (var name in server.Queues)
+                {
+                    if (string.IsNullOrEmpty(name) || byName.ContainsKey(name)) continue;
+                    byName[name] = BuildRowWithCounts(name);
+                }
+            }
+
+            foreach (var name in state.PausedQueues)
+            {
+                if (string.IsNullOrEmpty(name) || byName.ContainsKey(name)) continue;
+                byName[name] = BuildRowWithCounts(name);
+            }
+
+            return byName.Values.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        });
+
+        _state = state;
+        _rows = rows;
+    }
+
+    private async Task PauseQueue(string queueName)
+    {
+        await Task.Run(() => Operations.PauseQueue(queueName));
+        StateCache.Invalidate();
+        await LoadAsync();
+    }
+
+    private async Task ResumeQueue(string queueName)
+    {
+        await Task.Run(() => Operations.ResumeQueue(queueName));
+        StateCache.Invalidate();
+        await LoadAsync();
+    }
+
+    private async Task EnableMaintenance()
+    {
+        var reason = _maintenanceReason;
+        await Task.Run(() => Operations.EnableMaintenanceMode(reason));
+        _maintenanceReason = string.Empty;
+        StateCache.Invalidate();
+        await LoadAsync();
+    }
+
+    private async Task DisableMaintenance()
+    {
+        await Task.Run(() => Operations.DisableMaintenanceMode());
+        StateCache.Invalidate();
+        await LoadAsync();
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

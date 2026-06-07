@@ -69,8 +69,50 @@ public static class HangfireDashboardUIExtensions
         services.AddScoped<HangfireMonitorService>(sp =>
         {
             var storage = sp.GetRequiredService<JobStorage>();
-            return new HangfireMonitorService(storage);
+            var audit = sp.GetService<AuditLogService>();
+            return new HangfireMonitorService(storage, audit);
         });
+
+        services.AddScoped<HealthCheckService>(sp =>
+        {
+            var monitor = sp.GetRequiredService<HangfireMonitorService>();
+            var options = sp.GetRequiredService<DashboardUIOptions>();
+            var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<HealthCheckService>();
+            return new HealthCheckService(monitor, options, logger);
+        });
+
+        // Audit log + queue operations services. Scoped lifetime so each Blazor circuit (and each
+        // classic HTTP request) gets its own AuditActorAccessor, letting the audit log attribute
+        // actions to the actual signed-in user instead of "(system)".
+        services.AddScoped<AuditActorAccessor>();
+
+        services.AddScoped<AuditLogService>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            var options = sp.GetRequiredService<DashboardUIOptions>();
+            var http = sp.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>();
+            var actor = sp.GetService<AuditActorAccessor>();
+            var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<AuditLogService>();
+            return new AuditLogService(storage, options, http, actor, logger);
+        });
+
+        services.AddScoped<QueueOperationsService>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            var options = sp.GetRequiredService<DashboardUIOptions>();
+            var audit = sp.GetRequiredService<AuditLogService>();
+            var actor = sp.GetService<AuditActorAccessor>();
+            var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<QueueOperationsService>();
+            return new QueueOperationsService(storage, options, audit, actor, logger);
+        });
+
+        // Process-wide cache so concurrent circuits (hero card) and K8s probes share a single
+        // computed report per mode within a short TTL, instead of each hitting storage independently.
+        services.AddSingleton<HealthReportCache>();
+
+        // Shared short-TTL cache for queue pause / maintenance state, consumed by the nav menu,
+        // the maintenance banner, and the Queues page so they don't each poll storage per circuit.
+        services.AddSingleton<QueueOperationsStateCache>();
 
         services.AddScoped<ConsoleDataReader>(sp =>
         {
@@ -158,6 +200,10 @@ public static class HangfireDashboardUIExtensions
             registered.Authorization = options.Authorization;
             registered.AsyncAuthorization = options.AsyncAuthorization;
             registered.LoginPath = options.LoginPath;
+            registered.HealthCheckAuthorizationMode = options.HealthCheckAuthorizationMode;
+            registered.HealthCheckThresholds = options.HealthCheckThresholds ?? new HealthThresholds();
+            registered.AuditLog = options.AuditLog ?? new AuditLogOptions();
+            registered.QueueOperations = options.QueueOperations ?? new QueueOperationsOptions();
         }
 
         // Normalize pathMatch to ensure it starts with / and has no trailing slash

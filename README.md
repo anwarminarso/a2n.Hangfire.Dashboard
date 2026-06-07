@@ -31,6 +31,32 @@ Navigate to `/hangfire`. Done.
 
 ---
 
+## 🚀 What's New in 2.3.0 — Operational Visibility & Controls
+
+The biggest operations-focused release yet. The dashboard goes from a **viewer you open when something breaks** to a **first-class operational tool**.
+
+| | Feature | What you get |
+|---|---------|--------------|
+| 🩺 | **Health checks** | `/healthz` · `/healthz/ready` · `/healthz/full` endpoints for Kubernetes & load balancers, an ASP.NET Core `IHealthCheck` adapter, and a traffic-light **hero card** on the Home page. [→](#health-checks) |
+| ⏸️ | **Queue pause / resume** | Pause a single queue from the new card-based `/queues` page. Workers reschedule jobs instead of running them — **no data loss**. [→](#operations) |
+| 🚧 | **Maintenance mode** | One global toggle pauses every queue, with a persistent banner on every page. [→](#operations) |
+| 📋 | **Audit log** | Every admin action recorded — who, when, what — on a new `/audit` page, attributed to the real signed-in user. [→](#operations) |
+| 🔗 | **Enhanced Job Details** | Continuation **dependency graph**, a **retry summary banner**, and clickable **stack-trace source links** (GitHub/GitLab/Azure DevOps/Bitbucket/local IDE). [→](#job-dependency-graph) |
+
+```csharp
+// Liveness/readiness probes + queue-pause enforcement in one place:
+builder.Services.AddHangfire(config => config
+    .UseSqlServerStorage(connStr)
+    .UseDashboardQueuePauseFilter());        // honour pause toggles on running servers
+
+builder.Services.AddHealthChecks()
+    .AddHangfireDashboard(tags: new[] { "ready" });   // unified /health endpoint
+```
+
+See the full [2.3.0 changelog](CHANGELOG.md) for every option and detail.
+
+---
+
 ## About
 
 Hangfire ships a capable monitoring UI out of the box. Many teams extend it with community packages for additional dashboard features — for example [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console), [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags), and [Hangfire.RecurringJobAdmin](https://github.com/bamotav/Hangfire.RecurringJobAdmin). Dashboard analytics are also available in [Hangfire Pro](https://www.hangfire.io/pricing/).
@@ -47,12 +73,15 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Recurring jobs | Create, edit, start, and stop recurring jobs from the UI |
 | Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
 | Job tags | Tagging and tag cloud (Hangfire.Tags-compatible storage) |
-| Job dependency graph | Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
-| Retry summary | Inline banner above state history showing retry count + exception consistency |
-| Stack trace links | File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
+| Job dependency graph | 🆕 Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
+| Retry summary | 🆕 Inline banner above state history showing retry count + exception consistency |
+| Stack trace links | 🆕 File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
 | Global search | Search by job ID, name, queue, tag, or exception text |
 | Advanced filters | Filter by date, duration, state, server, and more |
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
+| Health checks | 🆕 `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
+| Queue pause / maintenance | 🆕 Pause individual queues or enable global maintenance mode — see [Operations](#operations) |
+| Audit log | 🆕 Every admin action recorded (who, when, what) — see [Operations](#operations) |
 | Realtime updates | Live metrics via SignalR |
 | Authorization | Local-only default (same as Hangfire); optional async filters and `LoginPath` redirect |
 | Theming | Dark, light, or auto; responsive layout |
@@ -268,6 +297,154 @@ Linked URLs only work when the viewer has access to the source provider. Private
 
 ---
 
+## Health Checks
+
+The dashboard exposes a structured health endpoint suitable for Kubernetes probes, load balancer health checks, and status pages.
+
+| Endpoint | Use case | Checks |
+|----------|----------|--------|
+| `GET /{dashboard}/healthz` | Liveness probe (K8s) | Storage probe |
+| `GET /{dashboard}/healthz/ready` | Readiness probe (K8s) | Storage + servers |
+| `GET /{dashboard}/healthz/full` | Status pages, dashboard hero card | All six checks below |
+
+HTTP status follows the K8s convention: `200` for `Healthy` or `Degraded`, `503` for `Unhealthy`.
+
+### Built-in checks
+
+| Key | What it covers |
+|-----|----------------|
+| `storage` | Round-trip time of a `GetStatistics()` call to the Hangfire storage backend |
+| `servers` | Total vs alive vs stale heartbeat (per `ServerHeartbeatTolerance`) |
+| `queue_depth` | Highest queue length compared to warn/critical thresholds |
+| `stuck_processing` | Processing jobs older than `StuckProcessingMinutes` (sample size: 200) |
+| `failure_rate` | Last-hour failure percentage from Hangfire's hourly counters |
+| `recurring_jobs` | Recurring jobs whose `NextExecution` is older than `RecurringMissedTolerance` |
+
+### Sample response (`/hangfire/healthz/full`)
+
+```json
+{
+  "status": "Degraded",
+  "version": "2.3.0",
+  "timestamp": "2026-06-07T01:08:18.96Z",
+  "durationMs": 50,
+  "checks": {
+    "storage":          { "status": "Healthy",  "data": { "responseTimeMs": 3 } },
+    "servers":          { "status": "Degraded", "description": "1 of 2 server(s) have stale heartbeats." },
+    "queue_depth":      { "status": "Healthy",  "data": { "maxDepth": 0 } },
+    "stuck_processing": { "status": "Healthy",  "data": { "stuckCount": 0, "totalProcessing": 0 } },
+    "failure_rate":     { "status": "Degraded", "description": "Failure rate 20.0% in last hour (warn threshold 10%)." },
+    "recurring_jobs":   { "status": "Healthy",  "data": { "total": 7, "missed": 0 } }
+  }
+}
+```
+
+### Configuration
+
+```csharp
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
+{
+    // AllowAnonymous (default) so K8s/LB probes work without auth.
+    // Use LocalOnly for loopback-only probes, or RequireDashboardAuth for the full filter chain.
+    HealthCheckAuthorizationMode = HealthCheckAuthorization.AllowAnonymous,
+
+    HealthCheckThresholds = new HealthThresholds
+    {
+        StuckProcessingMinutes      = 30,
+        QueueDepthWarn              = 1000,
+        QueueDepthCritical          = 10000,
+        FailureRatePercent          = 10.0,   // Degraded threshold
+        FailureRateCritical         = 25.0,   // Unhealthy threshold
+        RecurringMissedTolerance    = TimeSpan.FromMinutes(5),
+        ServerHeartbeatTolerance    = TimeSpan.FromSeconds(60),
+        StorageResponseTimeWarnMs   = 1000,
+        StorageResponseTimeCriticalMs = 5000,
+    }
+});
+```
+
+### Plug into ASP.NET Core HealthChecks
+
+If your host already exposes a unified `/health` endpoint aggregating multiple dependencies (database, message broker, Hangfire, ...), register the dashboard as an `IHealthCheck`:
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddHangfireDashboard(tags: new[] { "ready" });
+
+app.MapHealthChecks("/health");                                   // all checks
+app.MapHealthChecks("/health/ready",                               // readiness subset
+    new() { Predicate = c => c.Tags.Contains("ready") });
+```
+
+The adapter reuses the same `HealthCheckService.CheckFull()` so results match what the dashboard's own endpoint and hero card show.
+
+### Hero card
+
+The Home page shows a top-of-page traffic light (Healthy / Degraded / Critical) with per-issue descriptions and deep-link actions ("View processing →", "View failed →"). Auto-refreshes every 10 seconds. The detailed 8-card stat grid is now collapsed behind a "Detailed metrics" toggle to keep the hero front-and-center.
+
+---
+
+## Operations
+
+The dashboard ships day-to-day operational controls so ops teams don't need to redeploy or write SQL to handle common scenarios.
+
+### Queue pause / resume
+
+The `/queues` page lists every queue with its current status and a per-row pause toggle. Paused queues stop workers from executing jobs — the dashboard's server filter intercepts each fetched job and reschedules it back into the future (default +30s) instead of running it.
+
+```csharp
+// Required: register the server filter on the Hangfire pipeline so running servers
+// honour the pause toggles set from the dashboard.
+builder.Services.AddHangfire(config => config
+    .UseSqlServerStorage(connStr)
+    .UseDashboardQueuePauseFilter());          // <-- here
+```
+
+Without this call, the dashboard still records the pause and shows the badge — but jobs keep executing on running workers until the host restarts with the filter enabled.
+
+Customize behaviour via `DashboardUIOptions.QueueOperations`:
+
+```csharp
+QueueOperations = new QueueOperationsOptions
+{
+    Enabled         = true,
+    Behavior        = PausedJobBehavior.Reschedule,   // or Requeue (busy-loop, use sparingly)
+    RescheduleDelay = TimeSpan.FromSeconds(30),
+    PauseStateCacheTtl = TimeSpan.FromSeconds(2),     // server-side cache window
+}
+```
+
+### Maintenance mode
+
+A single global toggle (top of the `/queues` page) pauses every queue at once. While maintenance is active, a persistent yellow banner is rendered on every dashboard page with the operator's reason and a `Manage →` link. Disable maintenance to resume — individual queue pauses set before maintenance was enabled remain in effect.
+
+### Audit log
+
+Every admin action performed through the dashboard is recorded:
+
+| Category | Actions |
+|----------|---------|
+| Job actions | requeue, delete, batch requeue, batch delete |
+| Recurring | create, update, delete, trigger, stop, start |
+| Queue ops | queue pause, queue resume, maintenance enabled, maintenance disabled |
+
+Each entry captures: timestamp (UTC), user (or `(anonymous)` for unauthenticated local requests), client IP, action, target, optional reason, and a small metadata bag (e.g., batch counts).
+
+The `/audit` page filters by action prefix (job/jobs/recurring/queue/maintenance), user (substring), and target. Storage uses Hangfire's KV primitives — no schema changes. Configurable retention:
+
+```csharp
+AuditLog = new AuditLogOptions
+{
+    Enabled    = true,
+    Retention  = TimeSpan.FromDays(30),
+    MaxEntries = 10_000,
+}
+```
+
+Old entries beyond either bound are trimmed on writes (best-effort, ~every 50 entries).
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -330,8 +507,9 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.1.1 | ✅ Done | WebSocket fix for Startup-pattern host apps |
 | v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
 | v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
-| v2.3 | In progress | Enhanced Job Details: dependency graph, retry summary, stack trace source links |
-| v3.0 | Planned | Notifications, REST API, Prometheus metrics, theming |
+| v2.3.0 | ✅ Done | **Operational visibility & controls** — health checks (`/healthz` + `IHealthCheck` adapter) & hero card, queue pause/resume, maintenance mode, audit log |
+| v2.3.x | Planned | Alerts/notifications, Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API |
+| v3.0 | Planned | Stretch goals & long-term backlog (Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
 
 See the full [roadmap](docs/ROADMAP.md) for details.
 
