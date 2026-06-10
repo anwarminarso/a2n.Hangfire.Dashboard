@@ -19,7 +19,7 @@ namespace a2n.Hangfire.Dashboard.Services;
 ///   <item><description>Hash <c>audit:entry:{id}</c> — entry payload (action, user, target, reason, metadata JSON).</description></item>
 /// </list>
 /// <para>
-/// Trimming runs on every <see cref="Log(string, string, string, IDictionary{string, string})"/>
+/// Trimming runs on every <see cref="Log(string, string, string, IDictionary{string, string}, string)"/>
 /// call: anything older than <see cref="AuditLogOptions.Retention"/> or beyond the
 /// <see cref="AuditLogOptions.MaxEntries"/> ceiling is removed in the same transaction.
 /// </para>

@@ -39,9 +39,9 @@ public static class HangfireDashboardHealthCheckExtensions
     /// <param name="builder">The ASP.NET Core health checks builder.</param>
     /// <param name="name">The check name (default <c>"hangfire_dashboard"</c>).</param>
     /// <param name="failureStatus">
-    /// The status reported when the underlying <see cref="HealthCheckService.CheckFull"/>
-    /// returns <see cref="HealthStatus.Unhealthy"/>. Defaults to
-    /// <see cref="HealthStatus.Unhealthy"/>.
+    /// The status reported when the underlying <see cref="DashboardHealthCheckService.CheckFull"/>
+    /// returns <see cref="DashboardHealthStatus.Unhealthy"/>. Defaults to
+    /// <see cref="DashboardHealthStatus.Unhealthy"/>.
     /// </param>
     /// <param name="tags">Optional tags applied to this check (use with <c>MapHealthChecks(predicate: …)</c>).</param>
     /// <returns>The same builder for chaining.</returns>

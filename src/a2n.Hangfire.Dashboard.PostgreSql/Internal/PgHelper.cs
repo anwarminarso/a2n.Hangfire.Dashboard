@@ -1,11 +1,11 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-
+using HF = Hangfire;
 namespace a2n.Hangfire.Dashboard.PostgreSql.Internal;
 
 internal static class PgHelper
 {
-    /// <summary>Hangfire job parameter for queue (see <see cref="Hangfire.Storage.JobStorageFeatures.JobQueueProperty"/>).</summary>
+    /// <summary>Hangfire job parameter for queue (see <see cref="HF.Storage.JobStorageFeatures.JobQueueProperty"/>).</summary>
     public const string JobQueueParameterName = "Job.Queue";
 
     /// <summary>
