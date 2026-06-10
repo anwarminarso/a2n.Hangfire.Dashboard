@@ -18,8 +18,8 @@ click>=8.1.0
 rich>=13.7.0
 
 # Config
+# TOML reading uses the stdlib `tomllib` (Python 3.11+); `tomli` backports it for <3.11.
 tomli>=2.0.0; python_version < "3.11"
-tomllib-w>=1.0.0
 
 # Async utilities
 anyio>=4.4.0
