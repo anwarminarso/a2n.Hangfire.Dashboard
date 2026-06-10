@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.3.1 — Realtime Analytics Fixes
+
+> **Patch release.** Restores realtime analytics on SQL Server and keeps the analytics broadcast on a steady cadence under load. NuGet packages now ship API documentation.
+
+### Fixed
+
+- **Realtime analytics never broadcast on SQL Server.** `GetQueueDepthSnapshotAsync` and `GetQueueThroughputAsync` placed a subquery in the `GROUP BY` list, which SQL Server rejects (error 144). This threw on every `AnalyticsBroadcastService` tick, so the analytics SignalR channel stayed silent on SQL Server while it worked on PostgreSQL. The queue expression is now computed once in a derived table and aggregated in the outer query (mirrors the PostgreSQL provider). Verified `AnalyticsUpdate` broadcasts every 5s on SQL Server.
+- **Analytics broadcast drifted off cadence under load.** The broadcast loop delayed the interval *after* finishing its work, so the real period was `query_time + interval` (p95 ~50s instead of the 5s target in a 300s SQL Server load test). The loop now uses a `PeriodicTimer` so ticks fire on a fixed schedule (ticks arriving mid-broadcast are coalesced instead of drifting), and runs the three independent metrics queries (throughput, server utilization, queue depth) concurrently via `Task.WhenAll` so per-broadcast cost is the slowest query rather than their sum. A `Warning` is now logged when a broadcast exceeds the cadence. Verified p95 5.1s on SQL Server in the 300s persona scenario.
+
+### Build / Docs
+
+- **NuGet packages now ship XML API documentation.** `GenerateDocumentationFile` is enabled for Release builds (`NoWarn 1591`), and the XML doc `cref`/`param` references this surfaced were corrected in `PgHelper`, `HangfireDashboardHealthCheckExtensions`, `AuditLogService`, and `JobParameterMatching`.
+
+### Internal
+
+- Added a SQL Server metrics-provider integration test project (`a2n.Hangfire.Dashboard.SqlServer.Tests`) mirroring the PostgreSQL one — a per-run unique schema fixture, a deterministic 100-job seeder, and smoke tests exercising all 15 `IStorageMetricsProvider` queries against a real SQL Server (regression coverage for the error 144 fix). Tests skip rather than fail when no SQL Server is reachable, so CI without a database stays green.
+- Added a Python load-testing harness under `tests/load/` (stress, scenario, and end-to-end utilities) used to validate the analytics cadence fixes. Secrets (`config.toml`) and generated artifacts stay untracked.
+
 ## 2.3.0 — Operational Visibility & Controls
 
 > **The biggest operations-focused release yet.** v2.3.0 turns the dashboard from a *viewer* into an *operational tool*: health probes for your orchestrator, an at-a-glance health hero card, live queue pause / maintenance mode, and a full audit trail of admin actions.

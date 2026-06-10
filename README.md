@@ -325,7 +325,7 @@ HTTP status follows the K8s convention: `200` for `Healthy` or `Degraded`, `503`
 ```json
 {
   "status": "Degraded",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "timestamp": "2026-06-07T01:08:18.96Z",
   "durationMs": 50,
   "checks": {
@@ -508,6 +508,7 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
 | v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
 | v2.3.0 | ✅ Done | **Operational visibility & controls** — health checks (`/healthz` + `IHealthCheck` adapter) & hero card, queue pause/resume, maintenance mode, audit log |
+| v2.3.1 | ✅ Done | Realtime analytics fixes — SQL Server `GROUP BY` (error 144) fix, fixed-cadence broadcast loop, NuGet XML docs |
 | v2.3.x | Planned | Alerts/notifications, Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API |
 | v3.0 | Planned | Stretch goals & long-term backlog (Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
 

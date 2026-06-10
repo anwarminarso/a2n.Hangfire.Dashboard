@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>2.3.0</Version>
+    <Version>2.3.1</Version>
     <Authors>a2n</Authors>
     <RepositoryUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</RepositoryUrl>
     <PackageProjectUrl>https://github.com/anwarminarso/a2n.Hangfire.Dashboard</PackageProjectUrl>
