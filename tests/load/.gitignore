@@ -1,0 +1,17 @@
+# Config with secrets
+config.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Screenshots generated during tests
+screenshots/*.png
+
+# Playwright state
+playwright-report/
+test-results/

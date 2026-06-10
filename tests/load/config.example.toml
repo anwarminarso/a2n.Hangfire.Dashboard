@@ -1,0 +1,44 @@
+# HangfireDashboard load-testing tools — configuration template.
+#
+# Copy this file to `config.toml` and adjust to your environment:
+#     copy config.example.toml config.toml      (Windows)
+#     cp   config.example.toml config.toml       (Linux/macOS)
+#
+# `config.toml` is git-ignored so your local credentials never get committed.
+#
+# Alternatively, leave config.toml absent and override everything via HFLOAD_*
+# environment variables (see config.py for the full list) — handy for CI.
+
+[app]
+# Base URL where the sample app / dashboard host is listening.
+base_url = "http://localhost:5100"
+# Path the dashboard is mounted at (UseHangfireDashboardUI("/hangfire", ...)).
+dashboard_path = "/hangfire"
+# Timeout in seconds for HTTP requests.
+request_timeout = 30
+
+[database]
+# Storage provider under test: "postgresql" | "sqlserver" | "inmemory".
+# Must match the SampleApp's StorageProvider so the tools read the same store.
+provider = "postgresql"
+
+[database.postgresql]
+host = "localhost"
+port = 5432
+database = "hangfire_test"
+username = "postgres"
+# Use a throwaway local password, or override via HFLOAD_PG_PASSWORD.
+password = "CHANGE_ME"
+
+[database.sqlserver]
+# Full ODBC connection string for pyodbc. Adjust Driver/Server to your machine.
+# Examples:
+#   Driver={ODBC Driver 17 for SQL Server};Server=localhost;Database=HangfireTest;Trusted_Connection=yes;TrustServerCertificate=yes;
+#   Driver={ODBC Driver 18 for SQL Server};Server=.\SQLEXPRESS;Database=HangfireTest;UID=sa;PWD=CHANGE_ME;TrustServerCertificate=yes;
+connection_string = "Driver={ODBC Driver 17 for SQL Server};Server=localhost;Database=HangfireTest;Trusted_Connection=yes;TrustServerCertificate=yes;"
+
+[monitor]
+# Poll interval in seconds for the live monitor.
+poll_interval = 2
+# Number of history points to keep in the monitor view.
+history_points = 60

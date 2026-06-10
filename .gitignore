@@ -42,6 +42,3 @@ msbuild.wrn
 
 # Cursor
 .cursor/
-
-# tools
-tools/
