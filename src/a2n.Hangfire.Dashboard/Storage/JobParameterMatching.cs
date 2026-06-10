@@ -59,6 +59,12 @@ public static class JobParameterMatching
         return lookup;
     }
 
+    /// <summary>
+    /// Resolves a stored recurring job id (plain or JSON) to the known plain id for display and matching.
+    /// </summary>
+    /// <param name="storedValue"></param>
+    /// <param name="knownPlainIds"></param>
+    /// <returns></returns>
     public static string ResolvePlainRecurringJobId(string storedValue, IReadOnlyList<string> knownPlainIds)
     {
         if (string.IsNullOrEmpty(storedValue))
@@ -68,6 +74,13 @@ public static class JobParameterMatching
         return ResolvePlainRecurringJobId(storedValue, lookup);
     }
 
+
+    /// <summary>
+    /// Resolves a stored recurring job id (plain or JSON) to the known plain id for display and matching using a pre-built lookup.
+    /// </summary>
+    /// <param name="storedValue"></param>
+    /// <param name="storedValueToPlainId"></param>
+    /// <returns></returns>
     public static string ResolvePlainRecurringJobId(
         string storedValue,
         IReadOnlyDictionary<string, string> storedValueToPlainId)
