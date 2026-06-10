@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
@@ -40,11 +41,33 @@ public class AnalyticsBroadcastService : BackgroundService
             "AnalyticsBroadcastService started. Broadcasting every {Interval}s",
             _interval.TotalSeconds);
 
-        while (!stoppingToken.IsCancellationRequested)
+        // PeriodicTimer fires on a fixed cadence independent of how long each broadcast takes.
+        // The previous implementation delayed _interval *after* finishing the work, so the
+        // real period was (query_time + _interval). On slow stores (e.g. SQL Server under load)
+        // that stretched the analytics push gap well past its target. With a fixed-cadence timer,
+        // ticks that arrive while a broadcast is still running are coalesced (PeriodicTimer keeps
+        // at most one pending tick), so we self-throttle instead of drifting ever further behind.
+        using var timer = new PeriodicTimer(_interval);
+
+        while (await SafeWaitForNextTickAsync(timer, stoppingToken))
         {
             try
             {
+                var startedAt = Stopwatch.GetTimestamp();
+
                 await BroadcastAnalytics(stoppingToken);
+
+                var elapsed = Stopwatch.GetElapsedTime(startedAt);
+                if (elapsed > _interval)
+                {
+                    // The broadcast itself took longer than the cadence, so pushes cannot keep up.
+                    // This is the realtime-degrade signal (slow metrics queries) that has no
+                    // exception to surface on its own.
+                    _logger.LogWarning(
+                        "Analytics broadcast took {Elapsed}ms, exceeding the {Interval}s cadence; " +
+                        "realtime updates may lag. Consider profiling the metrics provider queries.",
+                        (long)elapsed.TotalMilliseconds, _interval.TotalSeconds);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -53,20 +76,30 @@ public class AnalyticsBroadcastService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error broadcasting analytics data");
-            }
-
-            try
-            {
-                await Task.Delay(_interval, stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
+                // Logged at Error: a throwing metrics query (e.g. a malformed provider
+                // SQL statement) silently kills the analytics SignalR channel for every
+                // client, so it needs to be visible in default production log levels.
+                _logger.LogError(ex, "Error broadcasting analytics data");
             }
         }
 
         _logger.LogInformation("AnalyticsBroadcastService stopped.");
+    }
+
+    /// <summary>
+    /// Awaits the next timer tick, translating the cancellation that fires on shutdown into a
+    /// clean <c>false</c> (loop exit) rather than a thrown <see cref="OperationCanceledException"/>.
+    /// </summary>
+    private static async Task<bool> SafeWaitForNextTickAsync(PeriodicTimer timer, CancellationToken ct)
+    {
+        try
+        {
+            return await timer.WaitForNextTickAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
     }
 
     private async Task BroadcastAnalytics(CancellationToken ct)
@@ -86,25 +119,28 @@ public class AnalyticsBroadcastService : BackgroundService
         var now = DateTimeOffset.UtcNow;
         var sixHoursAgo = now.AddHours(-6);
 
+        // The three queries are independent and each opens its own DB connection, so run them
+        // concurrently rather than sequentially. Under load on slower stores (e.g. SQL Server)
+        // the sequential sum dominated the broadcast time and stretched the push cadence; with
+        // fan-out the per-broadcast cost is now bounded by the slowest single query, not their sum.
+        //
         // Query last 6h throughput with OneHour interval.
         // Hangfire AggregatedCounter stores data at hourly granularity (stats:succeeded:yyyy-MM-dd-HH),
         // so querying with OneMinute interval would return only 1-2 data points for a 1h window.
         // Using 6h with OneHour gives meaningful chart data (up to 6 points).
-        var throughput = await metricsProvider.GetThroughputTimelineAsync(
+        var throughputTask = metricsProvider.GetThroughputTimelineAsync(
             sixHoursAgo, now, MetricsInterval.OneHour, ct);
+        var serverUtilizationTask = metricsProvider.GetServerUtilizationSnapshotAsync(ct);
+        var queueDepthTask = metricsProvider.GetQueueDepthSnapshotAsync(ct);
 
-        // Query server utilization snapshot
-        var serverUtilization = await metricsProvider.GetServerUtilizationSnapshotAsync(ct);
-
-        // Query queue depth snapshot
-        var queueDepth = await metricsProvider.GetQueueDepthSnapshotAsync(ct);
+        await Task.WhenAll(throughputTask, serverUtilizationTask, queueDepthTask);
 
         // Build broadcast payload
         var payload = new AnalyticsBroadcastPayload
         {
-            Throughput = throughput,
-            ServerUtilization = serverUtilization,
-            QueueDepth = queueDepth
+            Throughput = throughputTask.Result,
+            ServerUtilization = serverUtilizationTask.Result,
+            QueueDepth = queueDepthTask.Result
         };
 
         // Broadcast to "analytics" group
