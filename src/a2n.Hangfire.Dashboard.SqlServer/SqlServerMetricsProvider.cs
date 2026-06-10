@@ -393,37 +393,30 @@ GROUP BY COALESCE(JSON_VALUE(s.Data, '$.ServerId'), JSON_VALUE(s.Data, '$.Server
     public async Task<SnapshotResult<IReadOnlyList<QueueDepthDto>>> GetQueueDepthSnapshotAsync(
         CancellationToken ct)
     {
+        // SQL Server forbids a subquery/aggregate in the GROUP BY list (error 144),
+        // so we compute QueueName once in a derived table, then aggregate over it in
+        // the outer query. This mirrors the PostgreSQL provider's SUM(CASE...) shape.
         var sql = $@"
-SELECT j.StateName,
-       COALESCE(
-           (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
-            WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
-            ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
-           JSON_VALUE(s.Data, '$.Queue'),
-           'default') AS QueueName,
-       COUNT(*) AS Cnt
-FROM {Table("Job")} j
-LEFT JOIN {Table("State")} s ON s.Id = j.StateId
-WHERE j.StateName IN ('Enqueued', 'Processing')
-GROUP BY j.StateName,
-         COALESCE(
-           (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
-            WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
-            ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
-           JSON_VALUE(s.Data, '$.Queue'),
-           'default')";
+SELECT q.QueueName,
+       SUM(CASE WHEN q.StateName = 'Enqueued'   THEN 1 ELSE 0 END) AS EnqueuedCount,
+       SUM(CASE WHEN q.StateName = 'Processing' THEN 1 ELSE 0 END) AS FetchedCount
+FROM (
+    SELECT j.StateName,
+           COALESCE(
+               (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+                WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+                ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+               JSON_VALUE(s.Data, '$.Queue'),
+               'default') AS QueueName
+    FROM {Table("Job")} j
+    LEFT JOIN {Table("State")} s ON s.Id = j.StateId
+    WHERE j.StateName IN ('Enqueued', 'Processing')
+) q
+GROUP BY q.QueueName";
 
         using var connection = CreateConnection();
-        var rows = (await connection.QueryAsync<QueueDepthRow>(
+        var results = (await connection.QueryAsync<QueueDepthDto>(
             new CommandDefinition(sql, cancellationToken: ct))).ToList();
-
-        var grouped = rows.GroupBy(r => r.QueueName ?? "default");
-        var results = grouped.Select(g => new QueueDepthDto
-        {
-            QueueName = g.Key,
-            EnqueuedCount = g.Where(r => r.StateName == "Enqueued").Sum(r => r.Cnt),
-            FetchedCount = g.Where(r => r.StateName == "Processing").Sum(r => r.Cnt)
-        }).ToList();
 
         return new SnapshotResult<IReadOnlyList<QueueDepthDto>>
         {
@@ -438,27 +431,26 @@ GROUP BY j.StateName,
     {
         var groupExpr = GetTimeGroupExpression(interval);
 
+        // Compute Bucket + QueueName in a derived table so the outer query can GROUP BY
+        // them without repeating the subquery (SQL Server error 144 forbids a subquery
+        // in the GROUP BY list). Mirrors the PostgreSQL provider's shape.
         var sql = $@"
-SELECT {groupExpr} AS Bucket,
-       COALESCE(
-           (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
-            WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
-            ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
-           JSON_VALUE(s.Data, '$.Queue'),
-           'default') AS QueueName,
-       COUNT(*) AS SucceededCount
-FROM {Table("State")} s
-INNER JOIN {Table("Job")} j ON j.Id = s.JobId
-WHERE s.Name = 'Succeeded'
-  AND s.CreatedAt >= @From AND s.CreatedAt < @To
-GROUP BY {groupExpr},
-         COALESCE(
-           (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
-            WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
-            ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
-           JSON_VALUE(s.Data, '$.Queue'),
-           'default')
-ORDER BY Bucket";
+SELECT t.Bucket, t.QueueName, COUNT(*) AS SucceededCount
+FROM (
+    SELECT {groupExpr} AS Bucket,
+           COALESCE(
+               (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+                WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+                ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+               JSON_VALUE(s.Data, '$.Queue'),
+               'default') AS QueueName
+    FROM {Table("State")} s
+    INNER JOIN {Table("Job")} j ON j.Id = s.JobId
+    WHERE s.Name = 'Succeeded'
+      AND s.CreatedAt >= @From AND s.CreatedAt < @To
+) t
+GROUP BY t.Bucket, t.QueueName
+ORDER BY t.Bucket";
 
         using var connection = CreateConnection();
         var rows = await connection.QueryAsync<QueueThroughputRow>(
@@ -1004,13 +996,6 @@ ORDER BY RecurringJobIdStored, rn";
     {
         public string ServerName { get; set; }
         public int BusyCount { get; set; }
-    }
-
-    private class QueueDepthRow
-    {
-        public string StateName { get; set; }
-        public string QueueName { get; set; }
-        public long Cnt { get; set; }
     }
 
     private class QueueThroughputRow
