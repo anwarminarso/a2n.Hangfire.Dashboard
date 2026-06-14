@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.4.0 — Job Builder
+
+> **Create and schedule jobs *with their arguments* directly from the dashboard.** The recurring editor previously built jobs with empty arguments and resolved methods by name (throwing on overloads), so parameterized methods couldn't be scheduled from the UI. v2.4.0 replaces it with a composable, type-aware Job Builder shared by the recurring editor and a new one-off enqueue page. Closes [#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8).
+
+### ✨ Highlights
+
+- **🧩 Guided parameter form** — a type-aware form generated from the method signature (text, numbers, dates, GUIDs, enums, booleans, arrays, nested objects) with a live JSON mirror and a Form ⇄ JSON toggle.
+- **🔎 Method discovery** — pick from methods discovered across loaded assemblies, with overload-safe resolution. Hand-typed custom methods are opt-in via `EnableCustomMethodInvocation`.
+- **🕑 Visual cron builder** — build a schedule field-by-field (every / specific / range / step) with a human-readable description and a next-run preview in the selected time zone.
+- **➕ Enqueue page** — the same builder powers a new `/jobs/enqueue` page for one-off (fire-and-forget) jobs.
+
+### Added — Job Builder
+
+- **Typed argument conversion** — operator-supplied values are converted to each parameter's declared CLR type before the job is stored (`["some-value", 42]` → `string`, `int`), matching how Hangfire serializes arguments. Empty fields resolve to `null` for nullable types or `default(T)` for non-nullable types — never an error.
+- **Overload-safe method resolution** — `JobMethodResolver` selects the single overload whose job-parameter count and types match the supplied arguments. Ambiguous, missing, or non-matching methods are rejected with an identifying error and never touch storage.
+- **Method discovery** — `JobMethodResolver` scans loaded assemblies for public methods whose method or declaring class carries `JobDisplayName`, `Tag`, or `Queue`. The result is cached for the dashboard's lifetime and resilient to assemblies that fail to load (`ReflectionTypeLoadException`).
+- **`Parameter_JSON` validation** — well-formedness, "must be an array", argument-count-vs-signature, and per-element convertibility are validated, with errors naming the offending parameter and expected type.
+- **Injected parameters skipped** — `PerformContext`, `IJobCancellationToken`, and `CancellationToken` are excluded from the form and filled by Hangfire at runtime.
+- **Edit pre-fill** — current argument values are loaded back into the form when editing an existing recurring job.
+- **Visual cron builder** — `ScheduleBuilder` offers a field-by-field cron editor plus manual input, with a human-readable description and next-occurrence preview (parsing via Cronos, already bundled with Hangfire — no new dependency). Unparseable expressions are flagged and block submission.
+- **Queue handling** — the queue control suggests current queues (defaulting to `default`); when a `[Queue(...)]` attribute applies to the method or its declaring class, the control becomes read-only with a precedence notice, because Hangfire's `QueueAttribute` overrides the stored queue at state election.
+- **Enqueue page** at `/jobs/enqueue` — reuses the `JobBuilder` composite in Enqueue mode for one-off jobs; `HangfireMonitorService.EnqueueJob` returns the new job id.
+- `DashboardUIOptions.EnableCustomMethodInvocation` (default `false`) — gates whether operators may invoke hand-typed type + method, keeping the arbitrary-invocation surface opt-in.
+
+### Changed
+
+- The recurring **Create/Edit** form is now built on the shared Job Builder, so it supports arguments, method discovery, and the visual cron builder. `HangfireMonitorService.CreateOrUpdateRecurringJob` now takes a `RecurringJobRequest` and persists arguments and the configured queue.
+
+### Gating
+
+- Read-only mode, `EnableRecurringJobAdmin`, and `EnableCustomMethodInvocation` are all enforced in both the UI (banners + disabled controls) and the service layer.
+
+### Internal
+
+- New `JobMethodResolver` service; `Internal` helpers `JobArgumentConverter`, `ParameterInputMapper`, `CronDescriber`, `CronPreview`, `EffectiveQueue`; shared models in `Models/JobBuilderModels.cs`; components `JobBuilder`, `MethodPicker`, `ParameterBuilder`, `ScheduleBuilder`.
+- Test coverage: 25 FsCheck.Xunit correctness properties over the pure logic (argument converter, resolver, input mapper, Form/JSON round trip, cron helpers), plus bunit component tests and service tests.
+
 ## 2.3.1 — Realtime Analytics Fixes
 
 > **Patch release.** Restores realtime analytics on SQL Server and keeps the analytics broadcast on a steady cadence under load. NuGet packages now ship API documentation.
