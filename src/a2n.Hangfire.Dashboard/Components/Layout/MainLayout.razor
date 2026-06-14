@@ -149,6 +149,7 @@
         _pageTitle = path switch
         {
             "" or "/" => "Dashboard",
+            "/jobs/enqueue" => "Enqueue Job",
             "/jobs/enqueued" => "Enqueued Jobs",
             _ when path.StartsWith("/jobs/enqueued/") => "Enqueued Jobs",
             _ when path.StartsWith("/jobs/fetched/") => "Fetched Jobs",

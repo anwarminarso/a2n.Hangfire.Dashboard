@@ -1,0 +1,19 @@
+@*
+    Enqueue Job page (Req 12.1, 12.2) — a thin host that renders the JobBuilder composite in
+    Enqueue mode. In this mode the JobBuilder hides the Schedule_Builder entirely and requires no
+    cron (Req 12.1), presents the Method_Picker and Parameter_Builder, and exposes a queue selector
+    defaulting to "default" (Req 12.2).
+
+    Enqueue is NOT gated behind EnableRecurringJobAdmin (that gate only applies to recurring job
+    administration). Read-only gating is handled by the JobBuilder itself, which renders its own
+    persistent read-only banner and disables the mutating controls (Req 4.1, 4.2).
+*@
+@page "/jobs/enqueue"
+
+<PageTitle>Enqueue Job</PageTitle>
+
+<div style="max-width: 720px;">
+    <h2 class="mb-3">Enqueue Job</h2>
+
+    <JobBuilder Mode="JobBuilderMode.Enqueue" />
+</div>

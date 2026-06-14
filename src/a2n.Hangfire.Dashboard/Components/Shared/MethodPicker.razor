@@ -1,0 +1,275 @@
+@*
+    Method Picker (Req 6, 7) — selects the job's target method, either by choosing a discovered
+    Registered_Method or by entering a Custom_Method (full type name + method name) validated
+    against the loaded assemblies.
+
+    Responsibilities (task 8.1):
+      • Present a Registered vs Custom choice with NOTHING selected by default (Req 6.1).
+      • Disable the Custom option unless Custom_Method_Enabled is set; only Registered may be
+        chosen while it is disabled (Req 4.4, 4.5).
+      • Registered mode lists every discovered method by its Display_Label
+        (JobMethodResolver.GetRegisteredMethods), or shows an empty-state indication with no
+        selectable entries when none are available (Req 6.2, 6.3). Selecting one emits its
+        JobMethodDescriptor (Req 6.4).
+      • Custom mode offers a type-name input, a method-name input, and a Validate control that
+        calls JobMethodResolver.ValidateCustomMethod. On success it emits the resolved descriptor
+        (Req 6.6, 7.6); on failure it shows the error and RETAINS the entered inputs (Req 6.7,
+        7.2–7.5).
+      • Every selection change re-emits a descriptor so the Parameter Builder replaces its inputs
+        (Req 6.8).
+
+    Output flows to the parent via OnMethodSelected, carrying the selected JobMethodDescriptor.
+*@
+@inject JobMethodResolver Resolver
+
+<div class="method-picker">
+    @* Registered vs Custom choice — only meaningful when Custom_Method is permitted. When custom is
+       disabled there is effectively a single mode, so the toggle is omitted entirely and the
+       Registered_Method selector is shown directly (Req 4.4, 6.1). *@
+    @if (CustomMethodEnabled)
+    {
+        <div class="mb-3">
+            <div class="form-check">
+                <input type="radio" class="form-check-input" id="method-mode-registered"
+                       name="method-mode" checked="@(_mode == PickerMode.Registered)"
+                       @onchange="() => SetMode(PickerMode.Registered)" />
+                <label class="form-check-label" for="method-mode-registered">
+                    <i class="bi bi-list-check"></i> Registered method
+                </label>
+            </div>
+            <div class="form-check">
+                <input type="radio" class="form-check-input" id="method-mode-custom"
+                       name="method-mode" checked="@(_mode == PickerMode.Custom)"
+                       @onchange="() => SetMode(PickerMode.Custom)" />
+                <label class="form-check-label" for="method-mode-custom">
+                    <i class="bi bi-pencil-square"></i> Custom method
+                </label>
+            </div>
+        </div>
+    }
+
+    @if (_mode == PickerMode.Registered)
+    {
+        @* Registered mode — list discovered methods, or an empty-state when none (Req 6.2, 6.3). *@
+        @if (_registeredMethods.Count == 0)
+        {
+            <div class="alert alert-secondary d-flex align-items-center gap-2 mb-0" role="status">
+                <i class="bi bi-inbox"></i>
+                <span>No registered methods are available.</span>
+            </div>
+        }
+        else
+        {
+            <label class="form-label fw-semibold mb-1" for="registered-method-select">Discovered methods</label>
+            <select class="form-select" id="registered-method-select" value="@_selectedRegisteredIndex"
+                    @onchange="OnRegisteredSelectionChanged">
+                <option value="">Select a method…</option>
+                @for (var i = 0; i < _registeredMethods.Count; i++)
+                {
+                    var index = i;
+                    <option value="@index">@_registeredMethods[index].DisplayLabel</option>
+                }
+            </select>
+            @if (_selectedRegisteredIndex is int sel && sel >= 0 && sel < _registeredMethods.Count)
+            {
+                <div class="form-text font-monospace">
+                    @($"{_registeredMethods[sel].TypeFullName}.{_registeredMethods[sel].MethodName}")
+                </div>
+            }
+        }
+    }
+    else if (_mode == PickerMode.Custom)
+    {
+        @* Custom mode — type + method inputs and a Validate control (Req 6.5, 7). *@
+        <div class="mb-3">
+            <label class="form-label fw-semibold mb-1" for="custom-type-name">Full type name</label>
+            <input type="text" class="form-control font-monospace" id="custom-type-name"
+                   placeholder="MyApp.Jobs.OrderJobs"
+                   value="@_customTypeName" @oninput="e => _customTypeName = e.Value?.ToString() ?? string.Empty" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label fw-semibold mb-1" for="custom-method-name">Method name</label>
+            <input type="text" class="form-control font-monospace" id="custom-method-name"
+                   placeholder="ProcessOrder"
+                   value="@_customMethodName" @oninput="e => _customMethodName = e.Value?.ToString() ?? string.Empty" />
+        </div>
+        <button type="button" class="btn btn-outline-primary" @onclick="ValidateCustom">
+            <i class="bi bi-check2-circle"></i> Validate
+        </button>
+
+        @if (!string.IsNullOrEmpty(_customError))
+        {
+            <div class="alert alert-danger d-flex align-items-center gap-2 mt-3 mb-0" role="alert">
+                <i class="bi bi-exclamation-octagon"></i>
+                <span>@_customError</span>
+            </div>
+        }
+        else if (_customValidated)
+        {
+            <div class="alert alert-success d-flex align-items-center gap-2 mt-3 mb-0" role="status">
+                <i class="bi bi-check2-circle"></i>
+                <span>Method validated and selected.</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Whether the Custom_Method option may be chosen (Req 4.4, 4.5). When false the Custom radio
+    /// is disabled and only Registered_Methods may be selected.
+    /// </summary>
+    [Parameter] public bool CustomMethodEnabled { get; set; }
+
+    /// <summary>
+    /// Full type name of the method to pre-select on first render (edit pre-fill, Req 3.1, 3.3,
+    /// 11.2). Empty leaves nothing selected (Req 6.1).
+    /// </summary>
+    [Parameter] public string InitialTypeName { get; set; }
+
+    /// <summary>
+    /// Method name to pre-select on first render (edit pre-fill, Req 3.1, 3.3, 11.2). Empty leaves
+    /// nothing selected (Req 6.1).
+    /// </summary>
+    [Parameter] public string InitialMethodName { get; set; }
+
+    /// <summary>
+    /// Raised whenever the operator selects a method, emitting the resolved
+    /// <see cref="JobMethodDescriptor"/> so the Parameter Builder can (re)build its inputs
+    /// (Req 6.4, 6.6, 6.8).
+    /// </summary>
+    [Parameter] public EventCallback<JobMethodDescriptor> OnMethodSelected { get; set; }
+
+    private enum PickerMode { None, Registered, Custom }
+
+    private PickerMode _mode = PickerMode.None;
+
+    // Registered-mode state.
+    private IReadOnlyList<JobMethodDescriptor> _registeredMethods = Array.Empty<JobMethodDescriptor>();
+    private int? _selectedRegisteredIndex;
+
+    // Custom-mode state — retained across (failed) validation attempts (Req 6.7, 7.2–7.5).
+    private string _customTypeName = string.Empty;
+    private string _customMethodName = string.Empty;
+    private string _customError;
+    private bool _customValidated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Discovery is served from the resolver's cache (Req 5.6, 5.8); empty is valid (Req 5.9).
+        _registeredMethods = Resolver.GetRegisteredMethods();
+
+        // When Custom_Method is not permitted there is only one mode, so default straight to the
+        // Registered selector (the Registered/Custom toggle is not rendered) (Req 4.4, 6.1).
+        if (!CustomMethodEnabled)
+        {
+            _mode = PickerMode.Registered;
+        }
+
+        // Edit pre-fill: when an initial type+method is supplied, pre-select that method so the
+        // Parameter Builder renders and the operator sees the existing job's method (Req 3.1, 3.3,
+        // 11.2). When either is empty, nothing is selected by default (Req 6.1).
+        await PreselectInitialMethodAsync();
+    }
+
+    /// <summary>
+    /// Pre-selects the method identified by <see cref="InitialTypeName"/>/<see cref="InitialMethodName"/>
+    /// on first render. It first looks for a matching discovered Registered_Method (by full type name
+    /// + method name); when found it selects Registered mode and emits that descriptor. Otherwise it
+    /// validates the pair as a Custom_Method against the loaded assemblies; when valid it selects
+    /// Custom mode, pre-fills the inputs, marks them validated, and emits the resolved descriptor.
+    /// When neither resolves it leaves the picker unselected so the operator can pick manually — it
+    /// never throws.
+    /// </summary>
+    private async Task PreselectInitialMethodAsync()
+    {
+        if (string.IsNullOrWhiteSpace(InitialTypeName) || string.IsNullOrWhiteSpace(InitialMethodName))
+        {
+            return; // nothing to pre-select — nothing selected by default (Req 6.1)
+        }
+
+        // Prefer a discovered Registered_Method matching the full type name + method name.
+        for (var i = 0; i < _registeredMethods.Count; i++)
+        {
+            var candidate = _registeredMethods[i];
+            if (string.Equals(candidate.TypeFullName, InitialTypeName, StringComparison.Ordinal)
+                && string.Equals(candidate.MethodName, InitialMethodName, StringComparison.Ordinal))
+            {
+                _mode = PickerMode.Registered;
+                _selectedRegisteredIndex = i;
+                await OnMethodSelected.InvokeAsync(candidate);
+                return;
+            }
+        }
+
+        // Otherwise try to resolve it as a Custom_Method against the loaded assemblies. This runs
+        // even when Custom_Method invocation is disabled: editing an existing job must still pre-fill
+        // and display its method (the operator may only be changing the schedule or queue), and the
+        // service's custom-method gate still governs whether any change can actually be submitted.
+        var result = Resolver.ValidateCustomMethod(InitialTypeName, InitialMethodName);
+        if (result.IsValid)
+        {
+            _mode = PickerMode.Custom;
+            _customTypeName = InitialTypeName;
+            _customMethodName = InitialMethodName;
+            _customValidated = true;
+            _customError = null;
+            await OnMethodSelected.InvokeAsync(result.Descriptor);
+        }
+
+        // If neither path resolves, leave the picker unselected (Req 6.1) — the operator may pick
+        // manually. Do not throw.
+    }
+
+    private void SetMode(PickerMode mode)
+    {
+        if (_mode == mode)
+        {
+            return;
+        }
+
+        _mode = mode;
+
+        // Reset the per-mode selection state so a switch starts from a clean slate.
+        _selectedRegisteredIndex = null;
+        _customError = null;
+        _customValidated = false;
+    }
+
+    private async Task OnRegisteredSelectionChanged(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString();
+        if (string.IsNullOrEmpty(raw) || !int.TryParse(raw, out var index)
+            || index < 0 || index >= _registeredMethods.Count)
+        {
+            _selectedRegisteredIndex = null;
+            return;
+        }
+
+        _selectedRegisteredIndex = index;
+
+        // Selecting a Registered_Method emits its descriptor; changing the selection re-emits a
+        // new descriptor so the Parameter Builder replaces its inputs (Req 6.4, 6.8).
+        await OnMethodSelected.InvokeAsync(_registeredMethods[index]);
+    }
+
+    private async Task ValidateCustom()
+    {
+        // Ordered checks run in the resolver; it returns a single result (Req 7.1).
+        var result = Resolver.ValidateCustomMethod(_customTypeName, _customMethodName);
+
+        if (!result.IsValid)
+        {
+            // Failure: show the error and RETAIN the entered inputs without saving (Req 6.7, 7.2–7.5).
+            _customError = result.Message;
+            _customValidated = false;
+            return;
+        }
+
+        _customError = null;
+        _customValidated = true;
+
+        // Success: emit the resolved descriptor (Req 6.6, 7.6).
+        await OnMethodSelected.InvokeAsync(result.Descriptor);
+    }
+}

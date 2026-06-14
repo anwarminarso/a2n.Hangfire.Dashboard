@@ -1,148 +1,108 @@
+@*
+    Recurring create/edit route (Req 11.1, 11.4).
+
+    This page is now a thin host: it owns the routes `/recurring/create` and
+    `/recurring/edit/{JobId}` and delegates the entire job-construction form to the shared
+    JobBuilder component running in Recurring mode (Req 11.1). The prior hand-rolled form
+    (class/method/parameter/cron/queue/time-zone fields + Save logic) has been removed; JobBuilder
+    is the sole job-construction surface and handles submit + navigation back to the recurring jobs
+    list on success (Req 11.4).
+
+    For edit mode this page loads the existing recurring job and feeds JobBuilder its Initial*
+    parameters so pre-fill is preserved (Req 3.x): the Parameter_JSON is rebuilt positionally from
+    the stored Args exactly as the previous form did, and cron/queue/time-zone come from the stored
+    definition. The recurring-admin-disabled guard is preserved — JobBuilder renders the disabled
+    banner and makes the mutating controls inert.
+*@
 @page "/recurring/create"
 @page "/recurring/edit/{JobId}"
 @inject HangfireMonitorService Monitor
-@inject NavigationManager Nav
-@inject DashboardUIOptions Options
 
 <PageTitle>@(_isEdit ? "Edit" : "Create") Recurring Job</PageTitle>
 
-@if (!Options.EnableRecurringJobAdmin)
-{
-    <div class="alert alert-warning">
-        <i class="bi bi-lock"></i> Recurring job administration is disabled.
-    </div>
-}
-else
-{
-<div style="max-width: 600px;">
+<div style="max-width: 720px;">
     <h2 class="mb-3">@(_isEdit ? "Edit" : "Create") Recurring Job</h2>
 
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!string.IsNullOrEmpty(_loadError))
     {
-        <div class="alert alert-danger">@_error</div>
+        <div class="alert alert-danger">@_loadError</div>
     }
 
-    <div class="card">
-        <div class="card-body">
-            <div class="mb-3">
-                <label class="form-label">Job ID</label>
-                <input class="form-control" @bind="_model.Id" placeholder="my-recurring-job" disabled="@_isEdit" />
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Class (Full Name)</label>
-                <input class="form-control" @bind="_model.TypeName" placeholder="MyApp.Jobs.MyJob" />
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Method</label>
-                <input class="form-control" @bind="_model.MethodName" placeholder="Execute" />
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Cron Expression</label>
-                <input class="form-control font-monospace" @bind="_model.Cron" placeholder="*/5 * * * *" />
-                <div class="form-text">Examples: */5 * * * * (every 5 min), 0 * * * * (hourly), 0 0 * * * (daily)</div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Queue</label>
-                <input class="form-control" @bind="_model.Queue" placeholder="default" />
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Time Zone</label>
-                <select class="form-select" @bind="_model.TimeZoneId">
-                    <option value="">UTC</option>
-                    @foreach (var tz in _timeZones)
-                    {
-                        <option value="@tz.Id">@tz.DisplayName</option>
-                    }
-                </select>
-            </div>
-
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary" @onclick="Save" disabled="@_saving">
-                    @(_saving ? "Saving..." : (_isEdit ? "Update" : "Create"))
-                </button>
-                <a class="btn btn-outline-secondary" href="recurring">Cancel</a>
-            </div>
-        </div>
-    </div>
+    @* JobBuilder is the sole job-construction form (Req 11.1). It renders the read-only and
+       recurring-admin-disabled banners, gates the mutating controls, and on success navigates to
+       the recurring jobs list (Req 4.x, 11.4). Initial* values preserve edit pre-fill (Req 3.x). *@
+    <JobBuilder Mode="JobBuilderMode.Recurring"
+                JobId="@JobId"
+                InitialTypeName="@_initialTypeName"
+                InitialMethodName="@_initialMethodName"
+                InitialParameterJson="@_initialParameterJson"
+                InitialCron="@_initialCron"
+                InitialQueue="@_initialQueue"
+                InitialTimeZoneId="@_initialTimeZoneId" />
 </div>
-}
 
 @code {
     [Parameter] public string JobId { get; set; }
 
     private bool _isEdit => !string.IsNullOrEmpty(JobId);
-    private bool _saving;
-    private string _error;
-    private RecurringJobModel _model = new();
-    private IReadOnlyCollection<TimeZoneInfo> _timeZones = TimeZoneInfo.GetSystemTimeZones();
+
+    // Initial values passed to JobBuilder for edit pre-fill (Req 3.x). Empty for create.
+    private string _initialTypeName = "";
+    private string _initialMethodName = "";
+    private string _initialParameterJson = "[]";
+    private string _initialCron = "";
+    private string _initialQueue = "";
+    private string _initialTimeZoneId = "";
+    private string _loadError;
 
     protected override void OnInitialized()
     {
         if (_isEdit)
         {
-            // Load existing job data
+            // Load the existing recurring job and feed its values to JobBuilder so the edit form is
+            // pre-filled (Req 3.3): cron/queue/time-zone come from the stored definition; absent
+            // fields stay empty rather than substituting a placeholder (Req 3.4).
             var jobs = Monitor.GetRecurringJobs();
             var existing = jobs.FirstOrDefault(j => j.Id == JobId);
             if (existing is not null)
             {
-                _model.Id = existing.Id;
-                _model.TypeName = existing.Job?.Type.FullName ?? "";
-                _model.MethodName = existing.Job?.Method.Name ?? "";
-                _model.Cron = existing.Cron;
-                _model.Queue = existing.Queue ?? "default";
-                _model.TimeZoneId = existing.TimeZoneId ?? "";
+                // Target type/method drive the Method Picker's edit pre-selection so the parameter
+                // form renders and the stored Args pre-fill (Req 3.1, 3.3, 11.2). Absent fields stay
+                // empty rather than substituting a placeholder (Req 3.4).
+                _initialTypeName = existing.Job?.Type?.FullName ?? "";
+                _initialMethodName = existing.Job?.Method?.Name ?? "";
+
+                _initialCron = existing.Cron ?? "";
+                _initialQueue = existing.Queue ?? "";
+                _initialTimeZoneId = existing.TimeZoneId ?? "";
+
+                // Pre-fill the Parameter_JSON positionally from the stored Args (Req 3.1, 3.2, 3.5).
+                _initialParameterJson = BuildParameterJson(existing.Job?.Args);
             }
         }
     }
 
-    private async Task Save()
+    /// <summary>
+    /// Builds the operator-facing Parameter_JSON from a recurring job's stored <c>Args</c>.
+    /// The stored Args are positional over ALL declared parameters (injected slots stored as null),
+    /// so they are serialized one-to-one into a JSON array (Req 3.1). An absent or empty Args
+    /// yields an empty array <c>[]</c> (Req 3.2). When the stored Args cannot be serialized, the
+    /// best-effort representation is preserved and an interpretation error is shown (Req 3.5).
+    /// </summary>
+    private string BuildParameterJson(IReadOnlyList<object> args)
     {
-        _error = null;
-        _saving = true;
+        if (args is null || args.Count == 0)
+            return "[]";
 
         try
         {
-            if (string.IsNullOrWhiteSpace(_model.Id))
-                throw new ArgumentException("Job ID is required.");
-            if (string.IsNullOrWhiteSpace(_model.TypeName))
-                throw new ArgumentException("Class name is required.");
-            if (string.IsNullOrWhiteSpace(_model.MethodName))
-                throw new ArgumentException("Method name is required.");
-            if (string.IsNullOrWhiteSpace(_model.Cron))
-                throw new ArgumentException("Cron expression is required.");
-
-            await Task.Run(() => Monitor.CreateOrUpdateRecurringJob(
-                _model.Id,
-                _model.TypeName,
-                _model.MethodName,
-                _model.Cron,
-                string.IsNullOrWhiteSpace(_model.Queue) ? null : _model.Queue,
-                string.IsNullOrWhiteSpace(_model.TimeZoneId) ? null : _model.TimeZoneId));
-
-            Nav.NavigateTo("recurring");
+            return System.Text.Json.JsonSerializer.Serialize(args);
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            _loadError = "The stored arguments could not be interpreted as valid parameter JSON: " + ex.Message;
+            // Preserve the stored arguments unchanged for the operator to review (Req 3.5).
+            return "[" + string.Join(", ", args.Select(a => a?.ToString() ?? "null")) + "]";
         }
-        finally
-        {
-            _saving = false;
-        }
-    }
-
-    private class RecurringJobModel
-    {
-        public string Id { get; set; } = "";
-        public string TypeName { get; set; } = "";
-        public string MethodName { get; set; } = "";
-        public string Cron { get; set; } = "";
-        public string Queue { get; set; } = "default";
-        public string TimeZoneId { get; set; } = "";
     }
 }

@@ -51,7 +51,7 @@ builder.Services.AddHangfire(config =>
 
 builder.Services.AddHangfireServer(options =>
 {
-    options.WorkerCount = 2;
+    //options.WorkerCount = 2;
 });
 
 // Add Hangfire Dashboard UI services with storage adapter configuration
@@ -87,7 +87,9 @@ if (!app.Environment.IsDevelopment())
 app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
     DashboardTitle = "My Dashboard",
-    EnableRecurringJobAdmin = true,
+
+    EnableCustomMethodInvocation = true, // Allow invoking any method on the Job Details page (use with caution in production)
+    EnableRecurringJobAdmin = true, // Show "Add Recurring Job" button and allow editing existing recurring jobs in the UI
 
     // Make stack-trace file references clickable. While developing locally, the Local() preset
     // opens files in VS Code via the vscode:// protocol. For shared dashboards, swap to a remote

@@ -1,3 +1,4 @@
+using System.Reflection;
 using a2n.Hangfire.Dashboard.Security;
 using Hangfire;
 using Hangfire.Dashboard;
@@ -44,6 +45,12 @@ public class DashboardUIOptions
     /// Default: true.
     /// </summary>
     public bool EnableRecurringJobAdmin { get; set; } = true;
+
+    /// <summary>
+    /// Whether operators may invoke Custom_Methods (full type + method typed by hand) from the
+    /// Job Builder. When false, only discovered Registered_Methods may be selected. Default: false.
+    /// </summary>
+    public bool EnableCustomMethodInvocation { get; set; } = false;
 
     /// <summary>
     /// Default number of records per page.
@@ -119,6 +126,34 @@ public class DashboardUIOptions
     /// Configuration for the queue pause / maintenance mode subsystem (v2.3.x).
     /// </summary>
     public QueueOperationsOptions QueueOperations { get; set; } = new QueueOperationsOptions();
+
+    /// <summary>
+    /// Copies every configurable option value from this instance onto <paramref name="target"/>.
+    /// Used to push host-supplied options onto the DI-registered singleton that Blazor components
+    /// inject. Reflection over the public read/write properties means a newly added option is
+    /// propagated automatically and cannot silently drift out of sync — a past source of bugs where
+    /// a hand-maintained copy list omitted a property (e.g. <see cref="EnableCustomMethodInvocation"/>).
+    /// </summary>
+    /// <param name="target">The instance to copy this instance's option values onto.</param>
+    internal void ApplyTo(DashboardUIOptions target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        foreach (var property in typeof(DashboardUIOptions)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.CanRead && property.CanWrite)
+            {
+                property.SetValue(target, property.GetValue(this));
+            }
+        }
+
+        // These collaborators are assumed non-null throughout the dashboard; guard against a caller
+        // that explicitly nulled one of them.
+        target.HealthCheckThresholds ??= new HealthThresholds();
+        target.AuditLog ??= new AuditLogOptions();
+        target.QueueOperations ??= new QueueOperationsOptions();
+    }
 
     /// <summary>
     /// Creates DashboardUIOptions from an existing Hangfire DashboardOptions instance.

@@ -27,6 +27,9 @@
   <ItemGroup>
     <PackageReference Include="Hangfire.Core" Version="1.8.*" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
+    <!-- Cronos is ILMerged (internalized) into Hangfire.Core, so a direct reference is required to
+         use its public API for cron parsing and next-occurrence previews (Job Builder schedule). -->
+    <PackageReference Include="Cronos" Version="0.11.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.*" Condition="'$(TargetFramework)' == 'net8.0'" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.*" Condition="'$(TargetFramework)' == 'net9.0'" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.*" Condition="'$(TargetFramework)' == 'net10.0'" />

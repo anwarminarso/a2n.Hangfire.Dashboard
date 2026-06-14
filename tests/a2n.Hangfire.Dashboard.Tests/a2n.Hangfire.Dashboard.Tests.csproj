@@ -15,6 +15,9 @@
     <PackageReference Include="Moq" Version="4.*" />
     <PackageReference Include="Hangfire.Core" Version="1.8.*" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
+    <!-- Cronos is ILMerged into Hangfire.Core, so the test needs a direct reference to compute the
+         next-occurrence oracle for the CronPreview property tests (Property 18, Req 10.5/10.6). -->
+    <PackageReference Include="Cronos" Version="0.11.0" />
     <PackageReference Include="bunit" Version="1.*" />
     <PackageReference Include="FsCheck.Xunit" Version="2.*" />
     <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />

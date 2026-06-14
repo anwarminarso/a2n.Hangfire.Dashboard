@@ -1,0 +1,1007 @@
+@*
+    Parameter Builder (Req 8) — the dynamic, type-driven form that captures the Argument_Values for
+    a selected method's Job_Parameters.
+
+    This component (task 11.1) is responsible for:
+      • Rendering exactly one input control per Job_Parameter, chosen by its ParameterInputKind
+        (the kind comes from JobParameterDescriptor.InputKind, computed by ParameterInputMapper).
+        Injected parameters never reach this component — the descriptor's JobParameters already
+        exclude them (Req 8.1).
+      • Capturing valid values into the Argument_Values (Req 8.13).
+      • Rejecting a *non-empty* value that is invalid for its parameter's type: it shows an
+        identifying indication and leaves the prior valid value unchanged (Req 8.14).
+      • Treating a *blank* input as JSON null, which is always valid and never raises the
+        invalid-input indication (Req 8.15 / empty-value semantics).
+      • Showing a required-value indication and excluding a missing required parameter from a
+        successful result (Req 8.15).
+      • Explicit nested-object instantiation: a NestedObject parameter renders a collapsed
+        placeholder with an Add/Create button and stays unset (null) until the operator activates
+        it; a Clear action returns it to unset (Req 8.10).
+
+    The Form/JSON mode toggle (task 11.2) is layered on top of the form: the component presents two
+    mutually exclusive modes and defaults to Form (Req 9.1). In Form mode it shows the dynamic form
+    plus a read-only Parameter_JSON mirror updated on every change (Req 9.2). In JSON mode it hides
+    the form and shows an editable textarea pre-populated with the current Parameter_JSON (Req 9.3);
+    switching Form→JSON serializes the current Argument_Values into the textarea (Req 9.4), and
+    switching JSON→Form repopulates the form only when the JSON is valid for the selected method,
+    otherwise it stays in JSON with a constraint-specific error (Req 9.5, 9.6). Output flows to the
+    parent via OnParametersChanged, which emits a ParameterState carrying the current Argument_Values,
+    the canonical Parameter_JSON, and the overall validity.
+*@
+@using System.Globalization
+@using System.Linq
+@using System.Reflection
+@using System.Text.Json
+@using a2n.Hangfire.Dashboard.Internal
+
+@if (SelectedMethod is null)
+{
+    <div class="alert alert-secondary d-flex align-items-center gap-2 mb-0" role="status">
+        <i class="bi bi-info-circle"></i>
+        <span>Select a method to enter its parameters.</span>
+    </div>
+}
+else
+{
+    @* Mode toggle — two mutually exclusive modes, Form active by default (Req 9.1). *@
+    <div class="btn-group btn-group-sm mb-3" role="group" aria-label="Parameter input mode">
+        <button type="button"
+                class="btn @(_jsonMode ? "btn-outline-primary" : "btn-primary")"
+                aria-pressed="@(!_jsonMode)"
+                @onclick="SwitchToFormMode">
+            <i class="bi bi-ui-checks-grid"></i> Form
+        </button>
+        <button type="button"
+                class="btn @(_jsonMode ? "btn-primary" : "btn-outline-primary")"
+                aria-pressed="@_jsonMode"
+                @onclick="SwitchToJsonMode">
+            <i class="bi bi-braces"></i> JSON
+        </button>
+    </div>
+
+    @if (!_jsonMode)
+    {
+        @* Form mode — the dynamic form plus a read-only Parameter_JSON mirror (Req 9.2). *@
+        @if (_fields.Count == 0)
+        {
+            <div class="alert alert-secondary d-flex align-items-center gap-2 mb-0" role="status">
+                <i class="bi bi-check2-circle"></i>
+                <span>This method takes no parameters.</span>
+            </div>
+        }
+        else
+        {
+            <div class="parameter-builder">
+                @foreach (var field in _fields)
+                {
+                    <div class="mb-3" @key="field">
+                        @RenderField(field)
+                    </div>
+                }
+            </div>
+        }
+
+        @* Read-only Parameter_JSON mirror, updated whenever an Argument_Value changes (Req 9.2). *@
+        <div class="mt-2">
+            <label class="form-label small fw-semibold text-body-secondary mb-1">
+                <i class="bi bi-braces"></i> Parameter JSON
+            </label>
+            <pre class="bg-body-tertiary border rounded p-2 mb-0 small font-monospace" style="white-space: pre-wrap;">@_prettyJson</pre>
+        </div>
+    }
+    else
+    {
+        @* JSON mode — the form is hidden; an editable textarea is pre-populated with the current
+           Parameter_JSON content (Req 9.3). Switching back to Form repopulates only when the JSON is
+           valid for the selected method, otherwise this stays in JSON with a constraint-specific
+           error (Req 9.5, 9.6). *@
+        <label class="form-label small fw-semibold text-body-secondary mb-1">
+            <i class="bi bi-braces"></i> Parameter JSON
+        </label>
+        <textarea class="form-control font-monospace@(_jsonError.Length == 0 ? "" : " is-invalid")"
+                  rows="8" spellcheck="false"
+                  value="@_editorJson"
+                  @onchange="e => OnEditorChanged(e.Value?.ToString())"></textarea>
+
+        @if (_jsonError.Length > 0)
+        {
+            <div class="text-danger small mt-1">
+                <i class="bi bi-exclamation-circle"></i> @_jsonError
+            </div>
+        }
+        else
+        {
+            <div class="form-text">
+                Edit the JSON array directly. Switch to <strong>Form</strong> to apply it; it must be a
+                valid JSON array for this method.
+            </div>
+        }
+    }
+}
+
+@code {
+    /// <summary>The method whose Job_Parameters drive the form. When null, nothing is rendered.</summary>
+    [Parameter] public JobMethodDescriptor SelectedMethod { get; set; }
+
+    /// <summary>
+    /// Optional initial Parameter_JSON used to pre-fill the form (e.g. when editing an existing job).
+    /// When absent or not interpretable for the selected method, the form starts at its defaults.
+    /// </summary>
+    [Parameter] public string InitialParameterJson { get; set; }
+
+    /// <summary>Raised whenever the captured Argument_Values, Parameter_JSON, or validity changes (Req 8.13).</summary>
+    [Parameter] public EventCallback<ParameterState> OnParametersChanged { get; set; }
+
+    private readonly List<FieldModel> _fields = new();
+    private JobMethodDescriptor _lastMethod;
+    private string _parameterJson = "[]";
+    private string _prettyJson = "[]";
+    private bool _isValid = true;
+
+    // Form/JSON mode state (Req 9). The component defaults to Form mode for each newly selected
+    // method (9.1); _editorJson holds the editable textarea content while in JSON mode (9.3, 9.4);
+    // _jsonError carries the constraint-specific message when a JSON→Form switch is blocked (9.6).
+    private bool _jsonMode;
+    private string _editorJson = "[]";
+    private string _jsonError = "";
+
+    protected override void OnParametersSet()
+    {
+        // Rebuild the form when the selected method changes (Req 6.8 — the picker replaces inputs).
+        if (!ReferenceEquals(_lastMethod, SelectedMethod))
+        {
+            _lastMethod = SelectedMethod;
+            // A newly displayed method starts in Form mode with no pending JSON error (Req 9.1).
+            _jsonMode = false;
+            _jsonError = "";
+            BuildFields();
+            PopulateFromInitialJson();
+            EmitState();
+            // Seed the editor with the current canonical Parameter_JSON so an immediate switch to
+            // JSON mode shows the live values (Req 9.4).
+            _editorJson = _parameterJson;
+        }
+    }
+
+    // --- Form/JSON mode toggle (Req 9) -------------------------------------------------------
+
+    // Switch from JSON mode to Form mode (Req 9.5, 9.6). The edited Parameter_JSON is repopulated
+    // into the form ONLY when it is valid for the selected method — well-formed JSON, an array of
+    // the right length, every required parameter present, and each value convertible to its
+    // parameter's declared type. Otherwise JSON mode stays active, the content is preserved
+    // unchanged, and a constraint-specific error is shown.
+    private void SwitchToFormMode()
+    {
+        if (!_jsonMode)
+        {
+            return; // already in Form mode
+        }
+
+        var (valid, error) = ValidateJsonForMethod(_editorJson);
+        if (!valid)
+        {
+            _jsonError = error;
+            return; // stay in JSON mode, preserve the edited content (Req 9.6)
+        }
+
+        // Repopulate the form from the validated JSON so Argument_Values equal the JSON content
+        // (Req 9.5), reusing the same build + apply path the initial pre-fill uses.
+        BuildFields();
+        PopulateFrom(_editorJson);
+        _jsonMode = false;
+        _jsonError = "";
+        EmitState();
+    }
+
+    // Switch from Form mode to JSON mode (Req 9.3, 9.4). The editable textarea is initialized by
+    // serializing the current Argument_Values into the canonical Parameter_JSON and retains that
+    // content until the operator edits it.
+    private void SwitchToJsonMode()
+    {
+        if (_jsonMode)
+        {
+            return; // already in JSON mode
+        }
+
+        _editorJson = _parameterJson;
+        _jsonError = "";
+        _jsonMode = true;
+    }
+
+    // The operator edits the raw Parameter_JSON. Store it verbatim, clear any stale switch error,
+    // and emit the current state from the edited JSON so the parent stays in sync while in JSON mode.
+    private void OnEditorChanged(string value)
+    {
+        _editorJson = value ?? "";
+        _jsonError = "";
+        EmitJsonState();
+    }
+
+    // Validity of a Parameter_JSON for the selected method (Req 9.6): well-formed JSON, a top-level
+    // array whose length equals the method's Job_Parameter count, every required parameter present,
+    // and each value convertible to its parameter's declared type. Type/required convertibility is
+    // decided with the same conversion the form uses (ApplyElement + FieldValid), so Form and JSON
+    // modes agree on what is acceptable.
+    private (bool valid, string error) ValidateJsonForMethod(string json)
+    {
+        var descriptors = SelectedMethod?.JobParameters ?? Array.Empty<JobParameterDescriptor>();
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? string.Empty : json);
+        }
+        catch (JsonException)
+        {
+            return (false, "The JSON is malformed. Enter a well-formed JSON array.");
+        }
+
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return (false, "The parameter input must be a JSON array.");
+            }
+
+            var elements = new List<JsonElement>();
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                elements.Add(element);
+            }
+
+            if (elements.Count != descriptors.Count)
+            {
+                return (false, $"Expected {descriptors.Count} argument(s) for this method but found {elements.Count}.");
+            }
+
+            // Apply each element to a throwaway set of fields and reuse the form's own validity rules.
+            var temp = BuildFieldList();
+            for (var i = 0; i < temp.Count; i++)
+            {
+                ApplyElement(temp[i], elements[i]);
+            }
+
+            foreach (var field in temp)
+            {
+                if (FieldValid(field))
+                {
+                    continue;
+                }
+
+                if (field.Invalid)
+                {
+                    return (false, $"Parameter '{field.Name}': {field.Error}");
+                }
+
+                if (field.IsRequired && IsEmptySlot(field))
+                {
+                    return (false, $"Parameter '{field.Name}' is required.");
+                }
+
+                return (false, $"The value for parameter '{field.Name}' is not valid for type {FriendlyType(field.DeclaredType)}.");
+            }
+
+            return (true, null);
+        }
+    }
+
+    // Emit the parent state derived from the edited JSON while in JSON mode. Validity follows the
+    // same rule as the Form→JSON switch; the elements are surfaced when the JSON is a well-formed
+    // array so the parent can read the current Argument_Values regardless of the active mode.
+    private void EmitJsonState()
+    {
+        var (valid, _) = ValidateJsonForMethod(_editorJson);
+
+        var elements = new List<JsonElement>();
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(_editorJson) ? string.Empty : _editorJson);
+            if (document.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var element in document.RootElement.EnumerateArray())
+                {
+                    elements.Add(element.Clone());
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Malformed JSON surfaces as an empty value set with validity false.
+        }
+
+        OnParametersChanged.InvokeAsync(new ParameterState(elements, _editorJson, valid));
+    }
+
+    // --- Form construction -------------------------------------------------------------------
+
+    private void BuildFields()
+    {
+        _fields.Clear();
+        _fields.AddRange(BuildFieldList());
+    }
+
+    // Builds a fresh list of top-level fields from the selected method's Job_Parameters. Used both
+    // to (re)build the live form and to construct throwaway fields for JSON validity checks.
+    private List<FieldModel> BuildFieldList()
+    {
+        var list = new List<FieldModel>();
+        if (SelectedMethod is null)
+        {
+            return list;
+        }
+
+        foreach (var descriptor in SelectedMethod.JobParameters)
+        {
+            var field = new FieldModel
+            {
+                Name = descriptor.Name,
+                DeclaredType = descriptor.DeclaredType,
+                Kind = descriptor.InputKind,
+                IsNullable = descriptor.IsNullable,
+                IsRequired = descriptor.IsRequired,
+                Depth = 1,
+            };
+            ConfigureCompositeMetadata(field);
+            list.Add(field);
+        }
+
+        return list;
+    }
+
+    // Builds a field for a nested property or an array element, computing its kind from the same
+    // ParameterInputMapper used for top-level parameters (Req 8.10 — same type-to-input mapping).
+    private static FieldModel BuildField(string name, Type type, int depth, bool required)
+    {
+        var field = new FieldModel
+        {
+            Name = name,
+            DeclaredType = type,
+            Kind = ParameterInputMapper.Map(type, depth),
+            IsNullable = JobArgumentConverter.IsNullableType(type),
+            IsRequired = required,
+            Depth = depth,
+        };
+        ConfigureCompositeMetadata(field);
+        return field;
+    }
+
+    private static void ConfigureCompositeMetadata(FieldModel field)
+    {
+        if (field.Kind == ParameterInputKind.ScalarArray)
+        {
+            field.ArrayElementType = field.DeclaredType.GetElementType();
+        }
+    }
+
+    // A nested object's sub-form is built only when the operator instantiates it (Req 8.10).
+    private static List<FieldModel> BuildChildren(Type type, int depth)
+    {
+        var children = new List<FieldModel>();
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite && p.GetIndexParameters().Length == 0);
+
+        foreach (var property in properties)
+        {
+            children.Add(BuildField(property.Name, property.PropertyType, depth, required: false));
+        }
+
+        return children;
+    }
+
+    private IReadOnlyList<string> EnumMembers(FieldModel field)
+    {
+        var enumType = Nullable.GetUnderlyingType(field.DeclaredType) ?? field.DeclaredType;
+        return enumType.IsEnum ? Enum.GetNames(enumType) : Array.Empty<string>();
+    }
+
+    // --- Value capture handlers --------------------------------------------------------------
+
+    private void OnScalarChanged(FieldModel field, string value)
+    {
+        field.Text = value ?? "";
+        CommitScalar(field);
+        EmitState();
+    }
+
+    private void OnBoolChanged(FieldModel field, bool value)
+    {
+        field.Bool = value;
+        EmitState();
+    }
+
+    private void OnTriStateChanged(FieldModel field, string value)
+    {
+        field.TriState = value ?? "";
+        EmitState();
+    }
+
+    private void OnEnumSingleChanged(FieldModel field, string value)
+    {
+        field.EnumValue = value ?? "";
+        EmitState();
+    }
+
+    private void OnEnumFlagToggled(FieldModel field, string member, bool selected)
+    {
+        if (selected)
+        {
+            field.EnumFlags.Add(member);
+        }
+        else
+        {
+            field.EnumFlags.Remove(member);
+        }
+
+        EmitState();
+    }
+
+    private void AddArrayItem(FieldModel field)
+    {
+        var item = BuildField($"Item {field.ArrayItems.Count + 1}", field.ArrayElementType, field.Depth, required: false);
+        field.ArrayItems.Add(item);
+        EmitState();
+    }
+
+    private void RemoveArrayItem(FieldModel field, FieldModel item)
+    {
+        field.ArrayItems.Remove(item);
+        EmitState();
+    }
+
+    private void InstantiateNested(FieldModel field)
+    {
+        field.Instantiated = true;
+        field.Children = BuildChildren(field.DeclaredType, field.Depth + 1);
+        EmitState();
+    }
+
+    private void ClearNested(FieldModel field)
+    {
+        field.Instantiated = false;
+        field.Children.Clear();
+        EmitState();
+    }
+
+    // Validates a non-empty scalar text value; a blank value is the empty case and resolves to JSON
+    // null (always valid). On an invalid non-empty value the prior committed value is preserved
+    // unchanged and the field is flagged invalid (Req 8.14, 8.15).
+    private static void CommitScalar(FieldModel field)
+    {
+        var raw = field.Text;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            field.CommittedJson = "null";
+            field.Invalid = false;
+            field.Error = "";
+            return;
+        }
+
+        var (ok, json, error) = TryScalarToJson(raw, field.Kind, field.DeclaredType);
+        if (ok)
+        {
+            field.CommittedJson = json;
+            field.Invalid = false;
+            field.Error = "";
+        }
+        else
+        {
+            // Reject: keep the prior valid value (CommittedJson) unchanged (Req 8.14).
+            field.Invalid = true;
+            field.Error = error;
+        }
+    }
+
+    // Converts a non-empty scalar string to its canonical JSON token, or reports why it is invalid.
+    private static (bool ok, string json, string error) TryScalarToJson(string raw, ParameterInputKind kind, Type declaredType)
+    {
+        var underlying = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+        var inv = CultureInfo.InvariantCulture;
+
+        switch (kind)
+        {
+            case ParameterInputKind.Text:
+                if (raw.Length > 4000)
+                {
+                    return (false, null, "Text must be 4000 characters or fewer.");
+                }
+
+                return (true, JsonSerializer.Serialize(raw), null);
+
+            case ParameterInputKind.Integer:
+                try
+                {
+                    // Convert.ChangeType rejects fractional input (FormatException) and out-of-range
+                    // values (OverflowException) for the declared integral type (Req 8.3, 8.14).
+                    var value = Convert.ChangeType(raw, underlying, inv);
+                    return (true, Convert.ToString(value, inv), null);
+                }
+                catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
+                {
+                    return (false, null, $"Enter a whole number within the range of {FriendlyType(underlying)}.");
+                }
+
+            case ParameterInputKind.Float:
+                try
+                {
+                    var value = Convert.ChangeType(raw, underlying, inv);
+                    return (true, FormatNumber(value), null);
+                }
+                catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
+                {
+                    return (false, null, $"Enter a valid {FriendlyType(underlying)} value.");
+                }
+
+            case ParameterInputKind.Guid:
+                return Guid.TryParse(raw, out var guid)
+                    ? (true, JsonSerializer.Serialize(guid.ToString()), null)
+                    : (false, null, "Enter a valid GUID (e.g. 00000000-0000-0000-0000-000000000000).");
+
+            case ParameterInputKind.Date:
+                return DateOnly.TryParse(raw, inv, DateTimeStyles.None, out _)
+                    ? (true, JsonSerializer.Serialize(raw), null)
+                    : (false, null, "Enter a valid date.");
+
+            case ParameterInputKind.Time:
+                return TimeOnly.TryParse(raw, inv, DateTimeStyles.None, out _)
+                    ? (true, JsonSerializer.Serialize(raw), null)
+                    : (false, null, "Enter a valid time.");
+
+            case ParameterInputKind.DateTime:
+                var dateTimeOk = underlying == typeof(DateTimeOffset)
+                    ? DateTimeOffset.TryParse(raw, inv, DateTimeStyles.RoundtripKind, out _)
+                    : DateTime.TryParse(raw, inv, DateTimeStyles.RoundtripKind, out _);
+                return dateTimeOk
+                    ? (true, JsonSerializer.Serialize(raw), null)
+                    : (false, null, "Enter a valid date and time.");
+
+            case ParameterInputKind.Json:
+                try
+                {
+                    using var _ = JsonDocument.Parse(raw);
+                    return (true, raw, null);
+                }
+                catch (JsonException)
+                {
+                    return (false, null, "Enter syntactically valid JSON.");
+                }
+
+            default:
+                // Non-scalar kinds are handled by their own controls, not this path.
+                return (true, JsonSerializer.Serialize(raw), null);
+        }
+    }
+
+    private static string FormatNumber(object value) => value switch
+    {
+        float f => f.ToString("R", CultureInfo.InvariantCulture),
+        double d => d.ToString("R", CultureInfo.InvariantCulture),
+        decimal m => m.ToString(CultureInfo.InvariantCulture),
+        _ => Convert.ToString(value, CultureInfo.InvariantCulture),
+    };
+
+    private static string FriendlyType(Type type) => type.Name;
+
+    // --- Canonical JSON + validity -----------------------------------------------------------
+
+    // The canonical Parameter_JSON token for a single field. Empty/unset fields and unselected
+    // choices emit JSON null (the canonical encoding of a blank, Req 8.15); composites recurse.
+    private static string SlotJson(FieldModel field) => field.Kind switch
+    {
+        ParameterInputKind.Bool => field.Bool ? "true" : "false",
+        ParameterInputKind.NullableBool => field.TriState.Length == 0 ? "null" : field.TriState,
+        ParameterInputKind.EnumSingle => field.EnumValue.Length == 0 ? "null" : JsonSerializer.Serialize(field.EnumValue),
+        ParameterInputKind.EnumFlags => field.EnumFlags.Count == 0 ? "null" : JsonSerializer.Serialize(string.Join(", ", field.EnumFlags)),
+        ParameterInputKind.ScalarArray => "[" + string.Join(",", field.ArrayItems.Select(SlotJson)) + "]",
+        ParameterInputKind.NestedObject => field.Instantiated
+            ? "{" + string.Join(",", field.Children.Select(c => JsonSerializer.Serialize(c.Name) + ":" + SlotJson(c))) + "}"
+            : "null",
+        _ => string.IsNullOrEmpty(field.CommittedJson) ? "null" : field.CommittedJson,
+    };
+
+    private static bool IsEmptySlot(FieldModel field) => SlotJson(field) == "null";
+
+    private static bool FieldValid(FieldModel field)
+    {
+        if (field.Invalid)
+        {
+            return false;
+        }
+
+        if (field.Kind == ParameterInputKind.ScalarArray && !field.ArrayItems.All(FieldValid))
+        {
+            return false;
+        }
+
+        if (field.Kind == ParameterInputKind.NestedObject && field.Instantiated && !field.Children.All(FieldValid))
+        {
+            return false;
+        }
+
+        // A required parameter with no entered value is excluded from a successful result (Req 8.15).
+        if (field.IsRequired && IsEmptySlot(field))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ShowRequired(FieldModel field) =>
+        field.IsRequired && !field.Invalid && IsEmptySlot(field);
+
+    private void EmitState()
+    {
+        var slots = _fields.Select(SlotJson).ToList();
+        _parameterJson = "[" + string.Join(",", slots) + "]";
+
+        var elements = new List<JsonElement>(_fields.Count);
+        try
+        {
+            using var doc = JsonDocument.Parse(_parameterJson);
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                elements.Add(element.Clone());
+            }
+
+            _prettyJson = JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (JsonException)
+        {
+            _prettyJson = _parameterJson;
+        }
+
+        _isValid = _fields.All(FieldValid);
+
+        OnParametersChanged.InvokeAsync(new ParameterState(elements, _parameterJson, _isValid));
+    }
+
+    // --- Initial JSON pre-fill ---------------------------------------------------------------
+
+    private void PopulateFromInitialJson()
+    {
+        PopulateFrom(InitialParameterJson);
+    }
+
+    // Applies a Parameter_JSON array onto the current form fields, in order. Used for the initial
+    // edit pre-fill and for the JSON→Form repopulation when the edited JSON is valid (Req 9.5).
+    private void PopulateFrom(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            var index = 0;
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                if (index >= _fields.Count)
+                {
+                    break;
+                }
+
+                ApplyElement(_fields[index], element);
+                index++;
+            }
+        }
+        catch (JsonException)
+        {
+            // Uninterpretable JSON leaves the form at its defaults.
+        }
+    }
+
+    private static void ApplyElement(FieldModel field, JsonElement element)
+    {
+        try
+        {
+            if (element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                return; // unset / blank
+            }
+
+            switch (field.Kind)
+            {
+                case ParameterInputKind.Bool:
+                    field.Bool = element.ValueKind == JsonValueKind.True
+                        || (element.ValueKind == JsonValueKind.String && bool.TryParse(element.GetString(), out var b) && b);
+                    break;
+
+                case ParameterInputKind.NullableBool:
+                    field.TriState = element.GetBoolean() ? "true" : "false";
+                    break;
+
+                case ParameterInputKind.EnumSingle:
+                    field.EnumValue = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
+                    break;
+
+                case ParameterInputKind.EnumFlags:
+                    var raw = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
+                    foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        field.EnumFlags.Add(part);
+                    }
+                    break;
+
+                case ParameterInputKind.ScalarArray:
+                    if (element.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in element.EnumerateArray())
+                        {
+                            var itemField = BuildField($"Item {field.ArrayItems.Count + 1}", field.ArrayElementType, field.Depth, required: false);
+                            ApplyElement(itemField, item);
+                            field.ArrayItems.Add(itemField);
+                        }
+                    }
+                    break;
+
+                case ParameterInputKind.NestedObject:
+                    if (element.ValueKind == JsonValueKind.Object)
+                    {
+                        field.Instantiated = true;
+                        field.Children = BuildChildren(field.DeclaredType, field.Depth + 1);
+                        foreach (var child in field.Children)
+                        {
+                            if (element.TryGetProperty(child.Name, out var childElement))
+                            {
+                                ApplyElement(child, childElement);
+                            }
+                        }
+                    }
+                    break;
+
+                default:
+                    // Scalar text-bound kinds: seed the editor text and re-validate.
+                    field.Text = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
+                    CommitScalar(field);
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException)
+        {
+            // Best-effort pre-fill: an element that does not fit the field is left at its default.
+        }
+    }
+
+    // --- Rendering ---------------------------------------------------------------------------
+
+    private RenderFragment RenderField(FieldModel field) => __builder =>
+    {
+        <label class="form-label fw-semibold mb-1">
+            @field.Name
+            <span class="text-body-secondary fw-normal small">(@FriendlyType(field.DeclaredType))</span>
+            @if (field.IsRequired)
+            {
+                <span class="text-danger" title="Required">*</span>
+            }
+        </label>
+
+        @RenderControl(field)
+
+        @if (field.Invalid)
+        {
+            <div class="text-danger small mt-1">
+                <i class="bi bi-exclamation-circle"></i> @field.Error
+            </div>
+        }
+        else if (ShowRequired(field))
+        {
+            <div class="text-warning small mt-1">
+                <i class="bi bi-exclamation-triangle"></i> This value is required.
+            </div>
+        }
+    };
+
+    private RenderFragment RenderControl(FieldModel field) => __builder =>
+    {
+        var invalidClass = field.Invalid ? " is-invalid" : "";
+
+        switch (field.Kind)
+        {
+            case ParameterInputKind.Text:
+                <input type="text" class="form-control@(invalidClass)" maxlength="4000"
+                       value="@field.Text" @onchange="e => OnScalarChanged(field, e.Value?.ToString())" />
+                break;
+
+            case ParameterInputKind.Integer:
+                <input type="number" step="1" class="form-control@(invalidClass)"
+                       value="@field.Text" @onchange="e => OnScalarChanged(field, e.Value?.ToString())" />
+                break;
+
+            case ParameterInputKind.Float:
+                <input type="number" step="any" class="form-control@(invalidClass)"
+                       value="@field.Text" @onchange="e => OnScalarChanged(field, e.Value?.ToString())" />
+                break;
+
+            case ParameterInputKind.Guid:
+                <input type="text" class="form-control font-monospace@(invalidClass)"
+                       placeholder="00000000-0000-0000-0000-000000000000"
+                       value="@field.Text" @onchange="e => OnScalarChanged(field, e.Value?.ToString())" />
+                break;
+
+            case ParameterInputKind.Date:
+                <input type="date" class="form-control@(invalidClass)"
+                       value="@field.Text" @onchange="e => OnScalarChanged(field, e.Value?.ToString())" />
+                break;
+
+            case ParameterInputKind.Time:
+                <input type="time" class="form-control@(invalidClass)"
+                       value="@field.Text" @onchange="e => OnScalarChanged(field, e.Value?.ToString())" />
+                break;
+
+            case ParameterInputKind.DateTime:
+                <input type="datetime-local" class="form-control@(invalidClass)"
+                       value="@field.Text" @onchange="e => OnScalarChanged(field, e.Value?.ToString())" />
+                break;
+
+            case ParameterInputKind.Bool:
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="@($"chk-{field.GetHashCode()}")"
+                           checked="@field.Bool" @onchange="e => OnBoolChanged(field, (bool)e.Value)" />
+                    <label class="form-check-label" for="@($"chk-{field.GetHashCode()}")">@(field.Bool ? "True" : "False")</label>
+                </div>
+                break;
+
+            case ParameterInputKind.NullableBool:
+                <select class="form-select@(invalidClass)" value="@field.TriState"
+                        @onchange="e => OnTriStateChanged(field, e.Value?.ToString())">
+                    <option value="">(unset)</option>
+                    <option value="true">True</option>
+                    <option value="false">False</option>
+                </select>
+                break;
+
+            case ParameterInputKind.EnumSingle:
+                <select class="form-select@(invalidClass)" value="@field.EnumValue"
+                        @onchange="e => OnEnumSingleChanged(field, e.Value?.ToString())">
+                    <option value="">(none)</option>
+                    @foreach (var member in EnumMembers(field))
+                    {
+                        <option value="@member">@member</option>
+                    }
+                </select>
+                break;
+
+            case ParameterInputKind.EnumFlags:
+                <div class="border rounded p-2">
+                    @foreach (var member in EnumMembers(field))
+                    {
+                        var selected = field.EnumFlags.Contains(member);
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input"
+                                   id="@($"flag-{field.GetHashCode()}-{member}")"
+                                   checked="@selected"
+                                   @onchange="e => OnEnumFlagToggled(field, member, (bool)e.Value)" />
+                            <label class="form-check-label" for="@($"flag-{field.GetHashCode()}-{member}")">@member</label>
+                        </div>
+                    }
+                </div>
+                break;
+
+            case ParameterInputKind.ScalarArray:
+                <div class="border rounded p-2">
+                    @if (field.ArrayItems.Count == 0)
+                    {
+                        <div class="text-body-secondary small mb-2">No elements.</div>
+                    }
+                    @foreach (var item in field.ArrayItems)
+                    {
+                        <div class="d-flex align-items-start gap-2 mb-2" @key="item">
+                            <div class="flex-grow-1">@RenderControl(item)</div>
+                            <button type="button" class="btn btn-outline-danger btn-sm"
+                                    title="Remove" @onclick="() => RemoveArrayItem(field, item)">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        @if (item.Invalid)
+                        {
+                            <div class="text-danger small mb-2">
+                                <i class="bi bi-exclamation-circle"></i> @item.Error
+                            </div>
+                        }
+                    }
+                    <button type="button" class="btn btn-outline-primary btn-sm"
+                            disabled="@(field.ArrayItems.Count >= 1000)"
+                            @onclick="() => AddArrayItem(field)">
+                        <i class="bi bi-plus-lg"></i> Add element
+                    </button>
+                </div>
+                break;
+
+            case ParameterInputKind.NestedObject:
+                <div class="border rounded p-2">
+                    @if (!field.Instantiated)
+                    {
+                        @* Collapsed placeholder until the operator explicitly instantiates it (Req 8.10). *@
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span class="text-body-secondary small">Not set (null).</span>
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    @onclick="() => InstantiateNested(field)">
+                                <i class="bi bi-plus-lg"></i> Create
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex justify-content-end mb-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                    @onclick="() => ClearNested(field)">
+                                <i class="bi bi-x-lg"></i> Clear
+                            </button>
+                        </div>
+                        @foreach (var child in field.Children)
+                        {
+                            <div class="mb-3 ps-2 border-start" @key="child">
+                                @RenderField(child)
+                            </div>
+                        }
+                    }
+                </div>
+                break;
+
+            default: // Json
+                <textarea class="form-control font-monospace@(invalidClass)" rows="3"
+                          placeholder="Enter JSON"
+                          @onchange="e => OnScalarChanged(field, e.Value?.ToString())">@field.Text</textarea>
+                break;
+        }
+    };
+
+    // --- Models --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The mutable per-parameter (or nested-property / array-element) form state. Leaf scalar kinds
+    /// store their last valid canonical JSON token in <see cref="CommittedJson"/>; choice and
+    /// composite kinds derive their JSON from their structured state via <c>SlotJson</c>.
+    /// </summary>
+    private sealed class FieldModel
+    {
+        public string Name { get; set; } = "";
+        public Type DeclaredType { get; set; }
+        public ParameterInputKind Kind { get; set; }
+        public bool IsNullable { get; set; }
+        public bool IsRequired { get; set; }
+        public int Depth { get; set; } = 1;
+
+        // Editor text for the scalar text-bound kinds (Text/Integer/Float/Guid/Date/Time/DateTime/Json).
+        public string Text { get; set; } = "";
+
+        // Last valid canonical JSON token for the text-bound kinds; "null" represents a blank value.
+        public string CommittedJson { get; set; } = "null";
+
+        // Validation state for a non-empty value that failed conversion (Req 8.14).
+        public bool Invalid { get; set; }
+        public string Error { get; set; } = "";
+
+        // Choice-control state.
+        public bool Bool { get; set; }
+        public string TriState { get; set; } = "";   // "", "true", "false"
+        public string EnumValue { get; set; } = "";
+        public HashSet<string> EnumFlags { get; } = new();
+
+        // Composite-control state.
+        public Type ArrayElementType { get; set; }
+        public List<FieldModel> ArrayItems { get; } = new();
+        public bool Instantiated { get; set; }
+        public List<FieldModel> Children { get; set; } = new();
+    }
+
+    /// <summary>
+    /// The Parameter Builder's output to its parent: the current Argument_Values (ordered over the
+    /// method's Job_Parameters), the canonical Parameter_JSON, and whether the captured values are
+    /// valid (no invalid non-empty input and no missing required value).
+    /// </summary>
+    /// <param name="ArgumentValues">Current values as JSON elements, one per Job_Parameter, in order.</param>
+    /// <param name="ParameterJson">Canonical Parameter_JSON array string.</param>
+    /// <param name="IsValid">Whether the captured values are valid for submission.</param>
+    public sealed record ParameterState(
+        IReadOnlyList<JsonElement> ArgumentValues,
+        string ParameterJson,
+        bool IsValid);
+}
