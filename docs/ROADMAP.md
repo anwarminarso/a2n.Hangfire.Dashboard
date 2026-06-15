@@ -191,7 +191,7 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Fetched Jobs page (`/jobs/fetched/{queue}`) — new page matching original Hangfire dashboard
 - ✅ Enqueued page: "Fetched" tab shown when fetched count > 0
 - ✅ Delete confirmation modal (Bootstrap) on all pages — replaces browser `confirm()`
-- ✅ `EnableRecurringJobAdmin` option — toggle Create/Edit/Stop/Start visibility (default: true)
+- ✅ `EnableJobManagement` option (formerly `EnableRecurringJobAdmin`) — toggle Create/Edit/Stop/Start and Enqueue-page visibility (default: true)
 - ✅ Mobile offcanvas navigation: auto-close on page navigation (JS interop)
 - ✅ Asset cache busting: `?v={version}` query string on custom JS/CSS resources
 - ✅ License updated to LGPL-3.0-or-later
@@ -271,7 +271,7 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 #### Phase 2 — Discovery & Method Picker ✅
 - ✅ `JobMethodResolver` (singleton, cached, resilient to `ReflectionTypeLoadException`) — discovers methods decorated with `JobDisplayName` / `Tag` / `Queue` (method or declaring class)
 - ✅ Overload-safe `ResolveMethod` selecting the single matching overload by job-parameter count + types
-- ✅ Custom-method validation (ordered checks) gated behind `DashboardUIOptions.EnableCustomMethodInvocation` (default `false`)
+- ✅ Custom-method validation (ordered checks) gated behind `DashboardUIOptions.AllowArbitraryMethodInvocation` (default `false`)
 - ✅ `MethodPicker` component — Registered vs Custom, empty-state handling, re-emit on selection change
 - ✅ `QueueAttribute` reporting (presence + value, including format templates)
 

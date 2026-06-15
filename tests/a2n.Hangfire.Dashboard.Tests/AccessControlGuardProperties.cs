@@ -53,14 +53,14 @@ public enum AccessControlOperation { Recurring, Enqueue }
 public sealed class AccessControlScenario
 {
     public bool IsReadOnly { get; init; }
-    public bool EnableRecurringJobAdmin { get; init; }
-    public bool EnableCustomMethodInvocation { get; init; }
+    public bool EnableJobManagement { get; init; }
+    public bool AllowArbitraryMethodInvocation { get; init; }
     public AccessControlOperation Operation { get; init; }
     public bool IsCustomMethod { get; init; }
 
     public override string ToString() =>
         $"{Operation} custom={IsCustomMethod} | readOnly={IsReadOnly} " +
-        $"recurringAdmin={EnableRecurringJobAdmin} customEnabled={EnableCustomMethodInvocation}";
+        $"jobManagement={EnableJobManagement} arbitraryEnabled={AllowArbitraryMethodInvocation}";
 }
 
 /// <summary>
@@ -75,8 +75,8 @@ public class AccessControlGuardProperties
 
     // Error-message fragments emitted by HangfireMonitorService for each gate.
     private const string ReadOnlyFragment = "read-only";
-    private const string RecurringAdminFragment = "Recurring job administration is disabled";
-    private const string CustomDisabledFragment = "Custom method invocation is disabled";
+    private const string RecurringAdminFragment = "Job management is disabled";
+    private const string CustomDisabledFragment = "Arbitrary method invocation is disabled";
 
     private static Arbitrary<AccessControlScenario> ScenarioArb =>
         Arb.From(
@@ -88,8 +88,8 @@ public class AccessControlGuardProperties
             select new AccessControlScenario
             {
                 IsReadOnly = readOnly,
-                EnableRecurringJobAdmin = recurringAdmin,
-                EnableCustomMethodInvocation = customEnabled,
+                EnableJobManagement = recurringAdmin,
+                AllowArbitraryMethodInvocation = customEnabled,
                 Operation = op,
                 IsCustomMethod = isCustom,
             });
@@ -105,8 +105,8 @@ public class AccessControlGuardProperties
             var options = new DashboardUIOptions
             {
                 IsReadOnly = sc.IsReadOnly,
-                EnableRecurringJobAdmin = sc.EnableRecurringJobAdmin,
-                EnableCustomMethodInvocation = sc.EnableCustomMethodInvocation,
+                EnableJobManagement = sc.EnableJobManagement,
+                AllowArbitraryMethodInvocation = sc.AllowArbitraryMethodInvocation,
             };
             var service = new HangfireMonitorService(storage, audit: null, options: options, resolver: new JobMethodResolver());
 
@@ -161,10 +161,10 @@ public class AccessControlGuardProperties
         if (sc.IsReadOnly)
             return ReadOnlyFragment;
 
-        if (sc.Operation == AccessControlOperation.Recurring && !sc.EnableRecurringJobAdmin)
+        if (sc.Operation == AccessControlOperation.Recurring && !sc.EnableJobManagement)
             return RecurringAdminFragment;
 
-        if (sc.IsCustomMethod && !sc.EnableCustomMethodInvocation)
+        if (sc.IsCustomMethod && !sc.AllowArbitraryMethodInvocation)
             return CustomDisabledFragment;
 
         return null;

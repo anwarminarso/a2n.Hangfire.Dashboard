@@ -40,17 +40,32 @@ public class DashboardUIOptions
     public bool IsReadOnly { get; set; } = false;
 
     /// <summary>
-    /// Whether recurring job administration (create, edit, delete, stop, start) is enabled.
-    /// When false, only the recurring jobs list and trigger action are available.
-    /// Default: true.
+    /// Whether job management is enabled. This governs the job-authoring surfaces of the dashboard:
+    /// recurring job administration (create, edit, delete, stop, start) <em>and</em> the ad-hoc
+    /// Enqueue Job page. When false, the recurring jobs list and trigger action remain available but
+    /// the create/edit builder is hidden, the Enqueue Job page returns Not Found, and the
+    /// service-layer mutation gates reject create/update requests. Default: true.
     /// </summary>
-    public bool EnableRecurringJobAdmin { get; set; } = true;
+    public bool EnableJobManagement { get; set; } = true;
 
     /// <summary>
-    /// Whether operators may invoke Custom_Methods (full type + method typed by hand) from the
-    /// Job Builder. When false, only discovered Registered_Methods may be selected. Default: false.
+    /// Deprecated alias for <see cref="EnableJobManagement"/>. Retained for source compatibility
+    /// with hosts configured before the option was renamed. Note the scope has broadened: in
+    /// addition to recurring administration this now also gates the Enqueue Job page.
     /// </summary>
-    public bool EnableCustomMethodInvocation { get; set; } = false;
+    [Obsolete("Renamed to EnableJobManagement, whose scope now also covers the Enqueue Job page. This alias will be removed in a future release.")]
+    public bool EnableRecurringJobAdmin
+    {
+        get => EnableJobManagement;
+        set => EnableJobManagement = value;
+    }
+
+    /// <summary>
+    /// Whether operators may invoke arbitrary methods (a full type + method typed by hand) from the
+    /// Job Builder. When false, only discovered Registered_Methods may be selected. This is a
+    /// security-sensitive opt-in because it permits invoking any accessible method. Default: false.
+    /// </summary>
+    public bool AllowArbitraryMethodInvocation { get; set; } = false;
 
     /// <summary>
     /// Default number of records per page.
@@ -132,7 +147,7 @@ public class DashboardUIOptions
     /// Used to push host-supplied options onto the DI-registered singleton that Blazor components
     /// inject. Reflection over the public read/write properties means a newly added option is
     /// propagated automatically and cannot silently drift out of sync — a past source of bugs where
-    /// a hand-maintained copy list omitted a property (e.g. <see cref="EnableCustomMethodInvocation"/>).
+    /// a hand-maintained copy list omitted a property (e.g. <see cref="AllowArbitraryMethodInvocation"/>).
     /// </summary>
     /// <param name="target">The instance to copy this instance's option values onto.</param>
     internal void ApplyTo(DashboardUIOptions target)

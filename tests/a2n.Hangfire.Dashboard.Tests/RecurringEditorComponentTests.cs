@@ -36,7 +36,7 @@ namespace a2n.Hangfire.Dashboard.Tests;
 /// <b>Setup.</b> The host page <c>@inject</c>s <see cref="HangfireMonitorService"/>; the hosted
 /// JobBuilder additionally injects <see cref="JobMethodResolver"/>, <c>NavigationManager</c>, and
 /// <see cref="DashboardUIOptions"/>. We register a real service backed by Hangfire.InMemory storage
-/// (with <c>EnableRecurringJobAdmin = true</c>) plus the <em>same</em> <see cref="JobMethodResolver"/>
+/// (with <c>EnableJobManagement = true</c>) plus the <em>same</em> <see cref="JobMethodResolver"/>
 /// instance passed to the service so discovery and resolution are consistent. The fixture job type
 /// lives in this test assembly, so the resolver resolves it via the loaded-assembly (custom) path;
 /// the Method Picker therefore pre-selects it on edit even though it is not attribute-discovered.
@@ -60,7 +60,7 @@ public class RecurringEditorComponentTests
         var options = new DashboardUIOptions
         {
             IsReadOnly = false,
-            EnableRecurringJobAdmin = true,
+            EnableJobManagement = true,
         };
 
         // Reuse a single resolver instance for both the service and the component DI so resolution

@@ -38,7 +38,7 @@ Create and schedule jobs **with their arguments** directly from the dashboard �
 | | Feature | What you get |
 |---|---------|--------------|
 | 🧩 | **Guided parameter form** | A type-aware form generated from the method signature — text, numbers, dates, GUIDs, enums, booleans, arrays, and nested objects — with a live **JSON mirror** and a Form ⇄ JSON toggle. [→](#job-builder) |
-| 🔎 | **Method discovery** | Pick from methods discovered across loaded assemblies (decorated with `JobDisplayName`, `Tag`, or `Queue`), with **overload-safe** resolution. Hand-typed custom methods are opt-in via `EnableCustomMethodInvocation`. [→](#job-builder) |
+| 🔎 | **Method discovery** | Pick from methods discovered across loaded assemblies (decorated with `JobDisplayName`, `Tag`, or `Queue`), with **overload-safe** resolution. Hand-typed arbitrary methods are opt-in via `AllowArbitraryMethodInvocation`. [→](#job-builder) |
 | 🕑 | **Visual cron builder** | Build a cron schedule field-by-field (every / specific / range / step) with a human-readable description and **next-run preview** in the selected time zone — or type a cron string manually. [→](#job-builder) |
 | ➕ | **Enqueue page** | A new `/jobs/enqueue` page reuses the same builder to fire one-off jobs, not just recurring ones. [→](#job-builder) |
 | ✏️ | **Typed args + edit pre-fill** | Values are converted to the method's declared types (`["report", 42]` → `string`, `int`); injected parameters (`PerformContext`, `CancellationToken`) are skipped; existing argument values are pre-filled when editing. [→](#job-builder) |
@@ -46,8 +46,8 @@ Create and schedule jobs **with their arguments** directly from the dashboard �
 ```csharp
 app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
-    EnableRecurringJobAdmin       = true,   // show the recurring create/edit builder
-    EnableCustomMethodInvocation  = false,  // opt-in: allow hand-typed type+method (default false)
+    EnableJobManagement           = true,   // show the recurring create/edit builder and Enqueue page
+    AllowArbitraryMethodInvocation = false, // opt-in: allow hand-typed type+method (default false)
 });
 ```
 
@@ -185,7 +185,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
     DashboardTitle = "My Jobs",
     DefaultTheme = "auto",  // "auto", "light", or "dark"
-    EnableRecurringJobAdmin = true,  // set false to hide Create/Edit/Stop
+    EnableJobManagement = true,  // set false to hide Create/Edit/Stop and the Enqueue page
     JobGraphMaxDepth = 5,   // continuation graph traversal depth (default 5)
     JobGraphMaxNodes = 30,  // continuation graph node budget (default 30)
     // SourceLink = SourceLinkOptions.GitHub("owner/repo"),  // clickable stack-trace file links
@@ -243,8 +243,8 @@ Reads the same storage format as [Hangfire.Console](https://github.com/pieceofsu
 
 The Job Builder lets operators construct, schedule, and enqueue Hangfire jobs **with their arguments** from the dashboard — no code change or redeploy. It powers two places:
 
-- **Recurring** — the Create/Edit recurring job form (`/recurring`), gated behind `EnableRecurringJobAdmin`.
-- **Enqueue** — a new one-off job page at `/jobs/enqueue` for fire-and-forget jobs.
+- **Recurring** — the Create/Edit recurring job form (`/recurring`), gated behind `EnableJobManagement`.
+- **Enqueue** — a new one-off job page at `/jobs/enqueue` for fire-and-forget jobs, also gated behind `EnableJobManagement`.
 
 Both share the same method picker, parameter form, and argument conversion, so behavior is identical across the two.
 
@@ -258,7 +258,7 @@ The picker offers two sources:
 ```csharp
 app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
-    EnableCustomMethodInvocation = true,   // default false — keeps arbitrary invocation opt-in
+    AllowArbitraryMethodInvocation = true,   // default false — keeps arbitrary invocation opt-in
 });
 ```
 
@@ -299,8 +299,8 @@ The queue control is editable with suggestions from current queues (defaulting t
 ### Gating
 
 - **Read-only mode** (`IsReadOnly = true`) — a persistent banner is shown and the submit controls are disabled.
-- **Recurring admin** (`EnableRecurringJobAdmin = false`) — the recurring create/edit builder is hidden; the Enqueue page is unaffected (read-only gating still applies).
-- **Custom methods** (`EnableCustomMethodInvocation = false`, default) — only discovered registered methods may be selected.
+- **Job management** (`EnableJobManagement = false`) — the recurring create/edit builder is hidden, the navigation no longer links to the Enqueue page, and the `/jobs/enqueue` route returns Not Found (read-only gating still applies). Defaults to `true`.
+- **Arbitrary methods** (`AllowArbitraryMethodInvocation = false`, default) — only discovered registered methods may be selected.
 
 ---
 

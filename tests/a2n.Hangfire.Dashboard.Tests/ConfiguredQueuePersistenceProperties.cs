@@ -103,7 +103,7 @@ public class ConfiguredQueuePersistenceProperties
             var options = new DashboardUIOptions
             {
                 IsReadOnly = false,
-                EnableRecurringJobAdmin = true,
+                EnableJobManagement = true,
             };
             var service = new HangfireMonitorService(storage, audit: null, options: options, resolver: new JobMethodResolver());
 

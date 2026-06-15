@@ -43,7 +43,7 @@ public class RecurringUpsertServiceTests
         var options = new DashboardUIOptions
         {
             IsReadOnly = false,
-            EnableRecurringJobAdmin = true,
+            EnableJobManagement = true,
         };
         return new HangfireMonitorService(storage, null, options, new JobMethodResolver());
     }

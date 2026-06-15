@@ -7,7 +7,7 @@
 ### ✨ Highlights
 
 - **🧩 Guided parameter form** — a type-aware form generated from the method signature (text, numbers, dates, GUIDs, enums, booleans, arrays, nested objects) with a live JSON mirror and a Form ⇄ JSON toggle.
-- **🔎 Method discovery** — pick from methods discovered across loaded assemblies, with overload-safe resolution. Hand-typed custom methods are opt-in via `EnableCustomMethodInvocation`.
+- **🔎 Method discovery** — pick from methods discovered across loaded assemblies, with overload-safe resolution. Hand-typed arbitrary methods are opt-in via `AllowArbitraryMethodInvocation`.
 - **🕑 Visual cron builder** — build a schedule field-by-field (every / specific / range / step) with a human-readable description and a next-run preview in the selected time zone.
 - **➕ Enqueue page** — the same builder powers a new `/jobs/enqueue` page for one-off (fire-and-forget) jobs.
 
@@ -20,17 +20,20 @@
 - **Injected parameters skipped** — `PerformContext`, `IJobCancellationToken`, and `CancellationToken` are excluded from the form and filled by Hangfire at runtime.
 - **Edit pre-fill** — current argument values are loaded back into the form when editing an existing recurring job.
 - **Visual cron builder** — `ScheduleBuilder` offers a field-by-field cron editor plus manual input, with a human-readable description and next-occurrence preview (parsing via Cronos, already bundled with Hangfire — no new dependency). Unparseable expressions are flagged and block submission.
-- **Queue handling** — the queue control suggests current queues (defaulting to `default`); when a `[Queue(...)]` attribute applies to the method or its declaring class, the control becomes read-only with a precedence notice, because Hangfire's `QueueAttribute` overrides the stored queue at state election.
-- **Enqueue page** at `/jobs/enqueue` — reuses the `JobBuilder` composite in Enqueue mode for one-off jobs; `HangfireMonitorService.EnqueueJob` returns the new job id.
-- `DashboardUIOptions.EnableCustomMethodInvocation` (default `false`) — gates whether operators may invoke hand-typed type + method, keeping the arbitrary-invocation surface opt-in.
+- **Queue handling** — the queue control suggests current queues (defaulting to `default`) and is an editable combobox that also validates free text against Hangfire's queue-name rule (`^[a-z0-9_-]+$`, max 50 chars); when a `[Queue(...)]` attribute applies to the method or its declaring class, the control becomes read-only with a precedence notice, because Hangfire's `QueueAttribute` overrides the stored queue at state election.
+- **Searchable time zone + inline validation** — the recurring editor's time zone is a searchable combobox, and the Job ID, queue, and time-zone fields validate inline. A new recurring Job ID is held to the same strict `^[a-z0-9_-]+$` rule (max 50 chars) because it is carried in the `/recurring/edit/{JobId}` route; existing ids are not re-validated on edit so legacy jobs keep working.
+- **Enqueue page** at `/jobs/enqueue` — reuses the `JobBuilder` composite in Enqueue mode for one-off jobs; `HangfireMonitorService.EnqueueJob` returns the new job id. Reached via an **Enqueue Job** button on the Enqueued jobs page (the dedicated nav entry was removed).
+- `DashboardUIOptions.AllowArbitraryMethodInvocation` (default `false`) — gates whether operators may invoke hand-typed type + method, keeping the arbitrary-invocation surface opt-in.
 
 ### Changed
 
 - The recurring **Create/Edit** form is now built on the shared Job Builder, so it supports arguments, method discovery, and the visual cron builder. `HangfireMonitorService.CreateOrUpdateRecurringJob` now takes a `RecurringJobRequest` and persists arguments and the configured queue.
+- **Option rename.** `EnableRecurringJobAdmin` → **`EnableJobManagement`**; its scope now also gates the Enqueue page. The old name is kept as an `[Obsolete]` alias for source compatibility and will be removed in a future release. `EnableCustomMethodInvocation` → **`AllowArbitraryMethodInvocation`** (hard rename — this option was introduced in this release).
 
 ### Gating
 
-- Read-only mode, `EnableRecurringJobAdmin`, and `EnableCustomMethodInvocation` are all enforced in both the UI (banners + disabled controls) and the service layer.
+- Read-only mode, `EnableJobManagement`, and `AllowArbitraryMethodInvocation` are all enforced in both the UI (banners + disabled controls) and the service layer.
+- When `EnableJobManagement` is `false` the recurring create/edit builder is hidden, the **Enqueue Job** button and nav entry are not shown, and the `/jobs/enqueue` route returns **Not Found**.
 
 ### Internal
 

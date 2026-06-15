@@ -70,7 +70,7 @@ public sealed class EnqueueParityScenario
 /// <summary>
 /// Property test for enqueue/recurring parity (Property 22). Uses Hangfire.InMemory storage and the
 /// real <see cref="HangfireMonitorService"/> wired with a <see cref="JobMethodResolver"/> and
-/// <see cref="DashboardUIOptions"/> (IsReadOnly = false, EnableRecurringJobAdmin = true). For each
+/// <see cref="DashboardUIOptions"/> (IsReadOnly = false, EnableJobManagement = true). For each
 /// generated scenario it enqueues a one-off job and creates an equivalent recurring job from the
 /// same inputs, then asserts the two share an identical Args array and that the enqueued job lands
 /// on the same Effective_Queue the recurring job would persist.
@@ -136,7 +136,7 @@ public class EnqueueParityProperties
             var options = new DashboardUIOptions
             {
                 IsReadOnly = false,
-                EnableRecurringJobAdmin = true,
+                EnableJobManagement = true,
             };
             var service = new HangfireMonitorService(
                 storage, audit: null, options: options, resolver: new JobMethodResolver());

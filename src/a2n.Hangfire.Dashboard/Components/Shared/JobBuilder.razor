@@ -41,12 +41,12 @@
         </div>
     }
 
-    @if (Mode == JobBuilderMode.Recurring && !Options.EnableRecurringJobAdmin)
+    @if (Mode == JobBuilderMode.Recurring && !Options.EnableJobManagement)
     {
-        @* Persistent recurring-admin-disabled indication (Req 4.3). *@
+        @* Persistent job-management-disabled indication (Req 4.3). *@
         <div class="alert alert-warning d-flex align-items-center gap-2" role="status">
             <i class="bi bi-lock"></i>
-            <span>Recurring job administration is <strong>disabled</strong>.</span>
+            <span>Job management is <strong>disabled</strong>.</span>
         </div>
     }
 
@@ -84,13 +84,20 @@
                 <label class="form-label fw-semibold" for="job-builder-id">
                     Job ID <span class="text-danger" aria-hidden="true">*</span>
                 </label>
-                <input type="text" class="form-control" id="job-builder-id" aria-required="true"
+                <input type="text" class="form-control@(JobIdError is null ? "" : " is-invalid")" id="job-builder-id" aria-required="true"
+                       maxlength="@MaxIdentifierLength"
                        placeholder="my-recurring-job" disabled="@(_isEdit || MutationsDisabled)"
                        value="@_jobId" @oninput="e => _jobId = e.Value?.ToString() ?? string.Empty" />
+                @if (JobIdError is not null)
+                {
+                    <div class="invalid-feedback d-block">
+                        <i class="bi bi-exclamation-circle"></i> @JobIdError
+                    </div>
+                }
                 <div class="form-text">
                     @(_isEdit
                         ? "The identifier cannot be changed when editing an existing job."
-                        : "A unique, stable id for this recurring job (e.g. nightly-cleanup).")
+                        : "A unique, stable id for this recurring job (e.g. nightly-cleanup). Lowercase letters, digits, underscore, and dash only.")
                 </div>
             </div>
         </div>
@@ -103,7 +110,7 @@
             <span class="fw-semibold">Method</span>
         </div>
         <div class="card-body">
-            <MethodPicker CustomMethodEnabled="@Options.EnableCustomMethodInvocation"
+            <MethodPicker CustomMethodEnabled="@Options.AllowArbitraryMethodInvocation"
                           InitialTypeName="@InitialTypeName"
                           InitialMethodName="@InitialMethodName"
                           OnMethodSelected="HandleMethodSelected" />
@@ -132,14 +139,28 @@
                          OnScheduleChanged="HandleScheduleChanged">
             <TimeZoneSlot>
                 <label class="form-label fw-semibold" for="job-builder-tz">Time Zone</label>
-                <select class="form-select" id="job-builder-tz" disabled="@MutationsDisabled"
-                        value="@_timeZoneId" @onchange="e => _timeZoneId = e.Value?.ToString() ?? string.Empty">
+                @* Searchable combobox: type to filter by id or display name; blank selects UTC (Req 7b). *@
+                <input type="text" class="form-control@(TimeZoneError is null ? "" : " is-invalid")"
+                       id="job-builder-tz" list="job-builder-tz-list" disabled="@MutationsDisabled"
+                       placeholder="UTC" autocomplete="off"
+                       value="@_timeZoneId" @oninput="e => _timeZoneId = e.Value?.ToString() ?? string.Empty" />
+                <datalist id="job-builder-tz-list">
                     <option value="">UTC</option>
                     @foreach (var tz in _timeZones)
                     {
-                        <option value="@tz.Id">@tz.DisplayName</option>
+                        <option value="@tz.Id" label="@tz.DisplayName"></option>
                     }
-                </select>
+                </datalist>
+                @if (TimeZoneError is not null)
+                {
+                    <div class="invalid-feedback d-block">
+                        <i class="bi bi-exclamation-circle"></i> @TimeZoneError
+                    </div>
+                }
+                else
+                {
+                    <div class="form-text">Leave blank for UTC. Start typing to search time zones.</div>
+                }
             </TimeZoneSlot>
         </ScheduleBuilder>
     }
@@ -192,8 +213,9 @@
         else
         {
             @* Recurring mode: an editable queue with current-queue suggestions, default "default"
-               (Req 13.2). *@
-            <input type="text" class="form-control" id="job-builder-queue" list="job-builder-queue-list"
+               (Req 13.2). Free text is validated against Hangfire's queue-name rule (Req 7a). *@
+            <input type="text" class="form-control@(QueueError is null ? "" : " is-invalid")" id="job-builder-queue" list="job-builder-queue-list"
+                   maxlength="@MaxQueueLength"
                    placeholder="@EffectiveQueue.DefaultQueue" disabled="@MutationsDisabled"
                    value="@_queue" @oninput="e => _queue = e.Value?.ToString() ?? string.Empty" />
             <datalist id="job-builder-queue-list">
@@ -202,7 +224,19 @@
                     <option value="@queue"></option>
                 }
             </datalist>
-            <div class="form-text">Defaults to <code>@EffectiveQueue.DefaultQueue</code> when left blank.</div>
+            @if (QueueError is not null)
+            {
+                <div class="invalid-feedback d-block">
+                    <i class="bi bi-exclamation-circle"></i> @QueueError
+                </div>
+            }
+            else
+            {
+                <div class="form-text">
+                    Defaults to <code>@EffectiveQueue.DefaultQueue</code> when left blank.
+                    Lowercase letters, digits, underscore, and dash only.
+                </div>
+            }
         }
         </div>
     </div>
@@ -227,12 +261,18 @@
         {
             <a class="btn btn-outline-secondary" href="recurring">Cancel</a>
         }
-        else if (!string.IsNullOrEmpty(_enqueuedJobId))
+        else
         {
-            @* After a successful enqueue, offer a clean slate without leaving the page. *@
-            <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm">
-                <i class="bi bi-plus-lg"></i> Enqueue another
-            </button>
+            @* Enqueue mode: Cancel returns to the Enqueued jobs list (Req 5). *@
+            <a class="btn btn-outline-secondary" href="jobs/enqueued">Cancel</a>
+
+            @if (!string.IsNullOrEmpty(_enqueuedJobId))
+            {
+                @* After a successful enqueue, offer a clean slate without leaving the page. *@
+                <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm">
+                    <i class="bi bi-plus-lg"></i> Enqueue another
+                </button>
+            }
         }
     </div>
 </div>
@@ -307,11 +347,59 @@
     // defaulting to "default" (Req 13.6, 13.7).
     private string _effectiveQueue => EffectiveQueue.Resolve(_selectedMethod?.Queue, _queue);
 
+    // Hangfire's queue-name rule (EnqueuedState.ValidateQueueName): ^[a-z0-9_-]+$, with no length
+    // bound of its own — storage imposes the practical cap (SQL Server's queue column is
+    // historically NVARCHAR(50)). The same strict rule is applied to a NEW recurring Job ID because
+    // it is carried in the /recurring/edit/{JobId} route (Req 7a, 7d).
+    private const int MaxQueueLength = 50;
+    private const int MaxIdentifierLength = 50;
+    private static readonly System.Text.RegularExpressions.Regex _identifierPattern =
+        new("^[a-z0-9_-]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Inline validation messages (null = valid). Blank values do not raise an error while the
+    // operator is still typing — the queue falls back to "default" and the Job ID's required-ness
+    // is enforced at submit.
+    private string JobIdError
+    {
+        get
+        {
+            // Editing an existing recurring job does NOT re-validate the (possibly legacy) id so the
+            // edit route keeps working for ids created before this rule existed (Req 7d).
+            if (_isEdit || string.IsNullOrWhiteSpace(_jobId)) return null;
+            if (_jobId.Length > MaxIdentifierLength) return $"Job ID must be {MaxIdentifierLength} characters or fewer.";
+            if (!_identifierPattern.IsMatch(_jobId)) return "Job ID must consist of lowercase letters, digits, underscore, and dash characters only.";
+            return null;
+        }
+    }
+
+    private string QueueError
+    {
+        get
+        {
+            // A QueueAttribute makes the queue read-only and its value wins, so there is nothing to validate.
+            if (_queueAttributePresent || string.IsNullOrWhiteSpace(_queue)) return null;
+            if (_queue.Length > MaxQueueLength) return $"Queue name must be {MaxQueueLength} characters or fewer.";
+            if (!_identifierPattern.IsMatch(_queue)) return "Queue name must consist of lowercase letters, digits, underscore, and dash characters only.";
+            return null;
+        }
+    }
+
+    private string TimeZoneError
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_timeZoneId)) return null;
+            return _timeZones.Any(tz => string.Equals(tz.Id, _timeZoneId, StringComparison.Ordinal))
+                ? null
+                : "Unknown time zone. Pick one from the list or leave blank for UTC.";
+        }
+    }
+
     // The mutating submit control is non-interactive while read-only (Req 4.1) and, in Recurring
     // mode, while recurring administration is disabled (Req 4.3). The same flag disables the
     // composite-owned inputs so the form reads as inert.
     private bool MutationsDisabled =>
-        Options.IsReadOnly || (Mode == JobBuilderMode.Recurring && !Options.EnableRecurringJobAdmin);
+        Options.IsReadOnly || (Mode == JobBuilderMode.Recurring && !Options.EnableJobManagement);
 
     protected override void OnInitialized()
     {
@@ -462,6 +550,11 @@
             _error = "A job identifier is required.";
             return;
         }
+
+        // Block submission while any composite-owned field is invalid (Req 7a, 7b, 7d).
+        if (JobIdError is not null) { _error = JobIdError; return; }
+        if (QueueError is not null) { _error = QueueError; return; }
+        if (TimeZoneError is not null) { _error = TimeZoneError; return; }
 
         _submitting = true;
         try

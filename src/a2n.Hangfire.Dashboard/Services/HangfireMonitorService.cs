@@ -233,13 +233,13 @@ public class HangfireMonitorService
         if (_options.IsReadOnly)
             return new JobOperationResult(false, request.JobId, "The dashboard is read-only.", null);
 
-        // Recurring job administration must be enabled (Req 4.7).
-        if (!_options.EnableRecurringJobAdmin)
-            return new JobOperationResult(false, request.JobId, "Recurring job administration is disabled.", null);
+        // Job management must be enabled (Req 4.7).
+        if (!_options.EnableJobManagement)
+            return new JobOperationResult(false, request.JobId, "Job management is disabled.", null);
 
-        // Custom-method invocation is an explicit opt-in (Req 4.8).
-        if (request.IsCustomMethod && !_options.EnableCustomMethodInvocation)
-            return new JobOperationResult(false, request.JobId, "Custom method invocation is disabled.", null);
+        // Arbitrary method invocation is an explicit opt-in (Req 4.8).
+        if (request.IsCustomMethod && !_options.AllowArbitraryMethodInvocation)
+            return new JobOperationResult(false, request.JobId, "Arbitrary method invocation is disabled.", null);
 
         // Job identifier must be present to upsert by id (Req 11.3).
         if (string.IsNullOrWhiteSpace(request.JobId))
@@ -347,10 +347,10 @@ public class HangfireMonitorService
         if (_options.IsReadOnly)
             return new JobOperationResult(false, null, "The dashboard is read-only.", null);
 
-        // Custom-method invocation is an explicit opt-in (Req 4.8). The recurring-admin gate is
+        // Arbitrary method invocation is an explicit opt-in (Req 4.8). The job-management gate is
         // intentionally NOT applied here — it governs recurring jobs only.
-        if (request.IsCustomMethod && !_options.EnableCustomMethodInvocation)
-            return new JobOperationResult(false, null, "Custom method invocation is disabled.", null);
+        if (request.IsCustomMethod && !_options.AllowArbitraryMethodInvocation)
+            return new JobOperationResult(false, null, "Arbitrary method invocation is disabled.", null);
 
         // --- Parse Parameter_JSON into the ordered argument elements (over Job_Parameters). ---
         List<JsonElement> args;

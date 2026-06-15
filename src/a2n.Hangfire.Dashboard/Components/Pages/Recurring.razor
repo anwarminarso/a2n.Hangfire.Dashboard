@@ -16,7 +16,7 @@ else
 {
     <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="d-flex gap-2">
-            @if (Options.EnableRecurringJobAdmin)
+            @if (Options.EnableJobManagement)
             {
                 <a class="btn btn-success btn-sm" href="recurring/create">
                     <i class="bi bi-plus-lg"></i> Create Job
@@ -33,7 +33,7 @@ else
     </div>
 
     @* Stopped Jobs Section *@
-    @if (Options.EnableRecurringJobAdmin && _stoppedJobs.Count > 0)
+    @if (Options.EnableJobManagement && _stoppedJobs.Count > 0)
     {
         <div class="card mb-3">
             <div class="card-header">
@@ -101,7 +101,7 @@ else
                                 <th class="text-end">Next Execution</th>
                                 <th class="text-end">Last Execution</th>
                                 <th class="text-end">Created</th>
-                                @if (Options.EnableRecurringJobAdmin)
+                                @if (Options.EnableJobManagement)
                                 {
                                     <th>Actions</th>
                                 }
@@ -155,9 +155,9 @@ else
                                         }
                                     </td>
                                     <td>
-                                        @if (Options.EnableRecurringJobAdmin)
+                                        @if (Options.EnableJobManagement)
                                         {
-                                            <a class="btn btn-outline-secondary btn-sm" href="recurring/edit/@job.Id" title="Edit this recurring job">
+                                            <a class="btn btn-outline-secondary btn-sm" href="recurring/edit/@Uri.EscapeDataString(job.Id)" title="Edit this recurring job">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
                                             <button class="btn btn-outline-secondary btn-sm" @onclick="() => StopJob(job.Id)" title="Stop this recurring job">
@@ -170,7 +170,7 @@ else
                                 {
                                     <tr>
                                         <td></td>
-                                        <td colspan="@(Options.EnableRecurringJobAdmin ? 8 : 7)">
+                                        <td colspan="@(Options.EnableJobManagement ? 8 : 7)">
                                             <div class="alert alert-danger py-2 mb-0">
                                                 <small>@job.Error</small>
                                             </div>

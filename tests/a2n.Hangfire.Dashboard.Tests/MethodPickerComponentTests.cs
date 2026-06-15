@@ -118,7 +118,7 @@ public class MethodPickerComponentTests
 
         // The Custom radio is interactive (Req 4.5).
         Assert.False(custom.HasAttribute("disabled"));
-        Assert.DoesNotContain("Custom method invocation is disabled", cut.Markup);
+        Assert.DoesNotContain("Arbitrary method invocation is disabled", cut.Markup);
     }
 
     // --- 6.2 — registered list of Display_Labels -------------------------------------------

@@ -74,8 +74,8 @@ public class JobBuilderComponentTests
         var options = new DashboardUIOptions
         {
             IsReadOnly = isReadOnly,
-            EnableRecurringJobAdmin = recurringAdmin,
-            EnableCustomMethodInvocation = customMethod,
+            EnableJobManagement = recurringAdmin,
+            AllowArbitraryMethodInvocation = customMethod,
         };
         var resolver = new JobMethodResolver();
         SeedCache(resolver, registered ?? Array.Empty<JobMethodDescriptor>());
@@ -149,8 +149,8 @@ public class JobBuilderComponentTests
 
         var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
-        // A persistent recurring-admin-disabled indication is shown (Req 4.3)...
-        Assert.Contains("Recurring job administration is", cut.Markup);
+        // A persistent job-management-disabled indication is shown (Req 4.3)...
+        Assert.Contains("Job management is", cut.Markup);
 
         // ...and the create/update control is non-interactive (Req 4.3).
         Assert.True(SubmitButton(cut).HasAttribute("disabled"));
@@ -182,7 +182,7 @@ public class JobBuilderComponentTests
 
         // CustomMethodEnabled=true makes the Custom option interactive (Req 4.5).
         Assert.False(cut.Find("#method-mode-custom").HasAttribute("disabled"));
-        Assert.DoesNotContain("Custom method invocation is disabled", cut.Markup);
+        Assert.DoesNotContain("Arbitrary method invocation is disabled", cut.Markup);
     }
 
     // =======================================================================================
