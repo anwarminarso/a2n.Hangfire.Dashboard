@@ -15,12 +15,37 @@ namespace a2n.Hangfire.Dashboard;
 /// <param name="DisplayLabel">Human-readable label produced by the display-name extraction logic.</param>
 /// <param name="JobParameters">Operator-supplied parameters; excludes Injected_Parameters.</param>
 /// <param name="Queue">QueueAttribute reporting for the method or its declaring class.</param>
+/// <param name="Kind">
+/// Classifies the method for the Method Picker (Req 5.11): a <see cref="JobMethodKind.Contract"/>
+/// (abstract method on an interface/abstract class — the portable, DI-dispatched target), an
+/// <see cref="JobMethodKind.Implementation"/> (a concrete method implementing/overriding such a
+/// contract — usable when DI is not configured), or a <see cref="JobMethodKind.Standalone"/>
+/// ordinary method.
+/// </param>
 public sealed record JobMethodDescriptor(
     string TypeFullName,
     string MethodName,
     string DisplayLabel,
     IReadOnlyList<JobParameterDescriptor> JobParameters,
-    QueueAttributeInfo Queue);
+    QueueAttributeInfo Queue,
+    JobMethodKind Kind = JobMethodKind.Standalone);
+
+/// <summary>
+/// Classifies a discovered method for the Method Picker (Req 5.11). Both contracts and their
+/// implementations are surfaced (Option Y) so the operator can choose the interface/abstract
+/// contract (when jobs are dispatched via DI) or a concrete implementation (when they are not).
+/// </summary>
+public enum JobMethodKind
+{
+    /// <summary>An ordinary concrete method that neither implements nor overrides a contract.</summary>
+    Standalone,
+
+    /// <summary>An abstract method declared on an interface or abstract class — the canonical, portable target.</summary>
+    Contract,
+
+    /// <summary>A concrete method that implements an interface contract or overrides an abstract-class contract.</summary>
+    Implementation,
+}
 
 /// <summary>
 /// One operator-supplied parameter (Req 6.4, 8).
@@ -82,11 +107,19 @@ public enum ParameterInputKind
 /// <param name="Method">The resolved method when <paramref name="Success"/> is true; otherwise null.</param>
 /// <param name="Error">An error message identifying the failure when resolution fails.</param>
 /// <param name="ErrorKind">The category of resolution failure, or null on success.</param>
+/// <param name="ResolvedType">
+/// The type the method was resolved <em>against</em> — i.e. the operator-selected/typed type, which
+/// may be a subclass or interface implementer of <see cref="MethodInfo.DeclaringType"/> when the
+/// method is inherited. The job must be constructed with this type (not
+/// <c>Method.DeclaringType</c>) so class-level <c>[Tag]</c>/<c>[Queue]</c> attributes and activation
+/// match the original Hangfire <c>AddOrUpdate&lt;T&gt;</c> semantics. Null when resolution fails.
+/// </param>
 public sealed record MethodResolutionResult(
     bool Success,
     MethodInfo Method,
     string Error,
-    MethodResolutionError? ErrorKind);
+    MethodResolutionError? ErrorKind,
+    Type ResolvedType = null);
 
 /// <summary>
 /// Categories of method-resolution failure (Req 1.5–1.8).

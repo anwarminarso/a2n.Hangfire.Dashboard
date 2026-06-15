@@ -85,41 +85,196 @@ public sealed class JobMethodResolver
     /// </summary>
     private static IReadOnlyList<JobMethodDescriptor> ScanRegisteredMethods()
     {
-        var seen = new HashSet<MethodInfo>();
-        var descriptors = new List<JobMethodDescriptor>();
-
+        // Collect every inspectable type once so we can run a two-stage scan: eligible Contract_Methods
+        // first (abstract methods on interfaces and abstract classes — the canonical, portable identity
+        // for DI-dispatched jobs), then concrete methods. Both are surfaced (Option Y): a concrete
+        // method that implements/overrides a contract is labelled Implementation rather than hidden, so
+        // operators can target the concrete type when DI is not configured while still being steered to
+        // the contract when it is.
+        var allTypes = new List<Type>();
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             // Each assembly is inspected independently; an uninspectable one is skipped (Req 5.7).
             foreach (var type in SafeGetTypes(assembly))
             {
-                if (type is null)
+                if (type is not null)
+                    allTypes.Add(type);
+            }
+        }
+
+        var seen = new HashSet<MethodInfo>(MethodKeyComparer.Instance);
+        var descriptors = new List<JobMethodDescriptor>();
+
+        // Stage 1 — eligible Contract_Methods (Req 5.1, 5.11). These are abstract methods declared on
+        // an interface or an abstract class, so the abstract-method exclusion applied to concrete
+        // types is intentionally NOT applied here: such a declaration IS a valid (DI-dispatched) target.
+        foreach (var type in allTypes)
+        {
+            // An abstract class in IL is `abstract`; a static class is `abstract && sealed`. Only
+            // interfaces and genuine (non-static) abstract classes can declare Contract_Methods.
+            var isInterface = type.IsInterface;
+            var isAbstractClass = type.IsAbstract && !type.IsSealed && !type.IsInterface;
+            if (!isInterface && !isAbstractClass)
+                continue;
+
+            var typeDecorated = CarriesRecognizedAttribute(type, AttributeTargets.Class);
+
+            foreach (var method in type.GetMethods(
+                         BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            {
+                // On an abstract class only the abstract members are contracts; its concrete members
+                // are ordinary methods handled by Stage 2. (Interface members are all abstract.)
+                if (method.IsSpecialName || !method.IsAbstract)
                     continue;
 
-                var classDecorated = CarriesRecognizedAttribute(type, AttributeTargets.Class);
+                var eligible = typeDecorated
+                               || CarriesRecognizedAttribute(method, AttributeTargets.Method);
+                if (!eligible)
+                    continue;
 
-                // DeclaredOnly so inherited members (e.g. object.ToString) are not pulled in via a
-                // decorated subclass; only methods actually declared on this type are eligible.
-                var methods = type.GetMethods(
-                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                if (seen.Add(method))
+                    descriptors.Add(DescribeInternal(method, JobMethodKind.Contract));
+            }
+        }
 
-                foreach (var method in methods)
-                {
-                    if (method.IsAbstract || method.IsSpecialName || method.IsConstructor)
-                        continue;
+        // Stage 2 — concrete (non-interface) methods. Surfaced WITH a Kind label; a method that
+        // implements an interface Contract_Method or overrides an abstract-class Contract_Method is
+        // marked Implementation (not hidden) so it remains selectable when DI is not used (Req 5.11).
+        foreach (var type in allTypes)
+        {
+            if (type.IsInterface)
+                continue;
 
-                    var eligible = classDecorated
-                                   || CarriesRecognizedAttribute(method, AttributeTargets.Method);
-                    if (!eligible)
-                        continue;
+            var classDecorated = CarriesRecognizedAttribute(type, AttributeTargets.Class);
 
-                    if (seen.Add(method))
-                        descriptors.Add(DescribeInternal(method));
-                }
+            // DeclaredOnly so inherited members (e.g. object.ToString) are not pulled in via a
+            // decorated subclass; only methods actually declared on this type are eligible.
+            var methods = type.GetMethods(
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
+
+            foreach (var method in methods)
+            {
+                if (method.IsAbstract || method.IsSpecialName || method.IsConstructor)
+                    continue;
+
+                var eligible = classDecorated
+                               || CarriesRecognizedAttribute(method, AttributeTargets.Method);
+                if (!eligible)
+                    continue;
+
+                var kind = (ImplementsEligibleInterfaceContract(type, method)
+                            || OverridesEligibleAbstractContract(method))
+                    ? JobMethodKind.Implementation
+                    : JobMethodKind.Standalone;
+
+                if (seen.Add(method))
+                    descriptors.Add(DescribeInternal(method, kind));
             }
         }
 
         return descriptors;
+    }
+
+    /// <summary>
+    /// Classifies a method as a <see cref="JobMethodKind"/> independently of the scan, for the
+    /// <see cref="Describe"/>/custom-method paths (Req 5.11).
+    /// </summary>
+    private static JobMethodKind DetermineKind(MethodInfo method)
+    {
+        var declaringType = method.DeclaringType;
+        if (method.IsAbstract && declaringType is not null
+            && (declaringType.IsInterface || (declaringType.IsAbstract && !declaringType.IsSealed)))
+        {
+            return JobMethodKind.Contract;
+        }
+
+        if (declaringType is not null
+            && (ImplementsEligibleInterfaceContract(declaringType, method)
+                || OverridesEligibleAbstractContract(method)))
+        {
+            return JobMethodKind.Implementation;
+        }
+
+        return JobMethodKind.Standalone;
+    }
+
+    /// <summary>
+    /// True when <paramref name="method"/> on <paramref name="type"/> implements an interface method
+    /// that is itself an eligible Contract_Method (the interface or the method carries a
+    /// Recognized_Attribute) (Req 5.11).
+    /// </summary>
+    private static bool ImplementsEligibleInterfaceContract(Type type, MethodInfo method)
+    {
+        foreach (var iface in type.GetInterfaces())
+        {
+            InterfaceMapping map;
+            try
+            {
+                map = type.GetInterfaceMap(iface);
+            }
+            catch
+            {
+                // Some type/interface combinations (e.g. open generics) don't support mapping; skip.
+                continue;
+            }
+
+            for (var i = 0; i < map.TargetMethods.Length; i++)
+            {
+                if (!MethodKeyComparer.Instance.Equals(map.TargetMethods[i], method))
+                    continue;
+
+                var interfaceMethod = map.InterfaceMethods[i];
+                if (CarriesRecognizedAttribute(iface, AttributeTargets.Class)
+                    || CarriesRecognizedAttribute(interfaceMethod, AttributeTargets.Method))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// True when <paramref name="method"/> overrides an abstract method that is itself an eligible
+    /// Contract_Method on an abstract class (the class or the method carries a Recognized_Attribute).
+    /// <see cref="MethodInfo.GetBaseDefinition"/> walks back to the original declaration (Req 5.11).
+    /// </summary>
+    private static bool OverridesEligibleAbstractContract(MethodInfo method)
+    {
+        var baseDefinition = method.GetBaseDefinition();
+        if (baseDefinition is null || MethodKeyComparer.Instance.Equals(baseDefinition, method))
+            return false;
+
+        var declaringType = baseDefinition.DeclaringType;
+        if (declaringType is null || !declaringType.IsAbstract || declaringType.IsSealed
+            || declaringType.IsInterface || !baseDefinition.IsAbstract)
+        {
+            return false;
+        }
+
+        return CarriesRecognizedAttribute(declaringType, AttributeTargets.Class)
+               || CarriesRecognizedAttribute(baseDefinition, AttributeTargets.Method);
+    }
+
+    /// <summary>
+    /// Compares methods by metadata token + module so the same logical method resolved through
+    /// different reflection paths (e.g. <see cref="Type.GetMethods()"/> vs
+    /// <see cref="Type.GetInterfaceMap"/>) compares equal without relying on reference identity.
+    /// </summary>
+    private sealed class MethodKeyComparer : IEqualityComparer<MethodInfo>
+    {
+        public static readonly MethodKeyComparer Instance = new();
+
+        public bool Equals(MethodInfo x, MethodInfo y)
+        {
+            if (ReferenceEquals(x, y)) return true;
+            if (x is null || y is null) return false;
+            return x.MetadataToken == y.MetadataToken && System.Collections.Generic.EqualityComparer<Module>.Default.Equals(x.Module, y.Module);
+        }
+
+        public int GetHashCode(MethodInfo obj)
+            => HashCode.Combine(obj.MetadataToken, obj.Module);
     }
 
     /// <summary>
@@ -147,10 +302,10 @@ public sealed class JobMethodResolver
     public JobMethodDescriptor Describe(MethodInfo method)
     {
         ArgumentNullException.ThrowIfNull(method);
-        return DescribeInternal(method);
+        return DescribeInternal(method, DetermineKind(method));
     }
 
-    private static JobMethodDescriptor DescribeInternal(MethodInfo method)
+    private static JobMethodDescriptor DescribeInternal(MethodInfo method, JobMethodKind kind)
     {
         var allParameters = method.GetParameters();
         var jobParameters = new List<JobParameterDescriptor>();
@@ -176,7 +331,8 @@ public sealed class JobMethodResolver
             MethodName: method.Name,
             DisplayLabel: ComputeDisplayLabel(method),
             JobParameters: jobParameters,
-            Queue: GetQueueAttributeStatic(method));
+            Queue: GetQueueAttributeStatic(method),
+            Kind: kind);
     }
 
     /// <summary>
@@ -208,13 +364,15 @@ public sealed class JobMethodResolver
         }
 
         // Public instance or static methods with the requested name, excluding property
-        // accessors/operators (special-name) and abstract methods. Constructors are never
-        // returned by GetMethods.
+        // accessors/operators (special-name). Abstract methods are intentionally INCLUDED:
+        // interface and abstract-class contract methods are abstract yet valid job targets —
+        // Hangfire activates them via the DI-based JobActivator, and Hangfire's own Job model
+        // imposes no abstract/interface restriction (only that DeclaringType is assignable from the
+        // selected type). Constructors are never returned by GetMethods.
         var named = type
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
             .Where(m => string.Equals(m.Name, methodName, StringComparison.Ordinal)
-                        && !m.IsSpecialName
-                        && !m.IsAbstract)
+                        && !m.IsSpecialName)
             .ToList();
 
         if (named.Count == 0)
@@ -240,7 +398,7 @@ public sealed class JobMethodResolver
 
         if (countMatches.Count == 1)
         {
-            return new MethodResolutionResult(true, countMatches[0], null, null);
+            return new MethodResolutionResult(true, countMatches[0], null, null, type);
         }
 
         // Several overloads share the same Job_Parameter count: disambiguate by whether each
@@ -251,7 +409,7 @@ public sealed class JobMethodResolver
 
         if (typeMatches.Count == 1)
         {
-            return new MethodResolutionResult(true, typeMatches[0], null, null);
+            return new MethodResolutionResult(true, typeMatches[0], null, null, type);
         }
 
         if (typeMatches.Count == 0)
@@ -355,7 +513,7 @@ public sealed class JobMethodResolver
             true,
             CustomMethodCheck.None,
             $"Method '{methodName}' on type '{typeName}' is valid.",
-            DescribeInternal(resolved));
+            DescribeInternal(resolved, DetermineKind(resolved)));
     }
 
     /// <summary>

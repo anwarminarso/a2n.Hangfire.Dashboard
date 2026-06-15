@@ -17,6 +17,7 @@ public static class SampleJobsSeeder
         SeedBasic();
         SeedLongRunning();
         SeedContinuationPipeline();
+        SeedFtpTransferService();
     }
 
     /// <summary>
@@ -55,5 +56,20 @@ public static class SampleJobsSeeder
     public static void SeedContinuationPipeline()
     {
         RecurringJob.AddOrUpdate<SampleJobs>("pipeline-trigger", x => x.SeedPipeline(null!), "*/7 * * * *");
+    }
+
+    /// <summary>
+    /// Registers the issue #10 repro: a recurring job built against the <see cref="IFtpTransferService"/>
+    /// interface (resolved from DI at run time) whose method takes a user parameter (<c>ftpName</c>)
+    /// between injected <c>PerformContext</c> and <c>CancellationToken</c>. Opening this job in the
+    /// recurring edit form exercises the argument-deserialisation fix (the form should pre-fill
+    /// <c>ftpName</c> and ignore the injected parameters).
+    /// </summary>
+    public static void SeedFtpTransferService()
+    {
+        RecurringJob.AddOrUpdate<IFtpTransferService>(
+            "standard-file-transfer",
+            x => x.StandardFileTransferServiceAsync(null!, "primary-ftp", CancellationToken.None),
+            "*/15 * * * *");
     }
 }

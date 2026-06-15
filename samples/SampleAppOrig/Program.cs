@@ -55,6 +55,10 @@ builder.Services.AddHangfireServer(options =>
     options.WorkerCount = 2;
 });
 
+// Issue #10 repro: the "standard-file-transfer" recurring job is built against IFtpTransferService,
+// so Hangfire's activator must be able to resolve the implementation from DI at run time.
+builder.Services.AddScoped<IFtpTransferService, FtpTransferService>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -101,6 +105,16 @@ app.Lifetime.ApplicationStarted.Register(() =>
         "long-running-job-label",
         x => x.LongRunningJobLabel(null!),
         "*/10 * * * *");
+
+    RecurringJob.AddOrUpdate<SampleJobs>(
+        "pipeline-trigger",
+        x => x.SeedPipeline(null!),
+        "*/7 * * * *");
+
+    RecurringJob.AddOrUpdate<IFtpTransferService>(
+        "standard-file-transfer",
+        x => x.StandardFileTransferServiceAsync(null!, "primary-ftp", CancellationToken.None),
+        "*/15 * * * *");
 
 });
 

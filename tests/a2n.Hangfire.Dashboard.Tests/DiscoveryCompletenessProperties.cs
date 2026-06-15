@@ -8,10 +8,11 @@ using a2n.Hangfire.Dashboard.Services;
 // Feature: job-builder, Property 9: Registered-method discovery completeness and de-duplication.
 //
 // WHEN the Method_Resolver performs a scan, THE Method_Resolver SHALL include every public
-// instance or static method — excluding abstract methods, property accessors, and constructors —
-// that is decorated with a Recognized_Attribute or whose declaring class is decorated with a
+// instance or static method — excluding property accessors and constructors — that is
+// decorated with a Recognized_Attribute or whose declaring class is decorated with a
 // class-targeting Recognized_Attribute, listing each such method exactly once even when both the
-// method and its declaring class are decorated (Req 5.1). The recognized set is
+// method and its declaring class are decorated (Req 5.1). Eligible abstract methods on interfaces
+// and abstract classes are included as canonical Contract_Methods (Req 5.11). The recognized set is
 // JobDisplayNameAttribute (method), TagAttribute (class/method) and QueueAttribute (class/method)
 // (Req 5.2–5.4). Each Registered_Method's Display_Label is computed via the display-name extraction
 // logic, falling back to the method name when no display name is available (Req 5.5, 5.10).
@@ -96,9 +97,9 @@ namespace DiscoveryCompletenessFixtures
     }
 
     /// <summary>
-    /// Class-decorated abstract type used to verify the excluded-member rules: abstract methods,
-    /// property accessors and constructors are never discovered (Req 5.1), while a concrete public
-    /// method still is.
+    /// Class-decorated abstract type used to verify the member rules: property accessors and
+    /// constructors are never discovered (Req 5.1), a concrete public method is discovered, and the
+    /// abstract method is surfaced as a canonical Contract_Method (Req 5.11).
     /// </summary>
     [Tag("dcp9-abstract")]
     public abstract class Dcp9_WithExcludables
@@ -107,7 +108,7 @@ namespace DiscoveryCompletenessFixtures
         {
         }
 
-        // Abstract → excluded.
+        // Abstract method on an abstract class → a Contract_Method (Req 5.11), discovered.
         public abstract void AbstractMethod();
 
         // Property accessors get_Prop / set_Prop are special-name → excluded.
@@ -167,6 +168,10 @@ namespace a2n.Hangfire.Dashboard.Tests
 
         // Concrete public method on a class-decorated abstract type (Req 5.1).
         new(typeof(DiscoveryCompletenessFixtures.Dcp9_WithExcludables), "ConcreteMethod", null),
+
+        // Abstract method on a class-decorated abstract type is a Contract_Method (Req 5.11):
+        // surfaced as the canonical target with a method-name fallback label.
+        new(typeof(DiscoveryCompletenessFixtures.Dcp9_WithExcludables), "AbstractMethod", null),
     ];
 
     private static readonly Excluded[] ExpectedAbsent =
@@ -175,8 +180,7 @@ namespace a2n.Hangfire.Dashboard.Tests
         new(typeof(DiscoveryCompletenessFixtures.Dcp9_DisplayNameOnly), "NotDecorated"),
         new(typeof(DiscoveryCompletenessFixtures.Dcp9_MethodLevel), "Plain"),
 
-        // Abstract method, property accessors and constructor on the class-decorated abstract type.
-        new(typeof(DiscoveryCompletenessFixtures.Dcp9_WithExcludables), "AbstractMethod"),
+        // Property accessors and constructor on the class-decorated abstract type remain excluded.
         new(typeof(DiscoveryCompletenessFixtures.Dcp9_WithExcludables), "get_Prop"),
         new(typeof(DiscoveryCompletenessFixtures.Dcp9_WithExcludables), "set_Prop"),
         new(typeof(DiscoveryCompletenessFixtures.Dcp9_WithExcludables), ".ctor"),
@@ -241,8 +245,8 @@ namespace a2n.Hangfire.Dashboard.Tests
     }
 
     /// <summary>
-    /// Undecorated methods, abstract methods, property accessors and constructors are never
-    /// discovered (Req 5.1 exclusions).
+    /// Undecorated methods, property accessors and constructors are never discovered
+    /// (Req 5.1 exclusions). Abstract Contract_Methods are covered by the present-set property.
     /// </summary>
     [Property(MaxTest = 100)]
     public Property IneligibleMembers_AreNeverDiscovered()

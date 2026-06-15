@@ -293,7 +293,7 @@ public class HangfireMonitorService
         // --- Upsert by id. Any storage/cron failure leaves stored state unchanged (Req 11.3). ---
         try
         {
-            var job = new global::Hangfire.Common.Job(resolution.Method.DeclaringType, resolution.Method, build.Args);
+            var job = new global::Hangfire.Common.Job(resolution.ResolvedType ?? resolution.Method.DeclaringType, resolution.Method, build.Args);
             var manager = new RecurringJobManager(_storage);
 
 #pragma warning disable CS0618 // QueueName is obsolete but no alternative overload available in 1.8.x
@@ -388,7 +388,7 @@ public class HangfireMonitorService
         string jobId;
         try
         {
-            var job = new global::Hangfire.Common.Job(resolution.Method.DeclaringType, resolution.Method, build.Args);
+            var job = new global::Hangfire.Common.Job(resolution.ResolvedType ?? resolution.Method.DeclaringType, resolution.Method, build.Args);
             var client = new BackgroundJobClient(_storage);
             jobId = client.Create(job, new EnqueuedState(queue));
         }

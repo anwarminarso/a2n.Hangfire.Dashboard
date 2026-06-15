@@ -54,6 +54,10 @@ builder.Services.AddHangfireServer(options =>
     //options.WorkerCount = 2;
 });
 
+// Issue #10 repro: the "standard-file-transfer" recurring job is built against IFtpTransferService,
+// so Hangfire's activator must be able to resolve the implementation from DI at run time.
+builder.Services.AddScoped<IFtpTransferService, FtpTransferService>();
+
 // Add Hangfire Dashboard UI services with storage adapter configuration
 builder.Services.AddHangfireDashboardUI(options =>
 {
