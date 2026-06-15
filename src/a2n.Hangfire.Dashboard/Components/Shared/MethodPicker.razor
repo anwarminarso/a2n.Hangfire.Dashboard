@@ -50,7 +50,9 @@
 
     @if (_mode == PickerMode.Registered)
     {
-        @* Registered mode — list discovered methods, or an empty-state when none (Req 6.2, 6.3). *@
+        @* Registered mode — a searchable combobox over discovered methods, or an empty-state when
+           none (Req 6.2, 6.3). Contracts and their implementations are both listed and badged so the
+           operator can choose the portable contract (DI-dispatched) or a concrete implementation. *@
         @if (_registeredMethods.Count == 0)
         {
             <div class="alert alert-secondary d-flex align-items-center gap-2 mb-0" role="status">
@@ -60,16 +62,51 @@
         }
         else
         {
-            <label class="form-label fw-semibold mb-1" for="registered-method-select">Discovered methods</label>
-            <select class="form-select" id="registered-method-select" value="@_selectedRegisteredIndex"
-                    @onchange="OnRegisteredSelectionChanged">
-                <option value="">Select a method…</option>
-                @for (var i = 0; i < _registeredMethods.Count; i++)
+            <label class="form-label fw-semibold mb-1" for="registered-method-filter">Discovered methods</label>
+            <div class="hf-combobox position-relative">
+                <input type="text" class="form-control" id="registered-method-filter"
+                       placeholder="Search methods…" autocomplete="off" role="combobox"
+                       aria-expanded="@(_isOpen ? "true" : "false")" aria-controls="registered-method-list"
+                       value="@_filterText"
+                       @oninput="OnFilterInput"
+                       @onfocus="() => _isOpen = true"
+                       @onfocusout="() => _isOpen = false" />
+                @if (_isOpen)
                 {
-                    var index = i;
-                    <option value="@index">@_registeredMethods[index].DisplayLabel</option>
+                    var filtered = FilteredMethods();
+                    <div class="list-group hf-combobox-menu shadow-sm" id="registered-method-list" role="listbox">
+                        @if (filtered.Count == 0)
+                        {
+                            <div class="list-group-item text-muted small">No matches.</div>
+                        }
+                        else
+                        {
+                            @foreach (var item in filtered)
+                            {
+                                var idx = item.Index;
+                                <button type="button" data-index="@idx" role="option"
+                                        class="list-group-item list-group-item-action hf-method-option d-flex justify-content-between align-items-start gap-2 @(idx == _selectedRegisteredIndex ? "active" : null)"
+                                        @onmousedown:preventDefault="true"
+                                        @onclick="() => SelectRegistered(idx)">
+                                    <span class="text-start">
+                                        @item.Descriptor.DisplayLabel
+                                        <span class="d-block font-monospace small text-muted">@($"{item.Descriptor.TypeFullName}.{item.Descriptor.MethodName}")</span>
+                                    </span>
+                                    @switch (item.Descriptor.Kind)
+                                    {
+                                        case JobMethodKind.Contract:
+                                            <span class="badge text-bg-primary flex-shrink-0" title="Interface/abstract contract — dispatched via DI">Contract</span>
+                                            break;
+                                        case JobMethodKind.Implementation:
+                                            <span class="badge text-bg-secondary flex-shrink-0" title="Concrete implementation — usable without DI">Implementation</span>
+                                            break;
+                                    }
+                                </button>
+                            }
+                        }
+                    </div>
                 }
-            </select>
+            </div>
             @if (_selectedRegisteredIndex is int sel && sel >= 0 && sel < _registeredMethods.Count)
             {
                 <div class="form-text font-monospace">
@@ -148,6 +185,13 @@
     private IReadOnlyList<JobMethodDescriptor> _registeredMethods = Array.Empty<JobMethodDescriptor>();
     private int? _selectedRegisteredIndex;
 
+    // Searchable-combobox state for the registered list.
+    private string _filterText = string.Empty;
+    private bool _isOpen;
+
+    /// <summary>A discovered method paired with its stable index into <see cref="_registeredMethods"/>.</summary>
+    private sealed record IndexedMethod(int Index, JobMethodDescriptor Descriptor);
+
     // Custom-mode state — retained across (failed) validation attempts (Req 6.7, 7.2–7.5).
     private string _customTypeName = string.Empty;
     private string _customMethodName = string.Empty;
@@ -197,6 +241,7 @@
             {
                 _mode = PickerMode.Registered;
                 _selectedRegisteredIndex = i;
+                _filterText = candidate.DisplayLabel;
                 await OnMethodSelected.InvokeAsync(candidate);
                 return;
             }
@@ -232,24 +277,54 @@
 
         // Reset the per-mode selection state so a switch starts from a clean slate.
         _selectedRegisteredIndex = null;
+        _filterText = string.Empty;
+        _isOpen = false;
         _customError = null;
         _customValidated = false;
     }
 
-    private async Task OnRegisteredSelectionChanged(ChangeEventArgs e)
+    /// <summary>
+    /// The discovered methods (with their stable indices) matching the current filter text. Matches
+    /// case-insensitively against the Display_Label, full type name, and method name so the operator
+    /// can search by any of them. An empty filter returns all methods.
+    /// </summary>
+    private List<IndexedMethod> FilteredMethods()
     {
-        var raw = e.Value?.ToString();
-        if (string.IsNullOrEmpty(raw) || !int.TryParse(raw, out var index)
-            || index < 0 || index >= _registeredMethods.Count)
-        {
-            _selectedRegisteredIndex = null;
+        var all = _registeredMethods
+            .Select((descriptor, index) => new IndexedMethod(index, descriptor));
+
+        var query = _filterText?.Trim() ?? string.Empty;
+        if (query.Length == 0)
+            return all.ToList();
+
+        return all
+            .Where(m =>
+                m.Descriptor.DisplayLabel.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || m.Descriptor.TypeFullName.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || m.Descriptor.MethodName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private void OnFilterInput(ChangeEventArgs e)
+    {
+        _filterText = e.Value?.ToString() ?? string.Empty;
+        _isOpen = true;
+    }
+
+    /// <summary>
+    /// Selects a Registered_Method by its stable index, mirroring the label into the filter box,
+    /// closing the dropdown, and emitting the descriptor so the Parameter Builder rebuilds its
+    /// inputs (Req 6.4, 6.8).
+    /// </summary>
+    private async Task SelectRegistered(int index)
+    {
+        if (index < 0 || index >= _registeredMethods.Count)
             return;
-        }
 
         _selectedRegisteredIndex = index;
+        _filterText = _registeredMethods[index].DisplayLabel;
+        _isOpen = false;
 
-        // Selecting a Registered_Method emits its descriptor; changing the selection re-emits a
-        // new descriptor so the Parameter Builder replaces its inputs (Req 6.4, 6.8).
         await OnMethodSelected.InvokeAsync(_registeredMethods[index]);
     }
 

@@ -111,15 +111,19 @@ public class JobBuilderComponentTests
     private static void SelectRegistered(IRenderedFragment cut, int index)
     {
         // With Custom_Method invocation disabled (the test default) the Registered/Custom toggle is
-        // not rendered and the picker is already in Registered mode, so the radio is absent — select
-        // the method directly. When the toggle is present (custom enabled), click it first.
+        // not rendered and the picker is already in Registered mode, so the radio is absent. When the
+        // toggle is present (custom enabled), click it first.
         var registeredRadio = cut.FindAll("#method-mode-registered");
         if (registeredRadio.Count > 0)
         {
             registeredRadio[0].Change(true);
         }
 
-        cut.Find("#registered-method-select").Change(index.ToString());
+        // Open the searchable combobox and click the option at the requested index.
+        cut.Find("#registered-method-filter").Focus();
+        cut.FindAll(".hf-method-option")
+            .Single(o => o.GetAttribute("data-index") == index.ToString())
+            .Click();
     }
 
     // =======================================================================================
@@ -169,7 +173,7 @@ public class JobBuilderComponentTests
         // the Registered_Method selector is presented (Req 4.4, 6.1).
         Assert.Empty(cut.FindAll("#method-mode-custom"));
         Assert.Empty(cut.FindAll("#method-mode-registered"));
-        Assert.NotNull(cut.Find("#registered-method-select"));
+        Assert.NotNull(cut.Find("#registered-method-filter"));
     }
 
     [Fact]
@@ -200,7 +204,7 @@ public class JobBuilderComponentTests
 
         // JobBuilder presents an editable control for each recurring field (Req 11.2):
         Assert.NotNull(cut.Find("#job-builder-id"));            // job identifier
-        Assert.NotNull(cut.Find("#registered-method-select"));  // target method (MethodPicker)
+        Assert.NotNull(cut.Find("#registered-method-filter"));  // target method (MethodPicker)
         Assert.Contains("Parameters", cut.Markup);              // Argument_Values (ParameterBuilder)
         Assert.NotNull(cut.Find("#schedule-mode-builder"));     // Cron_Expression (ScheduleBuilder)
         Assert.NotNull(cut.Find("#job-builder-queue"));         // queue

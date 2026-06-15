@@ -1210,3 +1210,13 @@ a.hf-st-link:hover .hf-st-link-icon {
     .hf-queue-summary-divider { display: none; }
     .hf-queue-summary-status { margin-left: 0; }
 }
+
+/* ===== Method Picker searchable combobox ===== */
+.hf-combobox-menu {
+    position: absolute;
+    z-index: 1050;
+    width: 100%;
+    max-height: 18rem;
+    overflow-y: auto;
+}
+.hf-combobox-menu .hf-method-option { cursor: pointer; }

@@ -46,13 +46,15 @@ public class MethodPickerComponentTests
         return resolver;
     }
 
-    private static JobMethodDescriptor Descriptor(string typeName, string method, string label)
+    private static JobMethodDescriptor Descriptor(string typeName, string method, string label,
+        JobMethodKind kind = JobMethodKind.Standalone)
         => new(
             TypeFullName: typeName,
             MethodName: method,
             DisplayLabel: label,
             JobParameters: Array.Empty<JobParameterDescriptor>(),
-            Queue: new QueueAttributeInfo(false, null, false));
+            Queue: new QueueAttributeInfo(false, null, false),
+            Kind: kind);
 
     private static TestContext NewContext(JobMethodResolver resolver)
     {
@@ -82,8 +84,8 @@ public class MethodPickerComponentTests
         Assert.False(registered.HasAttribute("checked"));
         Assert.False(custom.HasAttribute("checked"));
 
-        // With no mode chosen, neither the registered list nor the custom inputs are rendered.
-        Assert.Empty(cut.FindAll("#registered-method-select"));
+        // With no mode chosen, neither the registered combobox nor the custom inputs are rendered.
+        Assert.Empty(cut.FindAll("#registered-method-filter"));
         Assert.Empty(cut.FindAll("#custom-type-name"));
     }
 
@@ -102,8 +104,9 @@ public class MethodPickerComponentTests
         Assert.Empty(cut.FindAll("#method-mode-custom"));
         Assert.Empty(cut.FindAll("#method-mode-registered"));
 
-        // The Registered_Method selector is shown directly so the operator can pick a method (Req 4.4).
-        Assert.NotNull(cut.Find("#registered-method-select"));
+        // The Registered_Method selector (searchable combobox) is shown directly so the operator can
+        // pick a method (Req 4.4).
+        Assert.NotNull(cut.Find("#registered-method-filter"));
     }
 
     [Fact]
@@ -136,17 +139,64 @@ public class MethodPickerComponentTests
         var cut = ctx.RenderComponent<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, true));
 
-        // Choose the Registered mode.
+        // Choose the Registered mode, then open the combobox by focusing the search input.
         cut.Find("#method-mode-registered").Change(true);
+        cut.Find("#registered-method-filter").Focus();
 
-        var select = cut.Find("#registered-method-select");
-        var optionLabels = select.QuerySelectorAll("option")
-            .Select(o => o.TextContent.Trim())
+        var optionLabels = cut.FindAll(".hf-method-option")
+            .Select(o => o.TextContent)
             .ToList();
 
-        // The placeholder plus one entry per discovered method, each by its Display_Label (Req 6.2).
-        Assert.Contains("Process order", optionLabels);
-        Assert.Contains("Send welcome email", optionLabels);
+        // One entry per discovered method, each showing its Display_Label (Req 6.2).
+        Assert.Contains(optionLabels, l => l.Contains("Process order"));
+        Assert.Contains(optionLabels, l => l.Contains("Send welcome email"));
+    }
+
+    // --- search — the combobox filters the list ---------------------------------------------
+
+    [Fact]
+    public void Registered_Mode_Search_Filters_The_List()
+    {
+        var methods = new[]
+        {
+            Descriptor("MyApp.Jobs.OrderJobs", "ProcessOrder", "Process order"),
+            Descriptor("MyApp.Jobs.MailJobs", "SendWelcome", "Send welcome email"),
+        };
+        using var ctx = NewContext(ResolverWithRegistered(methods));
+
+        var cut = ctx.RenderComponent<MethodPicker>(p => p
+            .Add(c => c.CustomMethodEnabled, false));
+
+        var input = cut.Find("#registered-method-filter");
+        input.Focus();
+        input.Input("welcome");
+
+        var labels = cut.FindAll(".hf-method-option").Select(o => o.TextContent).ToList();
+
+        // Only the matching entry remains (search matches the Display_Label, case-insensitively).
+        Assert.Contains(labels, l => l.Contains("Send welcome email"));
+        Assert.DoesNotContain(labels, l => l.Contains("Process order"));
+    }
+
+    // --- labels — Contract vs Implementation badges -----------------------------------------
+
+    [Fact]
+    public void Registered_Mode_Badges_Contract_And_Implementation()
+    {
+        var methods = new[]
+        {
+            Descriptor("MyApp.IFtp", "Transfer", "Transfer", JobMethodKind.Contract),
+            Descriptor("MyApp.FtpImpl", "Transfer", "Transfer (impl)", JobMethodKind.Implementation),
+        };
+        using var ctx = NewContext(ResolverWithRegistered(methods));
+
+        var cut = ctx.RenderComponent<MethodPicker>(p => p
+            .Add(c => c.CustomMethodEnabled, false));
+
+        cut.Find("#registered-method-filter").Focus();
+
+        Assert.Contains("Contract", cut.Markup);
+        Assert.Contains("Implementation", cut.Markup);
     }
 
     // --- 6.3 — empty-state -----------------------------------------------------------------
@@ -161,8 +211,8 @@ public class MethodPickerComponentTests
 
         cut.Find("#method-mode-registered").Change(true);
 
-        // No selectable list is rendered (Req 6.3)...
-        Assert.Empty(cut.FindAll("#registered-method-select"));
+        // No selectable combobox is rendered (Req 6.3)...
+        Assert.Empty(cut.FindAll("#registered-method-filter"));
 
         // ...and an empty-state indication is presented (Req 6.3).
         Assert.Contains("No registered methods are available", cut.Markup);
@@ -187,8 +237,11 @@ public class MethodPickerComponentTests
 
         cut.Find("#method-mode-registered").Change(true);
 
-        // Select the second method by its index value (Req 6.4).
-        cut.Find("#registered-method-select").Change("1");
+        // Open the combobox and click the second method's option (Req 6.4).
+        cut.Find("#registered-method-filter").Focus();
+        var option = cut.FindAll(".hf-method-option")
+            .First(o => o.GetAttribute("data-index") == "1");
+        option.Click();
 
         Assert.NotNull(emitted);
         Assert.Equal("MyApp.Jobs.MailJobs", emitted.TypeFullName);
