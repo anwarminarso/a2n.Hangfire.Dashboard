@@ -1,0 +1,396 @@
+@*
+    Schedule Builder (Req 10) — produces a Hangfire-compatible cron expression for a recurring job.
+
+    Two mutually exclusive sub-modes (Req 10.1):
+      • Cron Builder  — a mode selector per cron field (minute, hour, day-of-month, month,
+                        day-of-week). The shared CronFieldMode model records only HOW a field is
+                        expressed (Every / Specific / Range / Step), so the builder UI is composed
+                        of those modes and emits a canonical cron via CronDescriber.Build (Req 10.2).
+      • Manual input  — a free-text cron field limited to 100 characters (Req 10.4).
+
+    For the current effective cron the component shows a human-readable description
+    (CronDescriber.Describe, Req 10.3) and, when the expression parses, the next occurrence computed
+    in the selected time zone — UTC when none is selected (CronPreview.NextOccurrence, Req 10.5/10.6).
+    An unparseable expression shows an error and no preview (Req 10.7). The current cron expression
+    and its validity are emitted to the parent via OnScheduleChanged (Req 10.8).
+*@
+@using a2n.Hangfire.Dashboard.Internal
+
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2 py-2">
+        <i class="bi bi-clock-history"></i>
+        <span class="fw-semibold">Schedule</span>
+    </div>
+    <div class="card-body">
+        @* Time zone owned by the parent, rendered here so it groups visually with the schedule it
+           affects and with the next-occurrence preview below (UX: keep related controls together). *@
+        @if (TimeZoneSlot is not null)
+        {
+            <div class="mb-3">
+                @TimeZoneSlot
+            </div>
+        }
+
+        @* Mode choice: Cron Builder vs Manual (Req 10.1) *@
+        <div class="btn-group btn-group-sm mb-3" role="group" aria-label="Schedule input mode">
+            <input type="radio" class="btn-check" name="schedule-mode" id="schedule-mode-builder"
+                   autocomplete="off" checked="@(_mode == ScheduleMode.Builder)"
+                   @onchange="() => SetMode(ScheduleMode.Builder)" />
+            <label class="btn btn-outline-primary" for="schedule-mode-builder">
+                <i class="bi bi-sliders"></i> Cron Builder
+            </label>
+
+            <input type="radio" class="btn-check" name="schedule-mode" id="schedule-mode-manual"
+                   autocomplete="off" checked="@(_mode == ScheduleMode.Manual)"
+                   @onchange="() => SetMode(ScheduleMode.Manual)" />
+            <label class="btn btn-outline-primary" for="schedule-mode-manual">
+                <i class="bi bi-pencil"></i> Manual
+            </label>
+        </div>
+
+        @if (_mode == ScheduleMode.Builder)
+        {
+            @* One mode selector plus value input(s) per cron field (Req 10.2) *@
+            <div class="row g-3">
+                @foreach (var f in _editors)
+                {
+                    <div class="col-6 col-md-4 col-lg">
+                        <label class="form-label small fw-semibold" for="cron-field-@f.Key">@f.Label</label>
+                        <select id="cron-field-@f.Key" class="form-select form-select-sm"
+                                value="@f.Mode" @onchange="e => SetMode(f, e.Value)">
+                            @foreach (var m in _fieldModes)
+                            {
+                                <option value="@m">@FieldModeLabel(m)</option>
+                            }
+                        </select>
+
+                        @switch (f.Mode)
+                        {
+                            case CronFieldMode.Specific:
+                                <input id="cron-value-@f.Key" type="number" class="form-control form-control-sm mt-1"
+                                       min="@f.Min" max="@f.Max" value="@f.Value"
+                                       @onchange="e => SetValue(f, e.Value)" />
+                                break;
+
+                            case CronFieldMode.Range:
+                                <div class="d-flex align-items-center gap-1 mt-1">
+                                    <input id="cron-range-start-@f.Key" type="number" class="form-control form-control-sm"
+                                           min="@f.Min" max="@f.Max" value="@f.RangeStart"
+                                           @onchange="e => SetRangeStart(f, e.Value)" />
+                                    <span class="small text-body-secondary">to</span>
+                                    <input id="cron-range-end-@f.Key" type="number" class="form-control form-control-sm"
+                                           min="@f.Min" max="@f.Max" value="@f.RangeEnd"
+                                           @onchange="e => SetRangeEnd(f, e.Value)" />
+                                </div>
+                                break;
+
+                            case CronFieldMode.Step:
+                                <div class="input-group input-group-sm mt-1">
+                                    <span class="input-group-text">*/</span>
+                                    <input id="cron-step-@f.Key" type="number" class="form-control"
+                                           min="1" max="@f.Max" value="@f.Step"
+                                           @onchange="e => SetStep(f, e.Value)" />
+                                </div>
+                                break;
+                        }
+                    </div>
+                }
+            </div>
+            <div class="form-text mt-2">
+                Generated expression:
+                <code class="font-monospace">@_cron</code>
+            </div>
+        }
+        else
+        {
+            @* Manual cron input limited to 100 characters (Req 10.4) *@
+            <div class="mb-2">
+                <label class="form-label small fw-semibold" for="cron-manual">Cron Expression</label>
+                <input id="cron-manual" type="text" class="form-control font-monospace"
+                       maxlength="100" placeholder="*/5 * * * *"
+                       value="@_cron" @oninput="HandleManualInput" />
+                <div class="form-text">Examples: */5 * * * * (every 5 min), 0 * * * * (hourly), 0 0 * * * (daily)</div>
+            </div>
+        }
+
+        @* Human-readable description (Req 10.3) *@
+        @if (!string.IsNullOrWhiteSpace(_description))
+        {
+            <div class="mt-3 d-flex align-items-center gap-2">
+                <i class="bi bi-info-circle text-primary"></i>
+                <span>@_description</span>
+            </div>
+        }
+
+        @* Next-occurrence preview when valid (Req 10.6) / error when invalid (Req 10.7) *@
+        @if (_isValid)
+        {
+            @if (_nextOccurrence is not null)
+            {
+                <div class="mt-2 d-flex align-items-center gap-2 text-body-secondary small">
+                    <i class="bi bi-calendar-event"></i>
+                    <span>Next occurrence: <strong>@_nextOccurrence.Value.ToString("yyyy-MM-dd HH:mm:ss")</strong> (@TimeZoneLabel)</span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(_cron))
+            {
+                <div class="mt-2 d-flex align-items-center gap-2 text-body-secondary small">
+                    <i class="bi bi-calendar-x"></i>
+                    <span>No upcoming occurrence for this expression.</span>
+                </div>
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(_cron))
+        {
+            <div class="mt-2 text-danger small">
+                <i class="bi bi-exclamation-circle"></i> The cron expression is invalid.
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Initial cron expression to pre-populate the builder (e.g. when editing). Optional.</summary>
+    [Parameter] public string InitialCron { get; set; }
+
+    /// <summary>Initial time zone id. Empty/null selects UTC (Req 10.5).</summary>
+    [Parameter] public string TimeZoneId { get; set; }
+
+    /// <summary>
+    /// Optional parent-owned time-zone control, rendered inside the Schedule card so the time zone
+    /// sits next to the schedule it scopes and the next-occurrence preview that uses it.
+    /// </summary>
+    [Parameter] public RenderFragment TimeZoneSlot { get; set; }
+
+    /// <summary>Raised whenever the current cron expression or its validity changes (Req 10.8).</summary>
+    [Parameter] public EventCallback<ScheduleState> OnScheduleChanged { get; set; }
+
+    private ScheduleMode _mode = ScheduleMode.Builder;
+
+    // Per-field editor state for the Cron Builder. Each editor holds the selected mode and the
+    // value(s) that mode requires, plus the field's legal value domain for clamping/UI bounds.
+    private readonly FieldEditor _minute = new("minute", "Minute", 0, 59);
+    private readonly FieldEditor _hour = new("hour", "Hour", 0, 23);
+    private readonly FieldEditor _dayOfMonth = new("dom", "Day of month", 1, 31);
+    private readonly FieldEditor _month = new("month", "Month", 1, 12);
+    private readonly FieldEditor _dayOfWeek = new("dow", "Day of week", 0, 6);
+
+    private FieldEditor[] _editors => new[] { _minute, _hour, _dayOfMonth, _month, _dayOfWeek };
+
+    private string _cron = "";
+    private string _timeZoneId = "";
+    private string _description = "";
+    private bool _isValid;
+    private DateTime? _nextOccurrence;
+
+    private static readonly CronFieldMode[] _fieldModes =
+        { CronFieldMode.Every, CronFieldMode.Specific, CronFieldMode.Range, CronFieldMode.Step };
+
+    private bool _initialized;
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialized)
+        {
+            _initialized = true;
+
+            _timeZoneId = TimeZoneId ?? "";
+
+            if (!string.IsNullOrWhiteSpace(InitialCron))
+            {
+                // An initial expression is shown in Manual mode so it round-trips verbatim.
+                _mode = ScheduleMode.Manual;
+                _cron = InitialCron.Trim();
+            }
+            else
+            {
+                _cron = CronDescriber.Build(CurrentFields());
+            }
+
+            Recompute(notify: false);
+            return;
+        }
+
+        // The time zone is owned by the parent — a single Time Zone control on the composite. When
+        // the parent pushes a new value, refresh the next-occurrence preview for that zone without
+        // re-emitting the cron (Req 10.5, 10.6).
+        var incomingTimeZoneId = TimeZoneId ?? "";
+        if (incomingTimeZoneId != _timeZoneId)
+        {
+            _timeZoneId = incomingTimeZoneId;
+            Recompute(notify: false);
+        }
+    }
+
+    private void SetMode(ScheduleMode mode)
+    {
+        if (_mode == mode) return;
+        _mode = mode;
+
+        if (_mode == ScheduleMode.Builder)
+        {
+            _cron = CronDescriber.Build(CurrentFields());
+        }
+
+        Recompute();
+    }
+
+    private void SetMode(FieldEditor field, object value)
+    {
+        field.Mode = ParseMode(value);
+        RebuildFromFields();
+    }
+
+    private void SetValue(FieldEditor field, object value)
+    {
+        field.Value = ClampToField(field, ParseInt(value, field.Value));
+        RebuildFromFields();
+    }
+
+    private void SetRangeStart(FieldEditor field, object value)
+    {
+        field.RangeStart = ClampToField(field, ParseInt(value, field.RangeStart));
+        RebuildFromFields();
+    }
+
+    private void SetRangeEnd(FieldEditor field, object value)
+    {
+        field.RangeEnd = ClampToField(field, ParseInt(value, field.RangeEnd));
+        RebuildFromFields();
+    }
+
+    private void SetStep(FieldEditor field, object value)
+    {
+        var n = ParseInt(value, field.Step);
+        field.Step = n < 1 ? 1 : (n > field.Max ? field.Max : n);
+        RebuildFromFields();
+    }
+
+    private void RebuildFromFields()
+    {
+        _cron = CronDescriber.Build(CurrentFields());
+        Recompute();
+    }
+
+    private void HandleManualInput(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        // Defensive cap mirroring the input's maxlength (Req 10.4).
+        if (value.Length > 100) value = value.Substring(0, 100);
+        _cron = value;
+        Recompute();
+    }
+
+    private CronFields CurrentFields() =>
+        new(_minute.ToSpec(), _hour.ToSpec(), _dayOfMonth.ToSpec(), _month.ToSpec(), _dayOfWeek.ToSpec());
+
+    private static int ClampToField(FieldEditor field, int value)
+    {
+        if (value < field.Min) return field.Min;
+        if (value > field.Max) return field.Max;
+        return value;
+    }
+
+    private static int ParseInt(object value, int fallback)
+        => int.TryParse(value?.ToString(), System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : fallback;
+
+    private TimeZoneInfo ResolveTimeZone()
+    {
+        if (string.IsNullOrWhiteSpace(_timeZoneId)) return TimeZoneInfo.Utc;
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
+        }
+        catch (Exception)
+        {
+            // Unknown id falls back to UTC (Req 10.5).
+            return TimeZoneInfo.Utc;
+        }
+    }
+
+    private void Recompute(bool notify = true)
+    {
+        _description = CronDescriber.Describe(_cron);
+
+        var zone = ResolveTimeZone();
+        var preview = CronPreview.NextOccurrence(_cron, DateTime.UtcNow, zone);
+        _isValid = preview.IsValid;
+
+        if (preview.IsValid && preview.NextOccurrenceUtc is not null)
+        {
+            // Express the next occurrence in the selected time zone (Req 10.6).
+            _nextOccurrence = TimeZoneInfo.ConvertTimeFromUtc(preview.NextOccurrenceUtc.Value, zone);
+        }
+        else
+        {
+            _nextOccurrence = null;
+        }
+
+        if (notify)
+        {
+            OnScheduleChanged.InvokeAsync(new ScheduleState(_cron, _isValid));
+        }
+    }
+
+    private string TimeZoneLabel =>
+        string.IsNullOrWhiteSpace(_timeZoneId) ? "UTC" : _timeZoneId;
+
+    private static CronFieldMode ParseMode(object value)
+    {
+        var text = value?.ToString();
+        return Enum.TryParse<CronFieldMode>(text, out var mode) ? mode : CronFieldMode.Every;
+    }
+
+    private static string FieldModeLabel(CronFieldMode mode) => mode switch
+    {
+        CronFieldMode.Every => "Every (*)",
+        CronFieldMode.Specific => "Specific value",
+        CronFieldMode.Range => "Range (a-b)",
+        CronFieldMode.Step => "Step (*/n)",
+        _ => mode.ToString()
+    };
+
+    private enum ScheduleMode { Builder, Manual }
+
+    /// <summary>
+    /// Mutable per-field editor state backing one cron field in the Cron Builder. Holds the
+    /// selected <see cref="CronFieldMode"/> plus the value(s) that mode needs, and the field's
+    /// legal value domain (used to bound the inputs and seed sensible defaults).
+    /// </summary>
+    private sealed class FieldEditor
+    {
+        public FieldEditor(string key, string label, int min, int max)
+        {
+            Key = key;
+            Label = label;
+            Min = min;
+            Max = max;
+            Value = min;
+            RangeStart = min;
+            RangeEnd = max;
+            Step = 1;
+        }
+
+        public string Key { get; }
+        public string Label { get; }
+        public int Min { get; }
+        public int Max { get; }
+
+        public CronFieldMode Mode { get; set; } = CronFieldMode.Every;
+        public int Value { get; set; }
+        public int RangeStart { get; set; }
+        public int RangeEnd { get; set; }
+        public int Step { get; set; }
+
+        public CronFieldSpec ToSpec() => new(Mode, Value, RangeStart, RangeEnd, Step);
+    }
+
+    /// <summary>
+    /// The cron expression and its validity emitted to the parent (Req 10.8). The parent blocks
+    /// submission when <see cref="IsValid"/> is false or the expression is absent (Req 10.9).
+    /// </summary>
+    /// <param name="Cron">The current cron expression.</param>
+    /// <param name="IsValid">Whether the expression parsed successfully.</param>
+    public sealed record ScheduleState(string Cron, bool IsValid);
+}

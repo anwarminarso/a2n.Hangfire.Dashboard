@@ -1,11 +1,22 @@
 @page "/jobs/enqueued"
 @page "/jobs/enqueued/{QueueName}"
 @inject HangfireMonitorService Monitor
+@inject DashboardUIOptions Options
 @implements IDisposable
 
 <PageTitle>Enqueued Jobs</PageTitle>
 
-<h2 class="fw-semibold mb-3">Enqueued Jobs</h2>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="fw-semibold mb-0">Enqueued Jobs</h2>
+    @if (Options.EnableJobManagement)
+    {
+        @* Navigate to the Job Builder (Enqueue mode). Hidden when job management is disabled
+           (Req 4, 6) — the same gate that makes the /jobs/enqueue route return Not Found. *@
+        <a class="btn btn-success btn-sm" href="jobs/enqueue">
+            <i class="bi bi-plus-lg"></i> Enqueue Job
+        </a>
+    }
+</div>
 
 @if (_queues is null)
 {

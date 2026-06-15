@@ -53,6 +53,11 @@ public static class HangfireDashboardUIExtensions
         services.AddSingleton<DashboardSubscriptionTracker>();
         services.AddSingleton<IHubFilter, DashboardHubAuthorizationFilter>();
 
+        // JobMethodResolver holds the attribute-based discovery cache, computed once and reused
+        // for the lifetime of the dashboard. Singleton lifetime keeps that cache alive across all
+        // circuits and requests instead of recomputing per scope (Req 5.6, 5.8).
+        services.AddSingleton<JobMethodResolver>();
+
         // Register Blazor Server interactive components.
         // AddRazorComponents() is idempotent — safe to call even if host app already called it.
         // AddInteractiveServerComponents() registers the render mode provider required by
@@ -70,7 +75,11 @@ public static class HangfireDashboardUIExtensions
         {
             var storage = sp.GetRequiredService<JobStorage>();
             var audit = sp.GetService<AuditLogService>();
-            return new HangfireMonitorService(storage, audit);
+            // Pass the configured options and the shared singleton resolver so access gates run
+            // against the real options and the discovery cache is shared (Req 5.6, 5.8).
+            var options = sp.GetRequiredService<DashboardUIOptions>();
+            var resolver = sp.GetRequiredService<JobMethodResolver>();
+            return new HangfireMonitorService(storage, audit, options, resolver);
         });
 
         services.AddScoped<HealthCheckService>(sp =>
@@ -182,28 +191,13 @@ public static class HangfireDashboardUIExtensions
     {
         options ??= app.ApplicationServices.GetService<DashboardUIOptions>() ?? new DashboardUIOptions();
 
-        // Update the DI-registered singleton so Blazor components receive the same options
+        // Update the DI-registered singleton so Blazor components receive the same options. The
+        // copy is reflection-based (DashboardUIOptions.ApplyTo) so every option — including any
+        // added later — is propagated; a hand-maintained field list previously dropped properties.
         var registered = app.ApplicationServices.GetService<DashboardUIOptions>();
         if (registered != null && !ReferenceEquals(registered, options))
         {
-            registered.DashboardTitle = options.DashboardTitle;
-            registered.AppPath = options.AppPath;
-            registered.StatsPollingInterval = options.StatsPollingInterval;
-            registered.IsReadOnly = options.IsReadOnly;
-            registered.EnableRecurringJobAdmin = options.EnableRecurringJobAdmin;
-            registered.DefaultRecordsPerPage = options.DefaultRecordsPerPage;
-            registered.DefaultTheme = options.DefaultTheme;
-            registered.FaviconPath = options.FaviconPath;
-            registered.JobGraphMaxDepth = options.JobGraphMaxDepth;
-            registered.JobGraphMaxNodes = options.JobGraphMaxNodes;
-            registered.SourceLink = options.SourceLink;
-            registered.Authorization = options.Authorization;
-            registered.AsyncAuthorization = options.AsyncAuthorization;
-            registered.LoginPath = options.LoginPath;
-            registered.HealthCheckAuthorizationMode = options.HealthCheckAuthorizationMode;
-            registered.HealthCheckThresholds = options.HealthCheckThresholds ?? new HealthThresholds();
-            registered.AuditLog = options.AuditLog ?? new AuditLogOptions();
-            registered.QueueOperations = options.QueueOperations ?? new QueueOperationsOptions();
+            options.ApplyTo(registered);
         }
 
         // Normalize pathMatch to ensure it starts with / and has no trailing slash

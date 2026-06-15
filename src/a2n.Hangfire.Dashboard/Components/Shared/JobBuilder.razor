@@ -1,0 +1,621 @@
+@*
+    Job Builder (Req 4, 10, 11, 12, 13) — the composite that assembles the Method Picker, the
+    Parameter Builder, and (only in Recurring mode) the Schedule Builder into a single
+    job-construction experience, then submits it through the HangfireMonitorService.
+
+    Responsibilities (task 16.1):
+      • [Parameter] Mode = Recurring | Enqueue. Recurring shows the job id, schedule, queue, and
+        time-zone controls (Req 11.2); Enqueue hides the schedule, requires no cron, and shows a
+        queue selector defaulting to "default" (Req 12.1, 12.2).
+      • Render a persistent read-only banner while the dashboard is read-only (Req 4.2) and a
+        recurring-admin-disabled banner in Recurring mode when administration is off (Req 4.3); the
+        mutating submit control is non-interactive in either case (Req 4.1).
+      • Queue control: editable with current-queue suggestions and a "default" default when the
+        selected method carries no QueueAttribute (Req 13.2); read-only and pre-filled with a
+        precedence/template notice when a QueueAttribute applies (Req 13.3, 13.4) — using the
+        selected descriptor's Queue and Internal.EffectiveQueue.Resolve.
+      • Block submission of a recurring job while the cron is absent or invalid (Req 10.8, 10.9).
+      • On submit, call CreateOrUpdateRecurringJob (Recurring) or EnqueueJob (Enqueue). On recurring
+        success navigate to the recurring jobs list (Req 11.4); on enqueue success show the enqueued
+        job id confirmation (Req 12.6). On failure stay put, show the error, and retain the entered
+        inputs (Req 11.5, 12.5).
+
+    Sub-component callbacks are wired so the picker drives the parameter builder and the schedule
+    builder feeds back its cron + validity (Req 6.4/6.8 plumbing, 10.8).
+*@
+@using a2n.Hangfire.Dashboard.Internal
+@inject HangfireMonitorService Monitor
+@inject NavigationManager Nav
+@inject DashboardUIOptions Options
+@inject JobMethodResolver Resolver
+
+<div class="job-builder">
+
+    @* --- Access-control banners (Req 4.1–4.3) ------------------------------------------------ *@
+    @if (Options.IsReadOnly)
+    {
+        @* Persistent read-only indication (Req 4.2). *@
+        <div class="alert alert-secondary d-flex align-items-center gap-2" role="status">
+            <i class="bi bi-eye"></i>
+            <span>The dashboard is <strong>read-only</strong>. Job creation is disabled.</span>
+        </div>
+    }
+
+    @if (Mode == JobBuilderMode.Recurring && !Options.EnableJobManagement)
+    {
+        @* Persistent job-management-disabled indication (Req 4.3). *@
+        <div class="alert alert-warning d-flex align-items-center gap-2" role="status">
+            <i class="bi bi-lock"></i>
+            <span>Job management is <strong>disabled</strong>.</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        @* Submission error — shown without losing the operator's entered inputs (Req 11.5, 12.5).
+           Focusable (tabindex -1) so a failed submit can move focus/scroll here, since the submit
+           button sits far below this banner on a long form. *@
+        <div class="alert alert-danger d-flex align-items-center gap-2" role="alert"
+             tabindex="-1" @ref="_errorAlert">
+            <i class="bi bi-exclamation-octagon"></i>
+            <span>@_error</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_enqueuedJobId))
+    {
+        @* Enqueue confirmation carrying the new background job id (Req 12.6). *@
+        <div class="alert alert-success d-flex align-items-center gap-2" role="status">
+            <i class="bi bi-check2-circle"></i>
+            <span>Job enqueued successfully. Job id: <strong class="font-monospace">@_enqueuedJobId</strong></span>
+        </div>
+    }
+
+    @* --- Recurring-only: job identifier (Req 11.2) ------------------------------------------- *@
+    <div @key="_formKey">
+    @if (Mode == JobBuilderMode.Recurring)
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-fingerprint"></i>
+                <span class="fw-semibold">Job identifier</span>
+            </div>
+            <div class="card-body">
+                <label class="form-label fw-semibold" for="job-builder-id">
+                    Job ID <span class="text-danger" aria-hidden="true">*</span>
+                </label>
+                <input type="text" class="form-control@(JobIdError is null ? "" : " is-invalid")" id="job-builder-id" aria-required="true"
+                       maxlength="@MaxIdentifierLength"
+                       placeholder="my-recurring-job" disabled="@(_isEdit || MutationsDisabled)"
+                       value="@_jobId" @oninput="e => _jobId = e.Value?.ToString() ?? string.Empty" />
+                @if (JobIdError is not null)
+                {
+                    <div class="invalid-feedback d-block">
+                        <i class="bi bi-exclamation-circle"></i> @JobIdError
+                    </div>
+                }
+                <div class="form-text">
+                    @(_isEdit
+                        ? "The identifier cannot be changed when editing an existing job."
+                        : "A unique, stable id for this recurring job (e.g. nightly-cleanup). Lowercase letters, digits, underscore, and dash only.")
+                </div>
+            </div>
+        </div>
+    }
+
+    @* --- Method picker → parameter builder (Req 6, 8) ---------------------------------------- *@
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-box-seam"></i>
+            <span class="fw-semibold">Method</span>
+        </div>
+        <div class="card-body">
+            <MethodPicker CustomMethodEnabled="@Options.AllowArbitraryMethodInvocation"
+                          InitialTypeName="@InitialTypeName"
+                          InitialMethodName="@InitialMethodName"
+                          OnMethodSelected="HandleMethodSelected" />
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-input-cursor-text"></i>
+            <span class="fw-semibold">Parameters</span>
+        </div>
+        <div class="card-body">
+            <ParameterBuilder SelectedMethod="@_selectedMethod"
+                              InitialParameterJson="@InitialParameterJson"
+                              OnParametersChanged="HandleParametersChanged" />
+        </div>
+    </div>
+
+    @* --- Recurring-only: schedule + time zone (Req 10, 11.2). Hidden in Enqueue mode (Req 12.1).
+         The time zone is handed to the ScheduleBuilder as a slot so it renders inside the Schedule
+         card, next to the next-occurrence preview that depends on it. *@
+    @if (Mode == JobBuilderMode.Recurring)
+    {
+        <ScheduleBuilder InitialCron="@InitialCron"
+                         TimeZoneId="@_timeZoneId"
+                         OnScheduleChanged="HandleScheduleChanged">
+            <TimeZoneSlot>
+                <label class="form-label fw-semibold" for="job-builder-tz">Time Zone</label>
+                @* Searchable combobox: type to filter by id or display name; blank selects UTC (Req 7b). *@
+                <input type="text" class="form-control@(TimeZoneError is null ? "" : " is-invalid")"
+                       id="job-builder-tz" list="job-builder-tz-list" disabled="@MutationsDisabled"
+                       placeholder="UTC" autocomplete="off"
+                       value="@_timeZoneId" @oninput="e => _timeZoneId = e.Value?.ToString() ?? string.Empty" />
+                <datalist id="job-builder-tz-list">
+                    <option value="">UTC</option>
+                    @foreach (var tz in _timeZones)
+                    {
+                        <option value="@tz.Id" label="@tz.DisplayName"></option>
+                    }
+                </datalist>
+                @if (TimeZoneError is not null)
+                {
+                    <div class="invalid-feedback d-block">
+                        <i class="bi bi-exclamation-circle"></i> @TimeZoneError
+                    </div>
+                }
+                else
+                {
+                    <div class="form-text">Leave blank for UTC. Start typing to search time zones.</div>
+                }
+            </TimeZoneSlot>
+        </ScheduleBuilder>
+    }
+
+    @* --- Queue control (Req 13.2–13.4, 12.2) ------------------------------------------------- *@
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-hdd-stack"></i>
+            <span class="fw-semibold">Queue</span>
+        </div>
+        <div class="card-body">
+            <label class="form-label visually-hidden" for="job-builder-queue">Queue</label>
+
+            @if (_queueAttributePresent)
+        {
+            @* A QueueAttribute applies: the queue is read-only and the attribute value wins at
+               execution time, overriding any configured queue (Req 13.3). *@
+            <input type="text" class="form-control font-monospace" id="job-builder-queue"
+                   value="@(_selectedMethod?.Queue?.QueueName)" readonly />
+            <div class="form-text">
+                <i class="bi bi-info-circle"></i>
+                This method declares a <code>QueueAttribute</code>, which takes precedence and runs
+                last, so it overrides any queue configured here (Req 13.3).
+                @if (_selectedMethod?.Queue?.IsFormatTemplate == true)
+                {
+                    <span>
+                        The value <code class="font-monospace">@_selectedMethod?.Queue?.QueueName</code>
+                        is a format template and is shown verbatim (Req 13.4).
+                    </span>
+                }
+                <span>Effective queue: <code class="font-monospace">@_effectiveQueue</code>.</span>
+            </div>
+        }
+        else if (Mode == JobBuilderMode.Enqueue)
+        {
+            @* Enqueue mode: a queue selector over the available queues, defaulting to "default"
+               (Req 12.2). *@
+            <select class="form-select" id="job-builder-queue" disabled="@MutationsDisabled"
+                    value="@_queue" @onchange="e => _queue = e.Value?.ToString() ?? EffectiveQueue.DefaultQueue">
+                @if (!_availableQueues.Contains(EffectiveQueue.DefaultQueue, StringComparer.OrdinalIgnoreCase))
+                {
+                    <option value="@EffectiveQueue.DefaultQueue">@EffectiveQueue.DefaultQueue</option>
+                }
+                @foreach (var queue in _availableQueues)
+                {
+                    <option value="@queue">@queue</option>
+                }
+            </select>
+        }
+        else
+        {
+            @* Recurring mode: an editable queue with current-queue suggestions, default "default"
+               (Req 13.2). Free text is validated against Hangfire's queue-name rule (Req 7a). *@
+            <input type="text" class="form-control@(QueueError is null ? "" : " is-invalid")" id="job-builder-queue" list="job-builder-queue-list"
+                   maxlength="@MaxQueueLength"
+                   placeholder="@EffectiveQueue.DefaultQueue" disabled="@MutationsDisabled"
+                   value="@_queue" @oninput="e => _queue = e.Value?.ToString() ?? string.Empty" />
+            <datalist id="job-builder-queue-list">
+                @foreach (var queue in _availableQueues)
+                {
+                    <option value="@queue"></option>
+                }
+            </datalist>
+            @if (QueueError is not null)
+            {
+                <div class="invalid-feedback d-block">
+                    <i class="bi bi-exclamation-circle"></i> @QueueError
+                </div>
+            }
+            else
+            {
+                <div class="form-text">
+                    Defaults to <code>@EffectiveQueue.DefaultQueue</code> when left blank.
+                    Lowercase letters, digits, underscore, and dash only.
+                </div>
+            }
+        }
+        </div>
+    </div>
+    </div>
+
+    @* --- Submit ------------------------------------------------------------------------------ *@
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-primary" disabled="@(MutationsDisabled || _submitting)"
+                @onclick="Submit">
+            @if (_submitting)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <span>Submitting…</span>
+            }
+            else
+            {
+                <i class="bi bi-check2"></i>
+                <span>@(Mode == JobBuilderMode.Recurring ? (_isEdit ? "Update recurring job" : "Create recurring job") : "Enqueue job")</span>
+            }
+        </button>
+        @if (Mode == JobBuilderMode.Recurring)
+        {
+            <a class="btn btn-outline-secondary" href="recurring">Cancel</a>
+        }
+        else
+        {
+            @* Enqueue mode: Cancel returns to the Enqueued jobs list (Req 5). *@
+            <a class="btn btn-outline-secondary" href="jobs/enqueued">Cancel</a>
+
+            @if (!string.IsNullOrEmpty(_enqueuedJobId))
+            {
+                @* After a successful enqueue, offer a clean slate without leaving the page. *@
+                <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm">
+                    <i class="bi bi-plus-lg"></i> Enqueue another
+                </button>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Whether the builder constructs a recurring job or enqueues a one-off job (Req 11, 12).</summary>
+    [Parameter] public JobBuilderMode Mode { get; set; } = JobBuilderMode.Recurring;
+
+    /// <summary>Recurring job identifier to pre-fill (edit). When provided the id field is locked.</summary>
+    [Parameter] public string JobId { get; set; }
+
+    /// <summary>Initial Parameter_JSON used to pre-fill the parameter builder (edit pre-fill, Req 3).</summary>
+    [Parameter] public string InitialParameterJson { get; set; }
+
+    /// <summary>
+    /// Full type name of the existing job's method, used to pre-select the Method Picker on edit so
+    /// the Parameter Builder renders and the stored arguments pre-fill (Req 3.1, 3.3, 11.2).
+    /// </summary>
+    [Parameter] public string InitialTypeName { get; set; }
+
+    /// <summary>
+    /// Method name of the existing job, used to pre-select the Method Picker on edit (Req 3.1, 3.3,
+    /// 11.2).
+    /// </summary>
+    [Parameter] public string InitialMethodName { get; set; }
+
+    /// <summary>Initial cron expression used to pre-fill the schedule builder (Recurring edit).</summary>
+    [Parameter] public string InitialCron { get; set; }
+
+    /// <summary>Initial queue value to pre-fill (Recurring edit). Empty falls back to "default".</summary>
+    [Parameter] public string InitialQueue { get; set; }
+
+    /// <summary>Initial time-zone id to pre-fill (Recurring edit). Empty selects UTC.</summary>
+    [Parameter] public string InitialTimeZoneId { get; set; }
+
+    // Selection + captured sub-component state.
+    private JobMethodDescriptor _selectedMethod;
+    private ParameterBuilder.ParameterState _parameterState;
+    private ScheduleBuilder.ScheduleState _scheduleState;
+    private bool _isCustomMethod;
+
+    // Operator-entered fields owned by the composite.
+    private string _jobId = "";
+    private string _queue = EffectiveQueue.DefaultQueue;
+    private string _timeZoneId = "";
+
+    // Submission/feedback state. Inputs are retained on failure (Req 11.5, 12.5).
+    private bool _submitting;
+    private string _error;
+    private string _enqueuedJobId;
+
+    // Focus target for the submission-error banner, focused after a failed submit so the operator
+    // is taken to the reason even when the submit button sits far below it on a long form.
+    private ElementReference _errorAlert;
+    private bool _focusErrorPending;
+
+    // Bumped to force a clean rebuild of the form sub-tree (method/parameters/schedule/queue) when
+    // the operator chooses to start over after a successful enqueue.
+    private int _formKey;
+
+    private IReadOnlyList<JobMethodDescriptor> _registeredMethods = Array.Empty<JobMethodDescriptor>();
+    private IReadOnlyList<string> _availableQueues = Array.Empty<string>();
+    private readonly IReadOnlyCollection<TimeZoneInfo> _timeZones = TimeZoneInfo.GetSystemTimeZones();
+
+    private bool _isEdit => !string.IsNullOrWhiteSpace(JobId);
+
+    // True when the selected method (or its declaring class) carries a QueueAttribute, making the
+    // queue read-only with a precedence notice (Req 13.3).
+    private bool _queueAttributePresent => _selectedMethod?.Queue is { IsPresent: true };
+
+    // The Effective_Queue: the attribute queue when present, otherwise the configured queue,
+    // defaulting to "default" (Req 13.6, 13.7).
+    private string _effectiveQueue => EffectiveQueue.Resolve(_selectedMethod?.Queue, _queue);
+
+    // Hangfire's queue-name rule (EnqueuedState.ValidateQueueName): ^[a-z0-9_-]+$, with no length
+    // bound of its own — storage imposes the practical cap (SQL Server's queue column is
+    // historically NVARCHAR(50)). The same strict rule is applied to a NEW recurring Job ID because
+    // it is carried in the /recurring/edit/{JobId} route (Req 7a, 7d).
+    private const int MaxQueueLength = 50;
+    private const int MaxIdentifierLength = 50;
+    private static readonly System.Text.RegularExpressions.Regex _identifierPattern =
+        new("^[a-z0-9_-]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Inline validation messages (null = valid). Blank values do not raise an error while the
+    // operator is still typing — the queue falls back to "default" and the Job ID's required-ness
+    // is enforced at submit.
+    private string JobIdError
+    {
+        get
+        {
+            // Editing an existing recurring job does NOT re-validate the (possibly legacy) id so the
+            // edit route keeps working for ids created before this rule existed (Req 7d).
+            if (_isEdit || string.IsNullOrWhiteSpace(_jobId)) return null;
+            if (_jobId.Length > MaxIdentifierLength) return $"Job ID must be {MaxIdentifierLength} characters or fewer.";
+            if (!_identifierPattern.IsMatch(_jobId)) return "Job ID must consist of lowercase letters, digits, underscore, and dash characters only.";
+            return null;
+        }
+    }
+
+    private string QueueError
+    {
+        get
+        {
+            // A QueueAttribute makes the queue read-only and its value wins, so there is nothing to validate.
+            if (_queueAttributePresent || string.IsNullOrWhiteSpace(_queue)) return null;
+            if (_queue.Length > MaxQueueLength) return $"Queue name must be {MaxQueueLength} characters or fewer.";
+            if (!_identifierPattern.IsMatch(_queue)) return "Queue name must consist of lowercase letters, digits, underscore, and dash characters only.";
+            return null;
+        }
+    }
+
+    private string TimeZoneError
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_timeZoneId)) return null;
+            return _timeZones.Any(tz => string.Equals(tz.Id, _timeZoneId, StringComparison.Ordinal))
+                ? null
+                : "Unknown time zone. Pick one from the list or leave blank for UTC.";
+        }
+    }
+
+    // The mutating submit control is non-interactive while read-only (Req 4.1) and, in Recurring
+    // mode, while recurring administration is disabled (Req 4.3). The same flag disables the
+    // composite-owned inputs so the form reads as inert.
+    private bool MutationsDisabled =>
+        Options.IsReadOnly || (Mode == JobBuilderMode.Recurring && !Options.EnableJobManagement);
+
+    protected override void OnInitialized()
+    {
+        // Discovery is served from the resolver's cache (Req 5.6, 5.8); used to tell whether a
+        // selected method was Registered vs Custom so the service custom-method gate is set
+        // correctly (Req 4.8). The cache read is in-memory, so it stays synchronous.
+        _registeredMethods = Resolver.GetRegisteredMethods();
+
+        // Current queues power the editable suggestions / enqueue selector (Req 12.2, 13.2). This is
+        // a quick monitoring read kept synchronous so the queue controls have their values before the
+        // first render; a storage hiccup leaves only the default suggestion.
+        var queues = new List<string> { EffectiveQueue.DefaultQueue };
+        try
+        {
+            foreach (var queue in Monitor.GetQueues())
+            {
+                if (!string.IsNullOrWhiteSpace(queue.Name)
+                    && !queues.Contains(queue.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    queues.Add(queue.Name);
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // A storage hiccup leaves only the default suggestion; the queue stays operable.
+        }
+
+        _availableQueues = queues;
+
+        // Edit pre-fill of the composite-owned fields.
+        _jobId = JobId ?? "";
+        _queue = string.IsNullOrWhiteSpace(InitialQueue) ? EffectiveQueue.DefaultQueue : InitialQueue;
+        _timeZoneId = InitialTimeZoneId ?? "";
+    }
+
+    // The picker selected (or re-selected) a method; (re)build the parameter builder from it and
+    // reset stale parameter state. Clearing feedback keeps the surface honest after a change.
+    private void HandleMethodSelected(JobMethodDescriptor descriptor)
+    {
+        _selectedMethod = descriptor;
+        _parameterState = null;
+        _error = null;
+        _enqueuedJobId = null;
+
+        // A Custom_Method is one not present in the discovered set; drives the service gate (Req 4.8).
+        _isCustomMethod = descriptor is not null
+            && !_registeredMethods.Any(m =>
+                string.Equals(m.TypeFullName, descriptor.TypeFullName, StringComparison.Ordinal)
+                && string.Equals(m.MethodName, descriptor.MethodName, StringComparison.Ordinal));
+    }
+
+    private void HandleParametersChanged(ParameterBuilder.ParameterState state) => _parameterState = state;
+
+    private void HandleScheduleChanged(ScheduleBuilder.ScheduleState state) => _scheduleState = state;
+
+    private async Task Submit()
+    {
+        _error = null;
+        _enqueuedJobId = null;
+
+        await SubmitCore();
+
+        // When the submission produced an error, move focus to the banner on the next render so the
+        // operator sees why it failed without hunting for the message above the fold.
+        if (!string.IsNullOrEmpty(_error))
+        {
+            _focusErrorPending = true;
+        }
+    }
+
+    private async Task SubmitCore()
+    {
+        // Belt-and-braces: never mutate while the gates are active (Req 4.1, 4.6, 4.7).
+        if (MutationsDisabled)
+        {
+            return;
+        }
+
+        if (_selectedMethod is null)
+        {
+            _error = "Select a method before submitting.";
+            return;
+        }
+
+        if (_parameterState is null || !_parameterState.IsValid)
+        {
+            _error = "Enter valid parameter values before submitting.";
+            return;
+        }
+
+        if (Mode == JobBuilderMode.Recurring)
+        {
+            await SubmitRecurring();
+        }
+        else
+        {
+            await SubmitEnqueue();
+        }
+    }
+
+    // Focus the error banner once after a failed submit. The focus call needs a JS runtime; it is
+    // a non-fatal no-op where none is available (e.g. unit tests).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusErrorPending)
+        {
+            _focusErrorPending = false;
+            try
+            {
+                await _errorAlert.FocusAsync();
+            }
+            catch
+            {
+                // No JS runtime / element not present — focusing is a best-effort enhancement.
+            }
+        }
+    }
+
+    // Return the form to a clean state in place after a successful enqueue (UX: enqueue another
+    // without navigating away). Bumping the key disposes and rebuilds the sub-components so their
+    // internal selections reset too.
+    private void ResetForm()
+    {
+        _formKey++;
+        _selectedMethod = null;
+        _parameterState = null;
+        _scheduleState = null;
+        _isCustomMethod = false;
+        _jobId = "";
+        _queue = EffectiveQueue.DefaultQueue;
+        _timeZoneId = "";
+        _error = null;
+        _enqueuedJobId = null;
+    }
+
+    private async Task SubmitRecurring()
+    {
+        // Block submission while the cron is absent or invalid (Req 10.8, 10.9).
+        if (_scheduleState is null || string.IsNullOrWhiteSpace(_scheduleState.Cron) || !_scheduleState.IsValid)
+        {
+            _error = "A valid cron expression is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_jobId))
+        {
+            _error = "A job identifier is required.";
+            return;
+        }
+
+        // Block submission while any composite-owned field is invalid (Req 7a, 7b, 7d).
+        if (JobIdError is not null) { _error = JobIdError; return; }
+        if (QueueError is not null) { _error = QueueError; return; }
+        if (TimeZoneError is not null) { _error = TimeZoneError; return; }
+
+        _submitting = true;
+        try
+        {
+            var request = new RecurringJobRequest(
+                JobId: _jobId,
+                TypeName: _selectedMethod.TypeFullName,
+                MethodName: _selectedMethod.MethodName,
+                ParameterJson: string.IsNullOrWhiteSpace(_parameterState.ParameterJson) ? "[]" : _parameterState.ParameterJson,
+                Cron: _scheduleState.Cron,
+                // When a QueueAttribute applies the configured queue is moot (it wins at runtime),
+                // so leave it to the service default; otherwise persist the operator's choice (Req 13.5).
+                Queue: _queueAttributePresent || string.IsNullOrWhiteSpace(_queue) ? null : _queue,
+                TimeZoneId: string.IsNullOrWhiteSpace(_timeZoneId) ? null : _timeZoneId,
+                IsCustomMethod: _isCustomMethod);
+
+            var result = await Monitor.CreateOrUpdateRecurringJobAsync(request);
+
+            if (!result.Success)
+            {
+                // Stay on the route, show the error, retain inputs (Req 11.5).
+                _error = result.Error;
+                return;
+            }
+
+            // Success → navigate to the recurring jobs list (Req 11.4).
+            Nav.NavigateTo("recurring");
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private async Task SubmitEnqueue()
+    {
+        _submitting = true;
+        try
+        {
+            var request = new EnqueueJobRequest(
+                TypeName: _selectedMethod.TypeFullName,
+                MethodName: _selectedMethod.MethodName,
+                ParameterJson: string.IsNullOrWhiteSpace(_parameterState.ParameterJson) ? "[]" : _parameterState.ParameterJson,
+                Queue: _queueAttributePresent || string.IsNullOrWhiteSpace(_queue) ? null : _queue,
+                IsCustomMethod: _isCustomMethod);
+
+            var result = await Monitor.EnqueueJobAsync(request);
+
+            if (!result.Success)
+            {
+                // Stay put, show the error, retain inputs (Req 12.5).
+                _error = result.Error;
+                return;
+            }
+
+            // Success → confirm with the enqueued job id (Req 12.6).
+            _enqueuedJobId = result.JobId;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

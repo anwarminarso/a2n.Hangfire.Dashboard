@@ -31,6 +31,30 @@ Navigate to `/hangfire`. Done.
 
 ---
 
+## 🚀 What's New in 2.4.0 — Job Builder
+
+Create and schedule jobs **with their arguments** directly from the dashboard — no code change, no redeploy. This closes a long-standing gap: the recurring editor previously built jobs with empty arguments, so parameterized methods couldn't be scheduled correctly ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)).
+
+| | Feature | What you get |
+|---|---------|--------------|
+| 🧩 | **Guided parameter form** | A type-aware form generated from the method signature — text, numbers, dates, GUIDs, enums, booleans, arrays, and nested objects — with a live **JSON mirror** and a Form ⇄ JSON toggle. [→](#job-builder) |
+| 🔎 | **Method discovery** | Pick from methods discovered across loaded assemblies (decorated with `JobDisplayName`, `Tag`, or `Queue`), with **overload-safe** resolution. Hand-typed arbitrary methods are opt-in via `AllowArbitraryMethodInvocation`. [→](#job-builder) |
+| 🕑 | **Visual cron builder** | Build a cron schedule field-by-field (every / specific / range / step) with a human-readable description and **next-run preview** in the selected time zone — or type a cron string manually. [→](#job-builder) |
+| ➕ | **Enqueue page** | A new `/jobs/enqueue` page reuses the same builder to fire one-off jobs, not just recurring ones. [→](#job-builder) |
+| ✏️ | **Typed args + edit pre-fill** | Values are converted to the method's declared types (`["report", 42]` → `string`, `int`); injected parameters (`PerformContext`, `CancellationToken`) are skipped; existing argument values are pre-filled when editing. [→](#job-builder) |
+
+```csharp
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
+{
+    EnableJobManagement           = true,   // show the recurring create/edit builder and Enqueue page
+    AllowArbitraryMethodInvocation = false, // opt-in: allow hand-typed type+method (default false)
+});
+```
+
+See [Job Builder](#job-builder) for the full feature description.
+
+---
+
 ## 🚀 What's New in 2.3.0 — Operational Visibility & Controls
 
 The biggest operations-focused release yet. The dashboard goes from a **viewer you open when something breaks** to a **first-class operational tool**.
@@ -71,6 +95,8 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 |---------|-------------|
 | Job monitoring | Job state pages, batch operations, servers, retries |
 | Recurring jobs | Create, edit, start, and stop recurring jobs from the UI |
+| Job Builder | 🆕 Create & schedule jobs **with typed arguments** — guided parameter form (+ JSON), method discovery, overload-safe resolution, and one-off enqueue at `/jobs/enqueue` — see [Job Builder](#job-builder) |
+| Visual cron builder | 🆕 Build cron schedules field-by-field with a human-readable description and next-run preview |
 | Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
 | Job tags | Tagging and tag cloud (Hangfire.Tags-compatible storage) |
 | Job dependency graph | 🆕 Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
@@ -159,7 +185,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
     DashboardTitle = "My Jobs",
     DefaultTheme = "auto",  // "auto", "light", or "dark"
-    EnableRecurringJobAdmin = true,  // set false to hide Create/Edit/Stop
+    EnableJobManagement = true,  // set false to hide Create/Edit/Stop and the Enqueue page
     JobGraphMaxDepth = 5,   // continuation graph traversal depth (default 5)
     JobGraphMaxNodes = 30,  // continuation graph node budget (default 30)
     // SourceLink = SourceLinkOptions.GitHub("owner/repo"),  // clickable stack-trace file links
@@ -210,6 +236,71 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardOptions
 ### Data compatibility
 
 Reads the same storage format as [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console) and [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags). Existing console logs and tags are visible immediately — no migration needed.
+
+---
+
+## Job Builder
+
+The Job Builder lets operators construct, schedule, and enqueue Hangfire jobs **with their arguments** from the dashboard — no code change or redeploy. It powers two places:
+
+- **Recurring** — the Create/Edit recurring job form (`/recurring`), gated behind `EnableJobManagement`.
+- **Enqueue** — a new one-off job page at `/jobs/enqueue` for fire-and-forget jobs, also gated behind `EnableJobManagement`.
+
+Both share the same method picker, parameter form, and argument conversion, so behavior is identical across the two.
+
+### Method discovery & selection
+
+The picker offers two sources:
+
+- **Registered methods** — discovered by scanning loaded assemblies for `public` instance/static methods whose method or declaring class carries a recognized attribute (`JobDisplayName`, `Tag`, or `Queue`). Discovery is cached for the dashboard's lifetime and resilient to assemblies that fail to load.
+- **Custom methods** — a full type name + method name typed by hand, validated on demand. This is **opt-in** and disabled by default:
+
+```csharp
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
+{
+    AllowArbitraryMethodInvocation = true,   // default false — keeps arbitrary invocation opt-in
+});
+```
+
+Resolution is **overload-safe**: when a method name has multiple overloads, the single overload whose parameter count and types match the supplied arguments is selected. Ambiguous, missing, or non-matching methods are rejected with an identifying error and never touch storage.
+
+### Parameter form
+
+A type-aware form is generated from the method signature, one control per parameter:
+
+| Parameter type | Control |
+|----------------|---------|
+| `string` | text input |
+| integers / floats | number input (whole vs. fractional, range-checked) |
+| `DateOnly` / `TimeOnly` / `DateTime` / `DateTimeOffset` | date / time / datetime-local picker |
+| `Guid` | text input |
+| `bool` / `bool?` | checkbox / tri-state (unset = null) |
+| enum / `[Flags]` enum | single-select / multi-select |
+| scalar arrays (`T[]`) | add/remove list |
+| nested object (class, depth ≤ 5) | collapsed placeholder + explicit "Add" to instantiate |
+| anything else / depth > 5 | JSON textarea |
+
+Key behaviors:
+
+- **Form ⇄ JSON toggle** — switch to a raw `["value", 42]` JSON textarea at any time; the form and JSON stay in sync (a read-only JSON mirror is shown alongside the form).
+- **Typed conversion** — values are converted to each parameter's declared CLR type before the job is stored, matching how Hangfire serializes arguments.
+- **Injected parameters skipped** — `PerformContext`, `IJobCancellationToken`, and `CancellationToken` are excluded from the form and filled by Hangfire at runtime.
+- **Empty fields are total** — a blank field resolves to `null` for nullable types or `default(T)` for non-nullable types, never an error.
+- **Edit pre-fill** — when editing an existing recurring job, current argument values are loaded back into the form.
+
+### Schedule builder (recurring only)
+
+For recurring jobs, the Schedule Builder offers a field-by-field cron editor (minute, hour, day-of-month, month, day-of-week) with an **Every / Specific / Range / Step** mode per field, plus a manual cron input. It shows a human-readable description and the **next occurrence** in the selected time zone (UTC when none is chosen). Unparseable expressions are flagged and block submission. (Cron parsing uses Cronos, already bundled with Hangfire — no new dependency.)
+
+### Queue handling
+
+The queue control is editable with suggestions from current queues (defaulting to `default`). When the target method or its declaring class carries a `[Queue(...)]` attribute, the control becomes read-only and shows a precedence notice, because Hangfire's `QueueAttribute` overrides the stored queue at state election.
+
+### Gating
+
+- **Read-only mode** (`IsReadOnly = true`) — a persistent banner is shown and the submit controls are disabled.
+- **Job management** (`EnableJobManagement = false`) — the recurring create/edit builder is hidden, the navigation no longer links to the Enqueue page, and the `/jobs/enqueue` route returns Not Found (read-only gating still applies). Defaults to `true`.
+- **Arbitrary methods** (`AllowArbitraryMethodInvocation = false`, default) — only discovered registered methods may be selected.
 
 ---
 
@@ -509,7 +600,10 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
 | v2.3.0 | ✅ Done | **Operational visibility & controls** — health checks (`/healthz` + `IHealthCheck` adapter) & hero card, queue pause/resume, maintenance mode, audit log |
 | v2.3.1 | ✅ Done | Realtime analytics fixes — SQL Server `GROUP BY` (error 144) fix, fixed-cadence broadcast loop, NuGet XML docs |
-| v2.3.x | Planned | Alerts/notifications, Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API |
+| v2.4.0 | ✅ Done | **Job Builder** — create/schedule jobs with typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)) |
+| v2.5.0 | Planned | **Notifications & alert rules** — Slack/Teams/Discord/webhook/email channels, 8 trigger types, cooldown, rule editor + history |
+| v2.6.0 | Planned | **Integrations** — Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export |
+| v2.7.0 | Planned | **Customization** — white-label theming, show/hide built-in pages, saved views |
 | v3.0 | Planned | Stretch goals & long-term backlog (Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
 
 See the full [roadmap](docs/ROADMAP.md) for details.

@@ -191,7 +191,7 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Fetched Jobs page (`/jobs/fetched/{queue}`) — new page matching original Hangfire dashboard
 - ✅ Enqueued page: "Fetched" tab shown when fetched count > 0
 - ✅ Delete confirmation modal (Bootstrap) on all pages — replaces browser `confirm()`
-- ✅ `EnableRecurringJobAdmin` option — toggle Create/Edit/Stop/Start visibility (default: true)
+- ✅ `EnableJobManagement` option (formerly `EnableRecurringJobAdmin`) — toggle Create/Edit/Stop/Start and Enqueue-page visibility (default: true)
 - ✅ Mobile offcanvas navigation: auto-close on page navigation (JS interop)
 - ✅ Asset cache busting: `?v={version}` query string on custom JS/CSS resources
 - ✅ License updated to LGPL-3.0-or-later
@@ -214,13 +214,15 @@ services.AddHangfireDashboardUI(options =>
 - ✅ Analytics: `await` tasks instead of `.Result` after `WhenAll` (async best practice)
 - ✅ Collapsible sidebar navigation groups
 
-### v2.3 — Operational Visibility, Notifications & Integrations
+### v2.3 — Operational Visibility & Controls ✅
 
-**Goal**: Move from "viewer you open when something breaks" to "first-class operational tool" — at-a-glance health, alerts when things go wrong, daily ops controls, and integration with the modern observability stack.
+**Goal**: Move from "viewer you open when something breaks" to "first-class operational tool" — at-a-glance health, daily ops controls, and richer job details.
 
-> **v2.3.0 shipped ✅** — health checks, health hero card, queue pause/resume, maintenance mode, and audit log are all released. The remaining items below (notifications, Prometheus, OpenTelemetry, REST API) are planned for subsequent v2.3.x releases.
+> **v2.3.0 shipped ✅** — health checks, health hero card, queue pause/resume, maintenance mode, and audit log are all released.
 
 > **v2.3.1 shipped ✅** — patch release restoring realtime analytics on SQL Server (the `GetQueueDepthSnapshot`/`GetQueueThroughput` queries put a subquery in the `GROUP BY` list, hitting SQL Server error 144 and silently killing the analytics broadcast). The `AnalyticsBroadcastService` loop also moved to a `PeriodicTimer` with the three metrics queries running concurrently (`Task.WhenAll`) so the SignalR push holds its ~5s cadence under load instead of drifting. NuGet packages now ship XML API documentation.
+
+> **Note:** The notifications, integrations, and customization work originally scoped under "v2.3.x" has been promoted to its own themed minor releases — **v2.5 (Notifications)**, **v2.6 (Integrations)**, and **v2.7 (Customization)** — see below.
 
 #### Health Check ✅
 - ✅ HTTP endpoints `/{dashboard}/healthz` (liveness), `/healthz/ready` (readiness), `/healthz/full` (full report)
@@ -245,9 +247,55 @@ services.AddHangfireDashboardUI(options =>
 - ~~Retry history with diff~~ — **dropped** (superseded by the retry banner; retry arguments are identical, per-attempt stack traces already expandable)
 - ~~Job execution duration chart per type (on Job Details page)~~ — **dropped** (duplicates `/analytics/performance`; wrong place for type-level aggregates)
 
-#### Notifications & Alert Rules (P0)
+#### Operations (P0) ✅
 
-Granular plan replacing the original single-bullet "Webhook notifications".
+- ✅ **Pause/Resume per queue** — `QueuePauseServerFilter` (`IElectStateFilter`) intercepts the transition into Processing and reschedules paused jobs (default +30s, configurable via `QueueOperationsOptions`) — never cancels them, so no job is ever deleted. Dashboard toggle on the new `/queues` page. Audit-logged. Requires the host to call `config.UseDashboardQueuePauseFilter()` so running servers respect the pause.
+- ✅ **Maintenance mode** — global pause-all toggle from the Queues page. Persistent yellow banner with reason field rendered on every dashboard page.
+- ✅ **Audit log** — every admin action (delete, requeue, batch ops, recurring CRUD, recurring stop/start, queue pause/resume, maintenance toggles) recorded with user, timestamp, target, client IP, and metadata. User attribution uses a per-circuit `AuditActorAccessor` (from `AuthenticationStateProvider`) since Blazor circuit actions have no `HttpContext`. New `/audit` page with filter by action prefix, user, target. Storage uses Hangfire's KV primitives — no schema changes. Configurable retention (default 30d) and max entries (default 10K).
+
+---
+
+## v2.4 — Job Builder ✅
+
+**Goal**: Let operators create, schedule, and enqueue jobs **with their arguments** from the dashboard — closing [#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8) and removing the code-change-and-redeploy requirement for parameter changes.
+
+Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resolved methods by name, throwing on overloads) with a composable, type-aware builder shared by the recurring editor and a new enqueue page.
+
+#### Phase 1 — Typed arguments & overload-safe resolution ✅
+- ✅ `JobArgumentConverter` (Internal) — positional `Args` shaping (one slot per declared parameter), typed conversion to declared CLR types, injected-parameter slots set to `null`
+- ✅ Empty-value resolution is total — blank → `null` (nullable) or `default(T)` (non-nullable), never an error
+- ✅ `Parameter_JSON` validation — `Malformed` / `NotArray` / `CountMismatch` / `ElementTypeError` / `Valid`
+- ✅ Argument pre-fill (canonical JSON) when editing an existing recurring job
+- ✅ `HangfireMonitorService.CreateOrUpdateRecurringJob(RecurringJobRequest)` — gates → resolve → build args → store, leaving state unchanged on any failure
+
+#### Phase 2 — Discovery & Method Picker ✅
+- ✅ `JobMethodResolver` (singleton, cached, resilient to `ReflectionTypeLoadException`) — discovers methods decorated with `JobDisplayName` / `Tag` / `Queue` (method or declaring class)
+- ✅ Overload-safe `ResolveMethod` selecting the single matching overload by job-parameter count + types
+- ✅ Custom-method validation (ordered checks) gated behind `DashboardUIOptions.AllowArbitraryMethodInvocation` (default `false`)
+- ✅ `MethodPicker` component — Registered vs Custom, empty-state handling, re-emit on selection change
+- ✅ `QueueAttribute` reporting (presence + value, including format templates)
+
+#### Phase 3 — Dynamic Parameter Builder ✅
+- ✅ `ParameterInputMapper` — pure type → `ParameterInputKind` mapping (Text, Integer, Float, Date/Time/DateTime, Guid, Bool/NullableBool, Enum single/flags, ScalarArray, NestedObject, Json)
+- ✅ `ParameterBuilder` component — one control per job parameter; nested objects instantiated explicitly (depth ≤ 5); tri-state nullable bool
+- ✅ Form ⇄ JSON toggle with read-only JSON mirror; round-trips when valid, stays in JSON with an error when not
+
+#### Phase 4 — Schedule Builder & Enqueue ✅
+- ✅ `CronDescriber` / `CronPreview` (Internal) — build cron from fields (Every/Specific/Range/Step), human-readable description, next occurrence per time zone (Cronos, already bundled — no new dependency)
+- ✅ `ScheduleBuilder` component — visual cron builder + manual input with preview (recurring mode only)
+- ✅ `JobBuilder` composite with `Mode = Recurring | Enqueue`; queue control read-only when a `QueueAttribute` applies
+- ✅ New `/jobs/enqueue` page for one-off jobs; `EnqueueJob(EnqueueJobRequest)` returns the new job id
+- ✅ Read-only / recurring-admin / custom-method gates enforced in UI and service
+
+#### Testing ✅
+- ✅ 25 FsCheck.Xunit correctness properties over the pure logic (converter, resolver, input mapper, Form/JSON round trip, cron helpers)
+- ✅ bunit component tests (MethodPicker, ParameterBuilder, ScheduleBuilder, JobBuilder, RecurringEditor) + service tests (recurring upsert, enqueue)
+
+---
+
+## v2.5 — Notifications & Alert Rules (Planned)
+
+**Goal**: Alert the right channel when something goes wrong, without polling the dashboard. Granular plan replacing the original single-bullet "Webhook notifications".
 
 - [ ] `NotificationRule` model + storage (Hangfire hash/set, no schema changes)
 - [ ] `INotificationChannel` abstraction
@@ -268,20 +316,22 @@ Granular plan replacing the original single-bullet "Webhook notifications".
 - [ ] "Test webhook" button (dry-run send with sample payload)
 - [ ] Notification history page (last N fires, success/failure)
 
-#### Operations (P0) ✅
+---
 
-- ✅ **Pause/Resume per queue** — `QueuePauseServerFilter` (`IElectStateFilter`) intercepts the transition into Processing and reschedules paused jobs (default +30s, configurable via `QueueOperationsOptions`) — never cancels them, so no job is ever deleted. Dashboard toggle on the new `/queues` page. Audit-logged. Requires the host to call `config.UseDashboardQueuePauseFilter()` so running servers respect the pause.
-- ✅ **Maintenance mode** — global pause-all toggle from the Queues page. Persistent yellow banner with reason field rendered on every dashboard page.
-- ✅ **Audit log** — every admin action (delete, requeue, batch ops, recurring CRUD, recurring stop/start, queue pause/resume, maintenance toggles) recorded with user, timestamp, target, client IP, and metadata. User attribution uses a per-circuit `AuditActorAccessor` (from `AuthenticationStateProvider`) since Blazor circuit actions have no `HttpContext`. New `/audit` page with filter by action prefix, user, target. Storage uses Hangfire's KV primitives — no schema changes. Configurable retention (default 30d) and max entries (default 10K).
+## v2.6 — Integrations (Planned)
 
-#### Integrations (P1)
+**Goal**: Plug the dashboard into the modern observability and automation stack.
 
 - [ ] **OpenTelemetry trace linking** — capture `traceparent` on enqueue, restore as child span on execute, render "View distributed trace →" link on Job Details. Shipped as `a2n.Hangfire.Dashboard.OpenTelemetry` package. `DashboardUIOptions.TraceLinkBuilder` for Tempo/Jaeger/Honeycomb URL templates.
 - [ ] **Prometheus `/metrics` endpoint** — text format 0.0.4. Exposes `hangfire_jobs_total`, `hangfire_jobs_in_state_count`, `hangfire_queue_length`, `hangfire_servers_count`, `hangfire_workers_count`, `hangfire_recurring_jobs_count`, `hangfire_job_duration_seconds` (histogram). No heavy library — plain string formatter. Sample Grafana dashboard JSON shipped in repo.
 - [ ] **REST API** (read-only first, optional package) — wraps existing `IStorageQueryProvider` services with Minimal API endpoints. JWT auth. OpenAPI spec auto-generated.
 - [ ] **CSV / JSON export** — stream-based, respects current search criteria.
 
-#### Customization
+---
+
+## v2.7 — Customization (Planned)
+
+**Goal**: Make the dashboard fit each team's branding and tenancy needs.
 
 - [ ] White-label theming (custom colors via Bootstrap CSS variables, logo upload via `DashboardUIOptions`)
 - [ ] Hide/show built-in pages via options (e.g., disable Analytics for tenants without metrics provider)
@@ -298,7 +348,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 - [ ] **Replay with modified arguments** — failed-job rerun with edited arguments (powerful but easy to misuse without RBAC; gate behind the audit log shipped in v2.3 Operations).
 - [ ] **Failure clustering / fingerprint** — group Failed page by exception fingerprint (Sentry-style). Significant debug-experience improvement; defer until the v2.3 trigger-engine stabilizes the data path.
 - [ ] **Search by job argument value** — index `Job.Arguments` for support-case lookups (`customerId == "C-12345"`). Requires storage adapter changes per provider.
-- [ ] **Visual cron builder** — interactive recurring-job editor instead of plain cron string input.
+- [x] **Visual cron builder** — interactive recurring-job editor instead of plain cron string input. ✅ **Done in v2.4** (`ScheduleBuilder` — field-by-field Every/Specific/Range/Step + manual input with human-readable description and next-run preview).
 - [ ] **Browser push notifications** — explicitly **out of scope**. Ops teams don't monitor via browser tabs; webhook + email cover the use case.
 - [ ] **Configurable homepage widgets** — over-engineered for a focused dashboard; revisit only on explicit demand.
 - [ ] **CLI companion** (`hangfire-cli` global tool) — depends on the v2.3 REST API.
@@ -329,7 +379,10 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.2.1 | Security & auth hardening: authorization defaults, SignalR auth, SQL validation | ✅ Done |
 | v2.3.0 | **Operational visibility & controls**: health checks + hero card, queue pause/resume, maintenance mode, audit log | ✅ Done |
 | v2.3.1 | Realtime analytics fixes: SQL Server `GROUP BY` (error 144), fixed-cadence broadcast loop, NuGet XML docs | ✅ Done |
-| v2.3.x | Alerts/notifications, Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API | Planned |
+| v2.4.0 | **Job Builder**: typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page (closes #8) | ✅ Done |
+| v2.5.0 | **Notifications & alert rules**: Slack/Teams/Discord/webhook/email channels, 8 trigger types, cooldown, rule editor + history | Planned |
+| v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
+| v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |
 
 ---
