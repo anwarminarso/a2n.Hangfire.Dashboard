@@ -291,6 +291,17 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 - ✅ 25 FsCheck.Xunit correctness properties over the pure logic (converter, resolver, input mapper, Form/JSON round trip, cron helpers)
 - ✅ bunit component tests (MethodPicker, ParameterBuilder, ScheduleBuilder, JobBuilder, RecurringEditor) + service tests (recurring upsert, enqueue)
 
+### v2.4.1 — Job Builder Follow-up ✅
+
+**Goal**: Polish the Job Builder based on real-world targets (interfaces, abstract contracts, injected parameters) and tighten destructive-action UX.
+
+- ✅ **Searchable method picker** — the method dropdown is a searchable combobox filtering by display label, full type name, and method name; entries badged **Contract** (interface/abstract) vs **Implementation**
+- ✅ **Contract-aware resolution** — `Job` built against the selected `ResolvedType` (not `Method.DeclaringType`), so inherited/interface/abstract targets keep class-level `[Tag]`/`[Queue]` and match `AddOrUpdate<T>` semantics; `ResolveMethod` allows abstract methods
+- ✅ **Display-name resolution** delegates to `JobDisplayNameAttribute.Format` (honoring `ResourceType`), with fallback to the interface contract's attribute when stored against a concrete implementation
+- ✅ **Contract discovery** — `JobMethodResolver` surfaces interface and abstract-class methods alongside concrete implementations/overrides, labeled with `JobMethodKind` (Contract/Implementation/Standalone)
+- ✅ **Fixed [#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)** — editing a recurring job whose method takes an injected parameter (`PerformContext`/`CancellationToken`) no longer throws an `IntPtr`/`WaitHandle.Handle` error; edit pre-fill drops injected slots before serialization
+- ✅ **Consistent destructive-action buttons** — solid-red `btn-danger` + trash icon across the recurring list, recurring edit form, and all job-list pages (Awaiting/Enqueued/Failed/Fetched/Processing/Scheduled/Retries), disabled until items are selected
+
 ---
 
 ## v2.5 — Notifications & Alert Rules (Planned)
@@ -380,6 +391,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.3.0 | **Operational visibility & controls**: health checks + hero card, queue pause/resume, maintenance mode, audit log | ✅ Done |
 | v2.3.1 | Realtime analytics fixes: SQL Server `GROUP BY` (error 144), fixed-cadence broadcast loop, NuGet XML docs | ✅ Done |
 | v2.4.0 | **Job Builder**: typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page (closes #8) | ✅ Done |
+| v2.4.1 | **Job Builder follow-up**: searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix (#10), consistent destructive-action buttons | ✅ Done |
 | v2.5.0 | **Notifications & alert rules**: Slack/Teams/Discord/webhook/email channels, 8 trigger types, cooldown, rule editor + history | Planned |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |

@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.4.1 — Job Builder Follow-up
+
+> **Patch release.** Polishes the v2.4.0 Job Builder: a searchable method picker, correct attribute/display-name resolution for interface and abstract contracts, a fix for editing recurring jobs whose method takes an injected parameter ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)), and a consistent destructive-action button style across all job pages.
+
+### Fixed
+
+- **Editing a recurring job with an injected parameter threw `IntPtr`/`WaitHandle.Handle` ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)).** Edit pre-fill now projects the stored Hangfire `Args` onto `Job_Parameters` through `JobArgumentConverter.ToParameterJsonFromArgs`, dropping injected slots (`PerformContext`, `CancellationToken`, `IJobCancellationToken`) before serialization so a method like `Run(PerformContext ctx, ...)` pre-fills cleanly.
+- **Class-level `[Tag]` / `[Queue]` and display names were lost for inherited, interface, and abstract targets.** The Hangfire `Job` is now built against the operator-selected type (`ResolvedType`) rather than `Method.DeclaringType`, matching `AddOrUpdate<T>` semantics so class-level attributes are honored. Display-name resolution delegates to `JobDisplayNameAttribute.Format` (honoring `ResourceType`), falling back to the interface contract's attribute when a job is stored against a concrete implementation.
+
+### Added
+
+- **Searchable method picker.** The method dropdown is now a searchable combobox that filters discovered methods by display label, full type name, and method name. Each entry is badged as **Contract** (interface / abstract) or **Implementation**.
+- **Contract discovery.** `JobMethodResolver` now surfaces interface and abstract-class methods alongside their concrete implementations/overrides, each labeled with `JobMethodKind` (Contract / Implementation / Standalone). `ResolveMethod` allows abstract methods so interface/abstract contracts are resolvable.
+
+### Changed
+
+- **Consistent destructive-action buttons.** The solid-red `btn-danger` Delete style with a trash icon is now applied uniformly across the recurring list, the recurring edit form, and every job-list page (Awaiting, Enqueued, Failed, Fetched, Processing, Scheduled, Retries) — each disabled until items are selected.
+
+### Internal
+
+- Added `Issue10EditPrefillTests` reproducing the exact injected-parameter signature, and corrected stale edit-prefill property-test comments. New tests for inherited-method type resolution, interface canonical discovery, and `JobNameHelper` formatting. Added an `IFtpTransferService` interface repro to the sample apps.
+
 ## 2.4.0 — Job Builder
 
 > **Create and schedule jobs *with their arguments* directly from the dashboard.** The recurring editor previously built jobs with empty arguments and resolved methods by name (throwing on overloads), so parameterized methods couldn't be scheduled from the UI. v2.4.0 replaces it with a composable, type-aware Job Builder shared by the recurring editor and a new one-off enqueue page. Closes [#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8).

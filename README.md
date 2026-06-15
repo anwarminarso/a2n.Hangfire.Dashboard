@@ -31,14 +31,16 @@ Navigate to `/hangfire`. Done.
 
 ---
 
-## 🚀 What's New in 2.4.0 — Job Builder
+## 🚀 What's New in 2.4 — Job Builder
 
 Create and schedule jobs **with their arguments** directly from the dashboard — no code change, no redeploy. This closes a long-standing gap: the recurring editor previously built jobs with empty arguments, so parameterized methods couldn't be scheduled correctly ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)).
+
+> **2.4.1 (patch)** — searchable method picker; contract-aware resolution so interface/abstract targets keep their class-level `[Tag]`/`[Queue]` and display names; fixed editing a recurring job whose method takes an injected parameter ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)); consistent solid-red Delete buttons across all job pages. See the [changelog](CHANGELOG.md).
 
 | | Feature | What you get |
 |---|---------|--------------|
 | 🧩 | **Guided parameter form** | A type-aware form generated from the method signature — text, numbers, dates, GUIDs, enums, booleans, arrays, and nested objects — with a live **JSON mirror** and a Form ⇄ JSON toggle. [→](#job-builder) |
-| 🔎 | **Method discovery** | Pick from methods discovered across loaded assemblies (decorated with `JobDisplayName`, `Tag`, or `Queue`), with **overload-safe** resolution. Hand-typed arbitrary methods are opt-in via `AllowArbitraryMethodInvocation`. [→](#job-builder) |
+| 🔎 | **Method discovery** | Pick from methods discovered across loaded assemblies (decorated with `JobDisplayName`, `Tag`, or `Queue`) via a **searchable picker** that badges each entry as Contract or Implementation, with **overload-safe** resolution. Hand-typed arbitrary methods are opt-in via `AllowArbitraryMethodInvocation`. [→](#job-builder) |
 | 🕑 | **Visual cron builder** | Build a cron schedule field-by-field (every / specific / range / step) with a human-readable description and **next-run preview** in the selected time zone — or type a cron string manually. [→](#job-builder) |
 | ➕ | **Enqueue page** | A new `/jobs/enqueue` page reuses the same builder to fire one-off jobs, not just recurring ones. [→](#job-builder) |
 | ✏️ | **Typed args + edit pre-fill** | Values are converted to the method's declared types (`["report", 42]` → `string`, `int`); injected parameters (`PerformContext`, `CancellationToken`) are skipped; existing argument values are pre-filled when editing. [→](#job-builder) |
@@ -252,7 +254,7 @@ Both share the same method picker, parameter form, and argument conversion, so b
 
 The picker offers two sources:
 
-- **Registered methods** — discovered by scanning loaded assemblies for `public` instance/static methods whose method or declaring class carries a recognized attribute (`JobDisplayName`, `Tag`, or `Queue`). Discovery is cached for the dashboard's lifetime and resilient to assemblies that fail to load.
+- **Registered methods** — discovered by scanning loaded assemblies for `public` instance/static methods whose method or declaring class carries a recognized attribute (`JobDisplayName`, `Tag`, or `Queue`). Discovery is cached for the dashboard's lifetime and resilient to assemblies that fail to load. Interface and abstract-class contracts are surfaced alongside their concrete implementations, each badged as **Contract** or **Implementation**, and the list is searchable by display label, type name, or method name.
 - **Custom methods** — a full type name + method name typed by hand, validated on demand. This is **opt-in** and disabled by default:
 
 ```csharp
@@ -601,6 +603,7 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.3.0 | ✅ Done | **Operational visibility & controls** — health checks (`/healthz` + `IHealthCheck` adapter) & hero card, queue pause/resume, maintenance mode, audit log |
 | v2.3.1 | ✅ Done | Realtime analytics fixes — SQL Server `GROUP BY` (error 144) fix, fixed-cadence broadcast loop, NuGet XML docs |
 | v2.4.0 | ✅ Done | **Job Builder** — create/schedule jobs with typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)) |
+| v2.4.1 | ✅ Done | **Job Builder follow-up** — searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)), consistent destructive-action buttons |
 | v2.5.0 | Planned | **Notifications & alert rules** — Slack/Teams/Discord/webhook/email channels, 8 trigger types, cooldown, rule editor + history |
 | v2.6.0 | Planned | **Integrations** — Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export |
 | v2.7.0 | Planned | **Customization** — white-label theming, show/hide built-in pages, saved views |
