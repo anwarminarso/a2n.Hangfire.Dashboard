@@ -286,6 +286,52 @@ internal static class JobArgumentConverter
     }
 
     /// <summary>
+    /// Serializes a job's stored Hangfire <c>Job.Args</c> — which are positional over <em>all</em>
+    /// declared parameters, with <c>Injected_Parameter</c> slots present — into a canonical
+    /// <c>Parameter_JSON</c> array over the method's <c>Job_Parameter</c>s only (Requirement 3.1).
+    /// </summary>
+    /// <remarks>
+    /// The <c>Injected_Parameter</c> slots are dropped before serialization. Hangfire stores those
+    /// slots as default instances (e.g. a default <see cref="System.Threading.CancellationToken"/> or
+    /// a null <see cref="PerformContext"/>) when it reconstructs a <c>Job</c>; a default
+    /// <see cref="System.Threading.CancellationToken"/> in particular exposes a
+    /// <see cref="System.Threading.WaitHandle"/> whose <c>Handle</c> is an <see cref="IntPtr"/> and
+    /// cannot be serialized by <see cref="JsonSerializer"/>. Filtering those slots here keeps such
+    /// non-serializable injected values away from the serializer and aligns the produced array
+    /// positionally with the operator-facing <c>Job_Parameter</c>s. The result round-trips through
+    /// <see cref="ValidateParameterJson(string, MethodInfo)"/> and
+    /// <see cref="BuildArgs(MethodInfo, IReadOnlyList{JsonElement})"/>.
+    /// </remarks>
+    /// <param name="method">The target method whose declared parameters define the Args layout.</param>
+    /// <param name="allArgs">
+    /// The stored Hangfire arguments, positional over all declared parameters (injected slots
+    /// included). A <c>null</c> or short list is tolerated: missing slots resolve to <c>null</c>.
+    /// </param>
+    /// <returns>A JSON array string over the method's Job_Parameters only.</returns>
+    public static string ToParameterJsonFromArgs(MethodInfo method, IReadOnlyList<object> allArgs)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+
+        var declared = method.GetParameters();
+        var values = new List<object>(declared.Length);
+
+        for (var i = 0; i < declared.Length; i++)
+        {
+            if (IsInjectedParameter(declared[i]))
+            {
+                // Injected slot: supplied by Hangfire at activation, never operator-facing. Skipping
+                // it also keeps non-serializable injected values (IntPtr-backed handles) out of the
+                // serializer (Requirement 3.1).
+                continue;
+            }
+
+            values.Add(allArgs is not null && i < allArgs.Count ? allArgs[i] : null);
+        }
+
+        return ToParameterJson(method, values);
+    }
+
+    /// <summary>
     /// Determines whether a job-parameter <see cref="JsonElement"/> represents an <em>empty</em>
     /// value — JSON <c>null</c> or an absent/<see cref="JsonValueKind.Undefined"/> element.
     /// </summary>

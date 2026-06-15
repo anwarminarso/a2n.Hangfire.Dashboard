@@ -14,12 +14,11 @@ namespace a2n.Hangfire.Dashboard.Tests;
 // Parameter_JSON array of exactly N elements whose elements correspond positionally and one-to-one
 // to the stored Args values.
 //
-// RecurringEditor.razor pre-fills the Parameter_JSON by serializing the stored Args with
-// System.Text.Json (BuildParameterJson => JsonSerializer.Serialize(args)). This test validates the
-// pre-fill round-trip contract at the logic level: for a generated object[] Args of N values of
-// varied JSON-serializable types (strings, ints, bools, null), it serializes exactly as the editor
-// does, then asserts the resulting JSON is an array of exactly N elements that correspond
-// one-to-one and positionally to the stored Args (deserialized back and compared element-by-element).
+// This validates the value-level serialization round-trip contract: for a generated object[] Args of
+// N JSON-serializable values (strings, ints, bools, null), serializing and reparsing yields an array
+// of exactly N elements corresponding one-to-one and positionally to the stored Args. The separate
+// exclusion of Hangfire-injected parameters (and the IntPtr-crash fix from issue #10) is covered by
+// Issue10EditPrefillTests, which exercises JobArgumentConverter.ToParameterJsonFromArgs directly.
 //
 // Approach chosen: logic-level serialization round trip (the simpler, acceptable option per the
 // task), exercising the same System.Text.Json.JsonSerializer.Serialize(args) call the editor relies
@@ -99,8 +98,8 @@ public class EditPrefillRoundTripProperties
     private static Arbitrary<EditPrefillArg[]> ArgsArb =>
         Arb.From(Gen.Choose(0, 20).SelectMany(n => Gen.ArrayOf(n, ArgGen)));
 
-    // Mirrors RecurringEditor.BuildParameterJson's non-empty path exactly (Req 3.1):
-    // System.Text.Json.JsonSerializer.Serialize over the stored Args array.
+    // Mirrors the value-level serialization the editor relies on (Req 3.1): System.Text.Json
+    // serialize over the (already injected-filtered) Args values.
     private static string PrefillAsEditor(object[] args) => JsonSerializer.Serialize(args);
 
     [Property(MaxTest = 100)]

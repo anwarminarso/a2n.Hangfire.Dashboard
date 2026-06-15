@@ -8,6 +8,17 @@
 
 <h2 class="mb-3">Recurring Jobs</h2>
 
+@if (!string.IsNullOrEmpty(_successMessage))
+{
+    @* Deletion confirmation — also shown after deleting from the edit form via the ?deleted= query. *@
+    <div class="alert alert-success alert-dismissible d-flex align-items-center gap-2" role="status">
+        <i class="bi bi-check2-circle"></i>
+        <span>@_successMessage</span>
+        <button type="button" class="btn-close ms-auto" aria-label="Dismiss"
+                @onclick="() => _successMessage = null"></button>
+    </div>
+}
+
 @if (_jobs is null)
 {
     <p class="text-body-secondary">Loading...</p>
@@ -25,8 +36,8 @@ else
             <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
                 <i class="bi bi-play-circle"></i> Trigger
             </button>
-            <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
-                <i class="bi bi-x-lg"></i> Delete
+            <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
+                <i class="bi bi-trash"></i> Delete
             </button>
         </div>
         <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
@@ -201,6 +212,12 @@ else
     private bool _showDeleteConfirm;
     private int _pageSize = 20;
     private Timer _refreshTimer;
+    private string _successMessage;
+
+    // Carries the deleted job id when arriving from the edit-form delete so a confirmation can be
+    // shown on the list (Issue #10 — success message on delete).
+    [Parameter, SupplyParameterFromQuery(Name = "deleted")]
+    public string DeletedJobId { get; set; }
 
     private class StoppedJobInfo
     {
@@ -215,6 +232,12 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        if (!string.IsNullOrEmpty(DeletedJobId))
+        {
+            // Arrived from the edit form after a successful delete (Issue #10).
+            _successMessage = $"Recurring job '{DeletedJobId}' deleted successfully.";
+        }
+
         await LoadData();
 
         _refreshTimer = new Timer(async _ =>
@@ -329,9 +352,11 @@ else
     private async Task ConfirmDelete()
     {
         _showDeleteConfirm = false;
+        var count = _selectedJobs.Count;
         await Task.Run(() => Monitor.RemoveRecurringJobs(_selectedJobs));
         _selectedJobs.Clear();
         _selectAll = false;
+        _successMessage = $"{count} recurring job(s) deleted successfully.";
         await LoadData();
         await InvokeAsync(StateHasChanged);
     }

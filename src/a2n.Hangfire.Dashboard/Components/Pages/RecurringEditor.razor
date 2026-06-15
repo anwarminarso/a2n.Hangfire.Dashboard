@@ -16,6 +16,7 @@
 *@
 @page "/recurring/create"
 @page "/recurring/edit/{JobId}"
+@using a2n.Hangfire.Dashboard.Internal
 @inject HangfireMonitorService Monitor
 
 <PageTitle>@(_isEdit ? "Edit" : "Create") Recurring Job</PageTitle>
@@ -77,32 +78,41 @@
                 _initialTimeZoneId = existing.TimeZoneId ?? "";
 
                 // Pre-fill the Parameter_JSON positionally from the stored Args (Req 3.1, 3.2, 3.5).
-                _initialParameterJson = BuildParameterJson(existing.Job?.Args);
+                _initialParameterJson = BuildParameterJson(existing.Job);
             }
         }
     }
 
     /// <summary>
-    /// Builds the operator-facing Parameter_JSON from a recurring job's stored <c>Args</c>.
-    /// The stored Args are positional over ALL declared parameters (injected slots stored as null),
-    /// so they are serialized one-to-one into a JSON array (Req 3.1). An absent or empty Args
-    /// yields an empty array <c>[]</c> (Req 3.2). When the stored Args cannot be serialized, the
-    /// best-effort representation is preserved and an interpretation error is shown (Req 3.5).
+    /// Builds the operator-facing Parameter_JSON from a recurring job's stored <see cref="Hangfire.Common.Job"/>.
+    /// The stored <c>Args</c> are positional over ALL declared parameters (injected slots included),
+    /// so they are projected onto the method's Job_Parameters only — dropping Hangfire-injected
+    /// parameters such as <see cref="Hangfire.Server.PerformContext"/> and
+    /// <see cref="System.Threading.CancellationToken"/> — and serialized one-to-one into a JSON array
+    /// (Req 3.1). A null job/method or absent Args yields an empty array <c>[]</c> (Req 3.2). When the
+    /// stored Args cannot be serialized, an interpretation error is shown and an empty array is
+    /// returned so the form still renders (Req 3.5).
     /// </summary>
-    private string BuildParameterJson(IReadOnlyList<object> args)
+    private string BuildParameterJson(global::Hangfire.Common.Job job)
     {
-        if (args is null || args.Count == 0)
+        var method = job?.Method;
+        if (method is null)
             return "[]";
 
         try
         {
-            return System.Text.Json.JsonSerializer.Serialize(args);
+            // Project the stored Args onto Job_Parameters only. Dropping injected slots both aligns
+            // the array positionally with the operator form and keeps non-serializable injected
+            // values (e.g. a default CancellationToken's IntPtr-backed WaitHandle) out of the
+            // serializer entirely (Req 3.1).
+            return JobArgumentConverter.ToParameterJsonFromArgs(method, job.Args);
         }
         catch (Exception ex)
         {
+            // A user-defined argument that genuinely cannot be serialized: surface the reason and
+            // fall back to an empty form rather than crashing the edit page (Req 3.5).
             _loadError = "The stored arguments could not be interpreted as valid parameter JSON: " + ex.Message;
-            // Preserve the stored arguments unchanged for the operator to review (Req 3.5).
-            return "[" + string.Join(", ", args.Select(a => a?.ToString() ?? "null")) + "]";
+            return "[]";
         }
     }
 }

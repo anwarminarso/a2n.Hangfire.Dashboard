@@ -260,6 +260,16 @@
         @if (Mode == JobBuilderMode.Recurring)
         {
             <a class="btn btn-outline-secondary" href="recurring">Cancel</a>
+
+            @* Delete the recurring job being edited (Issue #10): a destructive action, styled red,
+               gated behind a confirmation and the same mutation gates as submit. *@
+            @if (_isEdit)
+            {
+                <button type="button" class="btn btn-danger ms-auto"
+                        disabled="@(MutationsDisabled || _submitting)" @onclick="ShowDeleteConfirm">
+                    <i class="bi bi-trash"></i> Delete recurring job
+                </button>
+            }
         }
         else
         {
@@ -276,6 +286,17 @@
         }
     </div>
 </div>
+
+@* Delete confirmation for the recurring job under edit (Issue #10). *@
+@if (Mode == JobBuilderMode.Recurring && _isEdit)
+{
+    <ConfirmModal Visible="@_showDeleteConfirm"
+                  Title="Confirm Delete"
+                  Message="@($"Are you sure you want to delete the recurring job '{JobId}'?")"
+                  ConfirmText="Delete recurring job"
+                  OnConfirm="ConfirmDelete"
+                  OnCancel="CancelDelete" />
+}
 
 @code {
     /// <summary>Whether the builder constructs a recurring job or enqueues a one-off job (Req 11, 12).</summary>
@@ -323,6 +344,9 @@
     private bool _submitting;
     private string _error;
     private string _enqueuedJobId;
+
+    // Delete-confirmation state for the recurring edit form (Issue #10).
+    private bool _showDeleteConfirm;
 
     // Focus target for the submission-error banner, focused after a failed submit so the operator
     // is taken to the reason even when the submit button sits far below it on a long form.
@@ -612,6 +636,40 @@
 
             // Success → confirm with the enqueued job id (Req 12.6).
             _enqueuedJobId = result.JobId;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    // --- Delete (recurring edit only, Issue #10) ---------------------------------------------
+
+    private void ShowDeleteConfirm() => _showDeleteConfirm = true;
+
+    private void CancelDelete() => _showDeleteConfirm = false;
+
+    // Remove the recurring job under edit, then navigate to the list carrying the deleted id so a
+    // success confirmation is shown there (Issue #10). Honours the mutation gates defensively.
+    private async Task ConfirmDelete()
+    {
+        _showDeleteConfirm = false;
+
+        if (MutationsDisabled || !_isEdit)
+        {
+            return;
+        }
+
+        _submitting = true;
+        try
+        {
+            await Task.Run(() => Monitor.RemoveRecurringJobs(new[] { JobId }));
+            Nav.NavigateTo($"recurring?deleted={Uri.EscapeDataString(JobId)}");
+        }
+        catch (Exception ex)
+        {
+            _error = $"The recurring job could not be deleted: {ex.Message}";
+            _focusErrorPending = true;
         }
         finally
         {

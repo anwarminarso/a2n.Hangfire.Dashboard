@@ -24,8 +24,8 @@
                 <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
                     <i class="bi bi-arrow-repeat"></i> Enqueue
                 </button>
-                <button class="btn btn-outline-secondary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
-                    <i class="bi bi-x-lg"></i> Delete
+                <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="DeleteSelected">
+                    <i class="bi bi-trash"></i> Delete
                 </button>
             </div>
             <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
