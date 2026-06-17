@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Recurring Schedule Heatmap — Design Mockup</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --border: #dde2e8;
+    --text: #1f2733;
+    --text-muted: #6b7685;
+    --accent: #0d6efd;
+    --accent-soft: rgba(13,110,253,.12);
+    --ok: #198754;
+    --warn: #fd7e14;
+    --danger: #dc3545;
+    /* sequential neutral ramp (low -> high) */
+    --ramp-0: #eef1f5;
+    --ramp-1: #cfe8ef;
+    --ramp-2: #8fd3c7;
+    --ramp-3: #4cb3a9;
+    --ramp-4: #2f8f9e;
+    --ramp-5: #1f5f86;
+    --dot: #2f8f9e;
+    --grid-line: #e7ebf0;
+  }
+  [data-theme="dark"] {
+    --bg: #0f1420;
+    --surface: #161c2b;
+    --surface-2: #1c2434;
+    --border: #2a3346;
+    --text: #e8edf4;
+    --text-muted: #93a0b4;
+    --accent: #4dabf7;
+    --accent-soft: rgba(77,171,247,.16);
+    --ok: #51cf66;
+    --warn: #ffa94d;
+    --danger: #ff6b6b;
+    --ramp-0: #1c2434;
+    --ramp-1: #1f3b4d;
+    --ramp-2: #1f5f6b;
+    --ramp-3: #2f8f8a;
+    --ramp-4: #4cc0a8;
+    --ramp-5: #8fe3c7;
+    --dot: #4cc0a8;
+    --grid-line: #232c3e;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 80px; }
+
+  header.page {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 4px;
+  }
+  header.page h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  .sub { color: var(--text-muted); font-size: 12.5px; margin-bottom: 18px; }
+  .badge-soft {
+    font-size: 11px; padding: 2px 8px; border-radius: 20px;
+    background: var(--accent-soft); color: var(--accent); font-weight: 600;
+    vertical-align: middle; margin-left: 8px;
+  }
+
+  .btn {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 14px 0 20px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    border: 0; background: var(--surface); color: var(--text-muted);
+    padding: 7px 14px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.active { background: var(--accent); color: #fff; }
+  .spacer { flex: 1; }
+  .switch { display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 12.5px; cursor: pointer; user-select: none; }
+  .switch input { accent-color: var(--accent); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; margin-bottom: 20px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 2px; font-weight: 600; }
+  .card .hint { color: var(--text-muted); font-size: 12px; margin-bottom: 16px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ---------- Punchcard ---------- */
+  .pc { display: grid; grid-template-columns: 46px 1fr; gap: 8px; }
+  .pc-hours { display: grid; grid-template-columns: repeat(24, 1fr); font-size: 10px; color: var(--text-muted); text-align: center; }
+  .pc-body { display: grid; grid-template-rows: repeat(7, 1fr); gap: 2px; }
+  .pc-rowlabels { display: grid; grid-template-rows: repeat(7, 1fr); gap: 2px; font-size: 11px; color: var(--text-muted); align-items: center; }
+  .pc-row { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; align-items: center; }
+  .pc-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 6px; position: relative; }
+  .pc-cell.now-col { box-shadow: inset 0 0 0 1px var(--accent); }
+  .pc-dot { border-radius: 50%; background: var(--dot); transition: transform .12s; cursor: pointer; }
+  .pc-dot:hover { transform: scale(1.18); }
+  .pc-legend { display: flex; align-items: center; gap: 18px; margin-top: 16px; color: var(--text-muted); font-size: 12px; flex-wrap: wrap; }
+  .pc-legend .sizes { display: flex; align-items: center; gap: 10px; }
+  .pc-legend .sz { display: flex; align-items: center; gap: 5px; }
+  .pc-legend .pc-dot { cursor: default; }
+
+  /* ---------- Concurrency ---------- */
+  .cc-meta { display: flex; gap: 28px; flex-wrap: wrap; margin-bottom: 14px; }
+  .cc-stat .v { font-size: 22px; font-weight: 600; }
+  .cc-stat .v.danger { color: var(--danger); }
+  .cc-stat .l { font-size: 11.5px; color: var(--text-muted); }
+  .legend-row { display: flex; gap: 18px; margin-top: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+  .legend-row .key { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 14px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  /* ---------- Calendar heatmap ---------- */
+  .cal { display: grid; grid-template-columns: 46px 1fr; gap: 8px; }
+  .cal-body { display: grid; grid-template-rows: repeat(7, 1fr); gap: 3px; }
+  .cal-row { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; }
+  .cal-cell { aspect-ratio: 1; border-radius: 5px; background: var(--ramp-0); display:flex; align-items:center; justify-content:center; font-size: 10px; color: var(--text); font-weight: 700; cursor: pointer; }
+  .cal-cell:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ---------- Table ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-muted); font-weight: 600; font-size: 12px; }
+  td code { background: var(--surface-2); padding: 2px 6px; border-radius: 5px; font-size: 12px; }
+  .q { font-size: 10.5px; padding: 1px 7px; border-radius: 12px; background: var(--surface-2); color: var(--text-muted); }
+
+  /* tooltip */
+  #tip {
+    position: fixed; pointer-events: none; z-index: 100; display: none;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 11px; border-radius: 9px; font-size: 12px; max-width: 280px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.28);
+  }
+  #tip .t { font-weight: 600; margin-bottom: 4px; }
+  #tip .j { color: var(--text-muted); font-size: 11.5px; }
+
+  .note { font-size: 12px; color: var(--text-muted); border-left: 3px solid var(--accent); padding: 6px 0 6px 12px; margin-top: 4px; }
+  svg text { fill: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <div>
+      <h1>Recurring Schedule Heatmap <span class="badge-soft">mockup · #14</span></h1>
+    </div>
+    <button class="btn" id="themeBtn">🌗 Toggle theme</button>
+  </header>
+  <div class="sub" id="tzline">Projected from cron expressions · times shown in your local timezone</div>
+
+  <div class="toolbar">
+    <div class="seg" id="sourceSeg" title="Projected = computed from cron (no storage). Historical = actual past executions (needs storage metrics provider).">
+      <button data-source="projected" class="active">Projected (cron)</button>
+      <button data-source="historical">Historical (actual)</button>
+    </div>
+    <div class="spacer"></div>
+    <label class="switch"><input type="checkbox" id="hideSub" /> Hide sub-hourly (<code style="font-size:11px">*/n</code>)</label>
+    <label class="switch"><input type="checkbox" id="logScale" /> Log scale</label>
+  </div>
+
+  <div class="toolbar" style="margin-top:-8px">
+    <div class="seg" id="viewSeg">
+      <button data-view="punch" class="active">Punchcard</button>
+      <button data-view="conc">Concurrency</button>
+      <button data-view="cal">Calendar heatmap</button>
+    </div>
+    <div class="spacer"></div>
+    <label class="switch" id="metricWrap" style="display:none">Color by:
+      <select id="metric" class="btn" style="padding:4px 8px">
+        <option value="fail">Failure rate</option>
+        <option value="dur">Avg duration (p95)</option>
+        <option value="vol">Volume</option>
+      </select>
+    </label>
+  </div>
+
+  <!-- PUNCHCARD -->
+  <section class="view active card" id="view-punch">
+    <h2>Punchcard — day × hour</h2>
+    <div class="hint">Bubble <b>size</b> encodes how many executions land in that hour. Size discriminates similar values far better than color saturation, so hotspots actually stand out.</div>
+    <div class="pc">
+      <div></div>
+      <div class="pc-hours" id="pcHours"></div>
+      <div class="pc-rowlabels" id="pcRowLabels"></div>
+      <div class="pc-body" id="pcBody"></div>
+    </div>
+    <div class="pc-legend">
+      <div class="sizes">
+        <span style="color:var(--text-muted)">Executions / hour:</span>
+        <span class="sz"><span class="pc-dot" style="width:6px;height:6px"></span> low</span>
+        <span class="sz"><span class="pc-dot" style="width:12px;height:12px"></span> medium</span>
+        <span class="sz"><span class="pc-dot" style="width:20px;height:20px"></span> high</span>
+      </div>
+      <div class="sizes" id="pcFailLegend" style="display:none">
+        <span style="color:var(--text-muted)">Failure rate:</span>
+        <span class="sz"><span class="swatch" style="background:var(--ok)"></span> 0%</span>
+        <span class="sz"><span class="swatch" style="background:var(--warn)"></span> ~10%</span>
+        <span class="sz"><span class="swatch" style="background:var(--danger)"></span> 25%+</span>
+      </div>
+      <span style="color:var(--accent)">▮ current hour highlighted</span>
+    </div>
+  </section>
+
+  <!-- CONCURRENCY -->
+  <section class="view card" id="view-conc">
+    <h2>Concurrency — scheduled overlap across the day</h2>
+    <div class="hint">How many jobs are scheduled to fire in the same minute bucket. This answers the real operational question: <b>where do schedules collide and risk overloading workers?</b></div>
+    <div class="cc-meta">
+      <div class="cc-stat"><div class="v danger" id="ccPeak">—</div><div class="l">Peak concurrent / min</div></div>
+      <div class="cc-stat"><div class="v" id="ccCap">12</div><div class="l">Worker capacity (assumed)</div></div>
+      <div class="cc-stat"><div class="v" id="ccBreaches">—</div><div class="l">Buckets over capacity</div></div>
+      <div class="cc-stat"><div class="v" id="ccPeakAt">—</div><div class="l">Worst time</div></div>
+    </div>
+    <div id="ccChart"></div>
+    <div class="legend-row">
+      <span class="key"><span class="swatch" style="background:var(--dot)"></span> scheduled / min</span>
+      <span class="key"><span class="swatch" style="background:var(--danger)"></span> over capacity</span>
+      <span class="key"><span class="swatch" style="background:var(--accent);height:2px"></span> capacity line</span>
+    </div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section class="view card" id="view-cal">
+    <h2>Calendar heatmap — day × hour</h2>
+    <div class="hint">The "fixed" version of the original: a true 2D matrix with a neutral sequential ramp (not alarming red) and optional log scale. In <b>Historical</b> mode the cells can instead be colored by failure rate or p95 duration — that's the payoff of real storage data.</div>
+    <div class="cal">
+      <div></div>
+      <div class="pc-hours" id="calHours"></div>
+      <div class="pc-rowlabels" id="calRowLabels"></div>
+      <div class="cal-body" id="calBody"></div>
+    </div>
+    <div class="pc-legend">
+      <span>less</span>
+      <span class="swatch" style="background:var(--ramp-0)"></span>
+      <span class="swatch" style="background:var(--ramp-2)"></span>
+      <span class="swatch" style="background:var(--ramp-3)"></span>
+      <span class="swatch" style="background:var(--ramp-4)"></span>
+      <span class="swatch" style="background:var(--ramp-5)"></span>
+      <span>more</span>
+    </div>
+  </section>
+
+  <!-- TABLE -->
+  <div class="card">
+    <h2>Recurring jobs <span style="font-weight:400;color:var(--text-muted);font-size:12px">(sample data)</span></h2>
+    <div class="hint">Click a cell above to filter; here is the raw list driving the views.</div>
+    <table>
+      <thead><tr><th>Job ID</th><th>Cron</th><th>Queue</th><th id="colMetric">Fires / day</th><th>Next run</th></tr></thead>
+      <tbody id="jobTable"></tbody>
+    </table>
+  </div>
+
+  <div class="note" id="srcNote">Projected: computed purely from cron expressions via Cronos.</div>
+  <div class="note">This is a static, dependency-free mockup with synthetic data. Final build would respect the dashboard's Light/Dark/Auto theme, Bootstrap 5, and be driven by Cronos-projected executions (or storage metrics for the Historical mode).</div>
+</div>
+<div id="tip"></div>
+<script src="heatmap-mockup.js"></script>
+</body>
+</html>

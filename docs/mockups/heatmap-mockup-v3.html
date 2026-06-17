@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Recurring Schedule Heatmap — Mockup v3 (design ceiling, #14)</title>
+<style>
+  :root {
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#eef1f5; --border:#dde2e8;
+    --text:#1f2733; --text-muted:#6b7685; --accent:#0d6efd; --accent-soft:rgba(13,110,253,.12);
+    --ok:#198754; --warn:#fd7e14; --danger:#dc3545;
+    --ramp-0:#eef1f5; --ramp-1:#cfe8ef; --ramp-2:#8fd3c7; --ramp-3:#4cb3a9; --ramp-4:#2f8f9e; --ramp-5:#1f5f86;
+    --grid-line:#e7ebf0;
+  }
+  [data-theme="dark"] {
+    --bg:#0f1420; --surface:#161c2b; --surface-2:#1c2434; --border:#2a3346;
+    --text:#e8edf4; --text-muted:#93a0b4; --accent:#4dabf7; --accent-soft:rgba(77,171,247,.16);
+    --ok:#51cf66; --warn:#ffa94d; --danger:#ff6b6b;
+    --ramp-0:#1c2434; --ramp-1:#1f3b4d; --ramp-2:#1f5f6b; --ramp-3:#2f8f8a; --ramp-4:#4cc0a8; --ramp-5:#8fe3c7;
+    --grid-line:#232c3e;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--text); font-size:14px; line-height:1.45; }
+  .wrap { max-width:1280px; margin:0 auto; padding:24px 20px 90px; }
+  header.page { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  header.page h1 { font-size:22px; margin:0; font-weight:600; }
+  .sub { color:var(--text-muted); font-size:12.5px; margin:4px 0 16px; }
+  .badge-soft { font-size:11px; padding:2px 8px; border-radius:20px; background:var(--accent-soft); color:var(--accent); font-weight:600; margin-left:8px; vertical-align:middle; }
+  .btn { border:1px solid var(--border); background:var(--surface); color:var(--text); padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; }
+  .btn:hover { border-color:var(--accent); }
+  select.btn, input.btn { padding:5px 8px; }
+
+  .insights { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:18px; }
+  .ins { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:13px 15px; }
+  .ins .l { font-size:11px; color:var(--text-muted); margin-bottom:4px; }
+  .ins .v { font-size:17px; font-weight:600; }
+  .ins .v small { font-size:11.5px; color:var(--text-muted); font-weight:400; }
+  .ins.alert { border-color:var(--danger); } .ins.alert .v { color:var(--danger); }
+  .ins.click { cursor:pointer; } .ins.click:hover { border-color:var(--accent); }
+
+  .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+  .seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .seg button { border:0; background:var(--surface); color:var(--text-muted); padding:7px 12px; cursor:pointer; font-size:13px; font-weight:500; }
+  .seg button + button { border-left:1px solid var(--border); }
+  .seg button.active { background:var(--accent); color:#fff; }
+  .seg .rec-dot { display:inline-block; min-width:16px; padding:0 4px; margin-left:5px; background:var(--danger); color:#fff; border-radius:10px; font-size:10px; }
+  .spacer { flex:1; }
+  .switch { display:inline-flex; align-items:center; gap:7px; color:var(--text-muted); font-size:12.5px; cursor:pointer; user-select:none; }
+  .switch input { accent-color:var(--accent); }
+  .chips { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); padding:4px 10px; border-radius:20px; font-size:12px; cursor:pointer; user-select:none; }
+  .chip .dot { width:10px; height:10px; border-radius:50%; }
+  .chip.off { opacity:.4; }
+  .chip-mini { font-size:11px; padding:3px 9px; border-radius:20px; }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:20px; }
+  .card h2 { font-size:15px; margin:0 0 2px; font-weight:600; }
+  .card .hint { color:var(--text-muted); font-size:12px; margin-bottom:16px; }
+  .view { display:none; } .view.active { display:block; }
+  .banner { font-size:12px; background:var(--accent-soft); color:var(--text); border-radius:8px; padding:8px 12px; margin-bottom:14px; }
+  .banner b { color:var(--accent); }
+
+  .gridwrap { display:grid; grid-template-columns:64px 1fr; gap:8px; }
+  .hours { display:grid; grid-template-columns:repeat(24,1fr); font-size:10px; color:var(--text-muted); text-align:center; }
+  .rowlabels { display:grid; gap:2px; font-size:11px; color:var(--text-muted); align-items:center; }
+  .rowlabels .ql { display:flex; align-items:center; gap:6px; justify-content:flex-end; padding-right:4px; }
+  .rowlabels .ql .dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
+  .body { display:grid; gap:2px; }
+  .row { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; align-items:center; }
+  .pc-cell { aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:6px; cursor:pointer; }
+  .pc-cell.now { box-shadow:inset 0 0 0 1px var(--accent); }
+  .pc-dot { border-radius:50%; transition:transform .12s; }
+  .pc-cell:hover .pc-dot { transform:scale(1.18); }
+  .hm-cell { aspect-ratio:1; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; cursor:pointer; }
+  .hm-cell:hover { outline:2px solid var(--accent); outline-offset:1px; }
+  .hm-cell.now { box-shadow:inset 0 0 0 2px var(--accent); }
+
+  .multi { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  .mini { border:1px solid var(--border); border-radius:10px; padding:12px; }
+  .mini h3 { font-size:13px; margin:0 0 8px; display:flex; align-items:center; gap:7px; }
+  .mini h3 .dot { width:11px; height:11px; border-radius:50%; }
+  .mini .gridwrap { grid-template-columns:30px 1fr; gap:5px; }
+  .mini .rowlabels { font-size:9px; }
+  .mini .hm-cell { font-size:0; border-radius:3px; }
+
+  .legend { display:flex; gap:16px; margin-top:14px; color:var(--text-muted); font-size:12px; flex-wrap:wrap; align-items:center; }
+  .legend .key { display:inline-flex; align-items:center; gap:6px; }
+  .swatch { width:14px; height:10px; border-radius:3px; display:inline-block; }
+  .sizes { display:flex; align-items:center; gap:9px; }
+  .sz { display:flex; align-items:center; gap:5px; }
+  .cc-meta { display:flex; gap:28px; flex-wrap:wrap; margin-bottom:14px; }
+  .cc-stat .v { font-size:22px; font-weight:600; } .cc-stat .v.danger { color:var(--danger); }
+  .cc-stat .l { font-size:11.5px; color:var(--text-muted); }
+
+  /* recommendations */
+  .rec { border:1px solid var(--border); border-left:3px solid var(--warn); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .rec.high { border-left-color:var(--danger); }
+  .rec .rh { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .rec .rh .sev { font-size:10.5px; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:10px; }
+  .rec .rh .sev.high { background:var(--danger); color:#fff; } .rec .rh .sev.med { background:var(--warn); color:#10141d; }
+  .rec .rh .when { font-weight:600; }
+  .rec .body2 { font-size:13px; color:var(--text); }
+  .rec .delta { color:var(--ok); font-weight:600; }
+  .rec .acts { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); }
+  th { color:var(--text-muted); font-weight:600; font-size:12px; }
+  td code { background:var(--surface-2); padding:2px 6px; border-radius:5px; font-size:12px; }
+  .q { font-size:10.5px; padding:1px 8px; border-radius:12px; color:#10141d; font-weight:600; }
+  .pill { font-size:10px; padding:1px 7px; border-radius:10px; background:var(--surface-2); color:var(--text-muted); margin-left:4px; }
+
+  /* drill-down drawer */
+  #drawer { position:fixed; top:0; right:0; height:100%; width:380px; max-width:92vw; background:var(--surface); border-left:1px solid var(--border); box-shadow:-12px 0 40px rgba(0,0,0,.3); transform:translateX(102%); transition:transform .22s ease; z-index:200; display:flex; flex-direction:column; }
+  #drawer.open { transform:none; }
+  #drawer .dh { padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  #drawer .dh .t { font-weight:600; font-size:15px; } #drawer .dh .s { font-size:12px; color:var(--text-muted); margin-top:2px; }
+  #drawer .dc { padding:14px 18px; overflow:auto; }
+  #drawer .x { cursor:pointer; border:0; background:transparent; color:var(--text-muted); font-size:20px; line-height:1; }
+  .jobrow { border:1px solid var(--border); border-radius:9px; padding:10px 12px; margin-bottom:9px; }
+  .jobrow .jn { font-weight:600; font-size:13px; display:flex; align-items:center; gap:7px; }
+  .jobrow .jm { font-size:11.5px; color:var(--text-muted); margin-top:3px; }
+  .jobrow .ja { margin-top:8px; display:flex; gap:7px; }
+  .btn-sm { font-size:12px; padding:4px 9px; }
+  .btn-accent { background:var(--accent); color:#fff; border-color:var(--accent); }
+  #scrim { position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:150; display:none; } #scrim.open { display:block; }
+
+  #tip { position:fixed; pointer-events:none; z-index:300; display:none; background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 11px; border-radius:9px; font-size:12px; max-width:300px; box-shadow:0 8px 28px rgba(0,0,0,.3); }
+  #tip .t { font-weight:600; margin-bottom:4px; } #tip .j { color:var(--text-muted); font-size:11.5px; }
+  .note { font-size:12px; color:var(--text-muted); border-left:3px solid var(--accent); padding:6px 0 6px 12px; margin-top:4px; }
+  svg text { fill:var(--text-muted); }
+  @media (max-width:860px){ .insights{grid-template-columns:repeat(2,1fr);} .multi{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>Recurring Schedule Heatmap <span class="badge-soft">mockup v3 · design ceiling · #14</span></h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="exportBtn">⬇ Export CSV</button>
+      <button class="btn" id="themeBtn">🌗 Theme</button>
+    </div>
+  </header>
+  <div class="sub" id="tzline">Queue × day × hour · drill-down · overlap recommendations · duration-aware load</div>
+
+  <div class="insights">
+    <div class="ins"><div class="l">Total load / day</div><div class="v" id="insTotal">—</div></div>
+    <div class="ins"><div class="l">Busiest queue</div><div class="v" id="insQueue">—</div></div>
+    <div class="ins click" id="insPeakCard"><div class="l">Peak concurrency</div><div class="v" id="insPeak">—</div></div>
+    <div class="ins click" id="insOverCard"><div class="l">Hours over capacity</div><div class="v" id="insOver">—</div></div>
+    <div class="ins click" id="insRecCard"><div class="l">Overlap suggestions</div><div class="v" id="insRec">—</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg" id="sourceSeg" title="Projected = from cron. Historical = actual runs.">
+      <button data-source="projected" class="active">Projected (cron)</button>
+      <button data-source="historical">Historical (actual)</button>
+    </div>
+    <label class="switch">Window:
+      <select id="windowSel" class="btn"><option value="ideal">Idealized week</option><option value="next7">Next 7 days</option></select>
+    </label>
+    <label class="switch">View TZ:
+      <select id="tzSel" class="btn"><option value="420">Asia/Jakarta (+07)</option><option value="0">UTC</option><option value="-300">US East (−05)</option></select>
+    </label>
+    <div class="spacer"></div>
+    <label class="switch">Load:
+      <select id="metricSel" class="btn"><option value="count">Fire count</option><option value="load">Worker-minutes</option></select>
+    </label>
+    <label class="switch"><input type="checkbox" id="hideSub" /> Hide sub-hourly</label>
+    <label class="switch"><input type="checkbox" id="logScale" /> Log</label>
+  </div>
+
+  <div class="toolbar">
+    <span style="color:var(--text-muted);font-size:12px;">Queues:</span>
+    <div class="chips" id="queueChips"></div>
+    <button class="btn chip-mini" id="qAll">All</button>
+    <button class="btn chip-mini" id="qNone">Solo</button>
+    <label class="switch" style="margin-left:6px">Top
+      <select id="topN" class="btn"><option value="0">all</option><option>3</option><option>5</option><option>8</option></select>
+    </label>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg" id="viewSeg">
+      <button data-view="punch" class="active">Punchcard</button>
+      <button data-view="qh">Queue × Hour</button>
+      <button data-view="multi">Per-queue</button>
+      <button data-view="conc">Concurrency</button>
+      <button data-view="cal">Calendar</button>
+      <button data-view="rec">Recommendations <span class="rec-dot" id="recBadge">0</span></button>
+    </div>
+    <div class="spacer"></div>
+    <label class="switch" id="ctxDayWrap">Day:
+      <select id="ctxDay" class="btn"><option value="-1">All week</option><option>Mon</option><option>Tue</option><option>Wed</option><option selected>Thu</option><option>Fri</option><option>Sat</option><option>Sun</option></select>
+    </label>
+    <label class="switch" id="ctxColorWrap" style="display:none">Color by:
+      <select id="ctxColor" class="btn"><option value="fail">Failure rate</option><option value="dur">p95 duration</option><option value="vol">Volume</option></select>
+    </label>
+    <label class="switch" id="ctxCapWrap">Workers:
+      <input id="ctxCap" class="btn" type="number" min="1" max="500" value="12" style="width:62px" />
+      <span class="pill" id="capSrc">detected: 12 (2 servers)</span>
+    </label>
+  </div>
+
+  <div id="longNote" class="banner" style="display:none"></div>
+
+  <section class="view active card" id="view-punch">
+    <h2>Punchcard — day × hour</h2>
+    <div class="hint">Bubble size = load. Projected: tinted by dominant queue. Historical: tinted by failure rate. <b>Click any cell</b> to drill into the jobs scheduled there.</div>
+    <div class="gridwrap"><div></div><div class="hours" id="pcHours"></div>
+      <div class="rowlabels" id="pcRowLabels" style="grid-template-rows:repeat(7,1fr)"></div>
+      <div class="body" id="pcBody" style="grid-template-rows:repeat(7,1fr)"></div></div>
+    <div class="legend"><div class="sizes"><span>load:</span><span class="sz"><span class="pc-dot" style="width:6px;height:6px;background:var(--text-muted)"></span>low</span><span class="sz"><span class="pc-dot" style="width:13px;height:13px;background:var(--text-muted)"></span>med</span><span class="sz"><span class="pc-dot" style="width:20px;height:20px;background:var(--text-muted)"></span>high</span></div><span id="pcColorLegend" class="legend" style="margin:0"></span></div>
+  </section>
+
+  <section class="view card" id="view-qh">
+    <h2>Queue × Hour <span id="qhDayLabel" style="font-weight:400;color:var(--text-muted);font-size:12px"></span></h2>
+    <div class="hint">Rows = queues, columns = hours. Direct answer to "when is each queue busiest?". Click a cell to drill in.</div>
+    <div class="gridwrap"><div></div><div class="hours" id="qhHours"></div>
+      <div class="rowlabels" id="qhRowLabels"></div><div class="body" id="qhBody"></div></div>
+    <div class="legend"><span>less</span><span class="swatch" style="background:var(--ramp-0)"></span><span class="swatch" style="background:var(--ramp-2)"></span><span class="swatch" style="background:var(--ramp-3)"></span><span class="swatch" style="background:var(--ramp-4)"></span><span class="swatch" style="background:var(--ramp-5)"></span><span>more</span></div>
+  </section>
+
+  <section class="view card" id="view-multi">
+    <h2>Per-queue — small multiples</h2>
+    <div class="hint">One day × hour heatmap per queue for at-a-glance comparison across isolated queues.</div>
+    <div class="multi" id="multiGrid"></div>
+  </section>
+
+  <section class="view card" id="view-conc">
+    <h2>Concurrency — duration-aware overlap by queue</h2>
+    <div class="hint">Each fire occupies its <b>p95 duration</b>, so this counts jobs <i>actually running together</i> (real worker pressure), not just simultaneous starts. Stacked by queue; buckets over capacity flagged.</div>
+    <div class="cc-meta">
+      <div class="cc-stat"><div class="v danger" id="ccPeak">—</div><div class="l">Peak concurrent jobs</div></div>
+      <div class="cc-stat"><div class="v" id="ccCap">12</div><div class="l">Worker capacity</div></div>
+      <div class="cc-stat"><div class="v" id="ccBreaches">—</div><div class="l">Minutes over capacity</div></div>
+      <div class="cc-stat"><div class="v" id="ccPeakAt">—</div><div class="l">Worst time</div></div>
+    </div>
+    <div id="ccChart"></div>
+    <div class="legend" id="ccLegend"></div>
+  </section>
+
+  <section class="view card" id="view-cal">
+    <h2>Calendar heatmap — day × hour</h2>
+    <div class="hint">2D matrix, neutral ramp. Historical mode recolors by failure rate / p95 duration. Click to drill in.</div>
+    <div class="gridwrap"><div></div><div class="hours" id="calHours"></div>
+      <div class="rowlabels" id="calRowLabels" style="grid-template-rows:repeat(7,1fr)"></div>
+      <div class="body" id="calBody" style="grid-template-rows:repeat(7,1fr)"></div></div>
+    <div class="legend" id="calLegend"><span>less</span><span class="swatch" style="background:var(--ramp-0)"></span><span class="swatch" style="background:var(--ramp-2)"></span><span class="swatch" style="background:var(--ramp-3)"></span><span class="swatch" style="background:var(--ramp-4)"></span><span class="swatch" style="background:var(--ramp-5)"></span><span>more</span></div>
+  </section>
+
+  <section class="view card" id="view-rec">
+    <h2>Overlap recommendations</h2>
+    <div class="hint">Duration-aware: finds where the most jobs are <b>actually running together</b> on a queue (each job counted for its p95 duration, not just its start minute). The before→after numbers come from a real stagger simulation. Repeating daily clusters are grouped. The proactive answer to "where can scheduling be adjusted?".</div>
+    <div id="recList"></div>
+  </section>
+
+  <div class="card">
+    <h2>Recurring jobs <span style="font-weight:400;color:var(--text-muted);font-size:12px">(selected queues)</span></h2>
+    <table><thead><tr><th>Job ID</th><th>Cron</th><th>Queue</th><th>TZ</th><th id="colMetric">Load/day</th><th>Next run</th></tr></thead><tbody id="jobTable"></tbody></table>
+  </div>
+
+  <div class="note" id="srcNote"></div>
+  <div class="note">Design ceiling mockup (static, synthetic). Real build maps: Projected→Cronos <code>GetOccurrences</code> over the window honoring each job's TimeZoneId; Historical→IStorageMetricsProvider; capacity→IMonitoringApi.Servers(); recommendations→pure testable logic; export→server-side CSV/PNG.</div>
+</div>
+
+<div id="scrim"></div>
+<aside id="drawer">
+  <div class="dh"><div><div class="t" id="drawerTitle">—</div><div class="s" id="drawerSub"></div></div><button class="x" id="drawerClose">×</button></div>
+  <div class="dc" id="drawerContent"></div>
+</aside>
+<div id="tip"></div>
+<script src="heatmap-mockup-v3.js"></script>
+</body>
+</html>

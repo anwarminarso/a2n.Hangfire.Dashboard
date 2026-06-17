@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Recurring Schedule Heatmap — Mockup v4 (cron + ad-hoc demand)</title>
+<style>
+  :root{--bg:#f6f7f9;--surface:#fff;--surface-2:#eef1f5;--border:#dde2e8;--text:#1f2733;--text-muted:#6b7685;--accent:#0d6efd;--accent-soft:rgba(13,110,253,.12);--ok:#198754;--warn:#fd7e14;--danger:#dc3545;
+    --ramp-0:#eef1f5;--ramp-1:#cfe8ef;--ramp-2:#8fd3c7;--ramp-3:#4cb3a9;--ramp-4:#2f8f9e;--ramp-5:#1f5f86;--grid-line:#e7ebf0;--safe:#2f9e44;}
+  [data-theme="dark"]{--bg:#0f1420;--surface:#161c2b;--surface-2:#1c2434;--border:#2a3346;--text:#e8edf4;--text-muted:#93a0b4;--accent:#4dabf7;--accent-soft:rgba(77,171,247,.16);--ok:#51cf66;--warn:#ffa94d;--danger:#ff6b6b;
+    --ramp-0:#1c2434;--ramp-1:#1f3b4d;--ramp-2:#1f5f6b;--ramp-3:#2f8f8a;--ramp-4:#4cc0a8;--ramp-5:#8fe3c7;--grid-line:#232c3e;--safe:#51cf66;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.45;}
+  .wrap{max-width:1280px;margin:0 auto;padding:24px 20px 90px;}
+  header.page{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  header.page h1{font-size:22px;margin:0;font-weight:600;}
+  .sub{color:var(--text-muted);font-size:12.5px;margin:4px 0 16px;}
+  .badge-soft{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--accent-soft);color:var(--accent);font-weight:600;margin-left:8px;vertical-align:middle;}
+  .btn{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:6px 12px;border-radius:8px;cursor:pointer;font-size:13px;}
+  .btn:hover{border-color:var(--accent);}
+  select.btn,input.btn{padding:5px 8px;}
+  .insights{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}
+  .ins{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 15px;}
+  .ins .l{font-size:11px;color:var(--text-muted);margin-bottom:4px;}
+  .ins .v{font-size:17px;font-weight:600;}
+  .ins .v small{font-size:11.5px;color:var(--text-muted);font-weight:400;}
+  .ins.good .v{color:var(--ok);} .ins.alert .v{color:var(--danger);} .ins.alert{border-color:var(--danger);} .ins.click{cursor:pointer;} .ins.click:hover{border-color:var(--accent);}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px;}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .seg button{border:0;background:var(--surface);color:var(--text-muted);padding:7px 12px;cursor:pointer;font-size:13px;font-weight:500;}
+  .seg button+button{border-left:1px solid var(--border);}
+  .seg button.active{background:var(--accent);color:#fff;}
+  .seg .rec-dot{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;background:var(--danger);color:#fff;border-radius:10px;font-size:10px;}
+  .spacer{flex:1;}
+  .switch{display:inline-flex;align-items:center;gap:7px;color:var(--text-muted);font-size:12.5px;cursor:pointer;user-select:none;}
+  .switch input{accent-color:var(--accent);}
+  .chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);padding:4px 10px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;}
+  .chip .dot{width:10px;height:10px;border-radius:50%;}
+  .chip.off{opacity:.4;} .chip .cls{font-size:9px;color:var(--text-muted);}
+  .chip-mini{font-size:11px;padding:3px 9px;border-radius:20px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px;}
+  .card h2{font-size:15px;margin:0 0 2px;font-weight:600;}
+  .card .hint{color:var(--text-muted);font-size:12px;margin-bottom:16px;}
+  .view{display:none;} .view.active{display:block;}
+  .banner{font-size:12px;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px 12px;margin-bottom:14px;}
+  .banner b{color:var(--accent);}
+  .gridwrap{display:grid;grid-template-columns:64px 1fr;gap:8px;}
+  .hours{display:grid;grid-template-columns:repeat(24,1fr);font-size:10px;color:var(--text-muted);text-align:center;}
+  .rowlabels{display:grid;gap:2px;font-size:11px;color:var(--text-muted);align-items:center;}
+  .rowlabels .ql{display:flex;align-items:center;gap:6px;justify-content:flex-end;padding-right:4px;}
+  .rowlabels .ql .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+  .body{display:grid;gap:2px;}
+  .row{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;align-items:center;}
+  .pl-cell{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;background:var(--ramp-0);}
+  .pl-cell:hover{outline:2px solid var(--accent);outline-offset:1px;}
+  .pl-cell.safe{box-shadow:inset 0 0 0 2px var(--safe);}
+  .pl-cell.now{outline:2px solid var(--accent);outline-offset:1px;}
+  .pl-dot{border-radius:50%;position:absolute;}
+  .pc-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:6px;}
+  .pc-cell.now{box-shadow:inset 0 0 0 1px var(--accent);}
+  .pc-dot{border-radius:50%;}
+  .hm-cell{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;cursor:pointer;}
+  .hm-cell:hover{outline:2px solid var(--accent);outline-offset:1px;}
+  .multi{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+  .mini{border:1px solid var(--border);border-radius:10px;padding:12px;}
+  .mini h3{font-size:13px;margin:0 0 8px;display:flex;align-items:center;gap:7px;}
+  .mini h3 .dot{width:11px;height:11px;border-radius:50%;}
+  .mini .gridwrap{grid-template-columns:30px 1fr;gap:5px;} .mini .rowlabels{font-size:9px;} .mini .hm-cell{font-size:0;border-radius:3px;}
+  .legend{display:flex;gap:16px;margin-top:14px;color:var(--text-muted);font-size:12px;flex-wrap:wrap;align-items:center;}
+  .legend .key{display:inline-flex;align-items:center;gap:6px;}
+  .swatch{width:14px;height:10px;border-radius:3px;display:inline-block;}
+  .sizes{display:flex;align-items:center;gap:9px;} .sz{display:flex;align-items:center;gap:5px;}
+  .cc-meta{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:14px;}
+  .cc-stat .v{font-size:22px;font-weight:600;} .cc-stat .v.danger{color:var(--danger);} .cc-stat .l{font-size:11.5px;color:var(--text-muted);}
+  .rec{border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:14px 16px;margin-bottom:12px;}
+  .rec.high{border-left-color:var(--danger);}
+  .rec .rh{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .rec .sev{font-size:10.5px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:10px;}
+  .rec .sev.high{background:var(--danger);color:#fff;} .rec .sev.med{background:var(--warn);color:#10141d;}
+  .rec .when{font-weight:600;} .rec .delta{color:var(--ok);font-weight:600;}
+  .rec .adhoc-note{margin-top:6px;font-size:12px;color:var(--warn);}
+  .rec .acts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;}
+  .btn-sm{font-size:12px;padding:4px 9px;} .btn-accent{background:var(--accent);color:#fff;border-color:var(--accent);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);}
+  th{color:var(--text-muted);font-weight:600;font-size:12px;}
+  td code{background:var(--surface-2);padding:2px 6px;border-radius:5px;font-size:12px;}
+  .q{font-size:10.5px;padding:1px 8px;border-radius:12px;color:#10141d;font-weight:600;}
+  .clstag{font-size:9.5px;padding:1px 6px;border-radius:8px;border:1px solid var(--border);color:var(--text-muted);margin-left:6px;}
+  .pill{font-size:10px;padding:1px 7px;border-radius:10px;background:var(--surface-2);color:var(--text-muted);margin-left:4px;}
+  #tip{position:fixed;pointer-events:none;z-index:200;display:none;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 11px;border-radius:9px;font-size:12px;max-width:300px;box-shadow:0 8px 28px rgba(0,0,0,.3);}
+  #tip .t{font-weight:600;margin-bottom:4px;} #tip .j{color:var(--text-muted);font-size:11.5px;}
+  .note{font-size:12px;color:var(--text-muted);border-left:3px solid var(--accent);padding:6px 0 6px 12px;margin-top:4px;}
+  svg text{fill:var(--text-muted);}
+  @media (max-width:860px){.insights{grid-template-columns:repeat(2,1fr);} .multi{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>Recurring Schedule Heatmap <span class="badge-soft">mockup v4 · cron + ad-hoc demand · #14</span></h1>
+    <div style="display:flex;gap:8px"><button class="btn" id="exportBtn">⬇ CSV</button><button class="btn" id="themeBtn">🌗 Theme</button></div>
+  </header>
+  <div class="sub" id="tzline">Plan controllable cron jobs around real on-demand load — full controls + cron/ad-hoc overlay</div>
+
+  <div class="insights">
+    <div class="ins good"><div class="l">Best window to schedule</div><div class="v" id="insBest">—</div></div>
+    <div class="ins"><div class="l">Ad-hoc demand peak</div><div class="v" id="insAdhoc">—</div></div>
+    <div class="ins click" id="insPeakCard"><div class="l">Peak combined concurrency</div><div class="v" id="insPeak">—</div></div>
+    <div class="ins click" id="insRecCard"><div class="l">Overlap suggestions</div><div class="v" id="insRec">—</div></div>
+  </div>
+
+  <!-- TOOLBAR 1: class + source + window + tz | load + hide + log -->
+  <div class="toolbar">
+    <span style="color:var(--text-muted);font-size:12px;">Show:</span>
+    <div class="seg" id="classSeg" title="Cron = recurring jobs. Ad-hoc = on-demand load. Combined = overlay.">
+      <button data-class="cron">Cron</button>
+      <button data-class="adhoc">Ad-hoc</button>
+      <button data-class="combined" class="active">Combined</button>
+    </div>
+    <div class="seg" id="sourceSeg" title="For cron jobs: projected from cron vs actual historical executions.">
+      <button data-source="projected" class="active">Projected</button>
+      <button data-source="historical">Historical</button>
+    </div>
+    <label class="switch">Window:
+      <select id="windowSel" class="btn"><option value="ideal">Idealized week</option><option value="next7">Next 7 days</option></select>
+    </label>
+    <label class="switch">View TZ:
+      <select id="tzSel" class="btn"><option value="420">Asia/Jakarta (+07)</option><option value="0">UTC</option><option value="-300">US East (−05)</option></select>
+    </label>
+    <div class="spacer"></div>
+    <label class="switch">Load:
+      <select id="metricSel" class="btn"><option value="count">Fire count</option><option value="load">Worker-minutes</option></select>
+    </label>
+    <label class="switch"><input type="checkbox" id="hideSub" /> Hide sub-hourly</label>
+    <label class="switch"><input type="checkbox" id="logScale" /> Log</label>
+  </div>
+
+  <!-- TOOLBAR 2: demand agg + lookback + workers -->
+  <div class="toolbar">
+    <label class="switch" id="aggWrap">Demand:
+      <select id="aggSel" class="btn"><option value="avg">Average</option><option value="p95">p95 (busy)</option></select>
+    </label>
+    <label class="switch" id="lookWrap">Lookback:
+      <select id="lookSel" class="btn"><option>1w</option><option selected>4w</option><option>8w</option></select>
+    </label>
+    <label class="switch">Workers: <input id="capInput" class="btn" type="number" min="1" max="500" value="12" style="width:62px" /></label>
+    <div class="spacer"></div>
+    <span style="color:var(--text-muted);font-size:12px;">Queues:</span>
+    <div class="chips" id="queueChips"></div>
+    <button class="btn chip-mini" id="qAll">All</button>
+  </div>
+
+  <!-- TOOLBAR 3: views -->
+  <div class="toolbar">
+    <div class="seg" id="viewSeg">
+      <button data-view="planner" class="active">Planner</button>
+      <button data-view="punch">Punchcard</button>
+      <button data-view="qh">Queue × Hour</button>
+      <button data-view="multi">Per-queue</button>
+      <button data-view="cal">Calendar</button>
+      <button data-view="conc">Concurrency</button>
+      <button data-view="rec">Recommendations <span class="rec-dot" id="recBadge">0</span></button>
+    </div>
+    <div class="spacer"></div>
+    <label class="switch" id="dayWrap" style="display:none">Day:
+      <select id="daySel" class="btn"><option value="-1">All week</option><option>Mon</option><option>Tue</option><option>Wed</option><option selected>Thu</option><option>Fri</option><option>Sat</option><option>Sun</option></select>
+    </label>
+    <label class="switch" id="colorWrap" style="display:none">Color by:
+      <select id="colorSel" class="btn"><option value="vol">Volume</option><option value="fail">Failure rate</option></select>
+    </label>
+  </div>
+
+  <div class="banner" id="retentionNote">ℹ️ Ad-hoc demand aggregates historical executions over the lookback. Real fidelity is bounded by Hangfire job retention — production build would maintain its own incremental queue×hour rollup.</div>
+
+  <section class="view active card" id="view-planner">
+    <h2>Planner — cron over ad-hoc demand</h2>
+    <div class="hint"><b>Background shade</b> = on-demand (ad-hoc) load/hour; <b>dots</b> = projected cron (size = Load metric, color = queue). Green-ringed = low-load <b>safe windows</b>.</div>
+    <div class="gridwrap"><div></div><div class="hours" id="plHours"></div>
+      <div class="rowlabels" id="plRowLabels" style="grid-template-rows:repeat(7,1fr)"></div>
+      <div class="body" id="plBody" style="grid-template-rows:repeat(7,1fr)"></div></div>
+    <div class="legend">
+      <span class="key">on-demand:</span><span>low</span><span class="swatch" style="background:var(--ramp-1)"></span><span class="swatch" style="background:var(--ramp-3)"></span><span class="swatch" style="background:var(--ramp-5)"></span><span>high</span>
+      <span class="key" style="margin-left:14px"><span style="width:11px;height:11px;border-radius:50%;display:inline-block;border:2px solid var(--safe)"></span> safe window</span>
+      <span class="key" id="plQueueLegend"></span>
+    </div>
+  </section>
+
+  <section class="view card" id="view-punch">
+    <h2>Punchcard — day × hour</h2>
+    <div class="hint">Bubble size = Load metric for the active class. Projected cron tints by dominant queue; Historical tints by failure rate.</div>
+    <div class="gridwrap"><div></div><div class="hours" id="pcHours"></div>
+      <div class="rowlabels" id="pcRowLabels" style="grid-template-rows:repeat(7,1fr)"></div>
+      <div class="body" id="pcBody" style="grid-template-rows:repeat(7,1fr)"></div></div>
+    <div class="legend"><div class="sizes"><span>load:</span><span class="sz"><span class="pc-dot" style="width:6px;height:6px;background:var(--text-muted)"></span>low</span><span class="sz"><span class="pc-dot" style="width:13px;height:13px;background:var(--text-muted)"></span>med</span><span class="sz"><span class="pc-dot" style="width:20px;height:20px;background:var(--text-muted)"></span>high</span></div><span id="pcColorLegend" class="legend" style="margin:0"></span></div>
+  </section>
+
+  <section class="view card" id="view-qh">
+    <h2>Queue × Hour <span id="qhDayLabel" style="font-weight:400;color:var(--text-muted);font-size:12px"></span></h2>
+    <div class="hint">Per-queue intensity by hour. Cron queues show projected/historical; ad-hoc queues show the demand profile.</div>
+    <div class="gridwrap"><div></div><div class="hours" id="qhHours"></div>
+      <div class="rowlabels" id="qhRowLabels"></div><div class="body" id="qhBody"></div></div>
+    <div class="legend"><span>less</span><span class="swatch" style="background:var(--ramp-0)"></span><span class="swatch" style="background:var(--ramp-2)"></span><span class="swatch" style="background:var(--ramp-3)"></span><span class="swatch" style="background:var(--ramp-4)"></span><span class="swatch" style="background:var(--ramp-5)"></span><span>more</span></div>
+  </section>
+
+  <section class="view card" id="view-multi">
+    <h2>Per-queue — small multiples</h2>
+    <div class="hint">One day × hour heatmap per queue for side-by-side comparison across isolated queues.</div>
+    <div class="multi" id="multiGrid"></div>
+  </section>
+
+  <section class="view card" id="view-cal">
+    <h2>Calendar heatmap — day × hour</h2>
+    <div class="hint">Neutral ramp 2D matrix. Historical cron can recolor by failure rate. Reflects the active class &amp; Load metric.</div>
+    <div class="gridwrap"><div></div><div class="hours" id="calHours"></div>
+      <div class="rowlabels" id="calRowLabels" style="grid-template-rows:repeat(7,1fr)"></div>
+      <div class="body" id="calBody" style="grid-template-rows:repeat(7,1fr)"></div></div>
+    <div class="legend"><span>less</span><span class="swatch" style="background:var(--ramp-0)"></span><span class="swatch" style="background:var(--ramp-2)"></span><span class="swatch" style="background:var(--ramp-3)"></span><span class="swatch" style="background:var(--ramp-4)"></span><span class="swatch" style="background:var(--ramp-5)"></span><span>more</span></div>
+  </section>
+
+  <section class="view card" id="view-conc">
+    <h2>Concurrency — combined worker pressure</h2>
+    <div class="hint">Ad-hoc baseline (from demand profile) + projected cron, vs worker capacity. The honest "are we overloaded?" picture.</div>
+    <div class="cc-meta">
+      <div class="cc-stat"><div class="v danger" id="ccPeak">—</div><div class="l">Peak combined / min</div></div>
+      <div class="cc-stat"><div class="v" id="ccCap">12</div><div class="l">Worker capacity</div></div>
+      <div class="cc-stat"><div class="v" id="ccAdhoc">—</div><div class="l">Ad-hoc baseline peak</div></div>
+      <div class="cc-stat"><div class="v" id="ccPeakAt">—</div><div class="l">Worst time</div></div>
+    </div>
+    <div id="ccChart"></div>
+    <div class="legend" id="ccLegend"></div>
+  </section>
+
+  <section class="view card" id="view-rec">
+    <h2>Overlap recommendations (demand-aware)</h2>
+    <div class="hint">Cron clusters flagged with a stagger simulation; warns when a slot collides with high ad-hoc demand and suggests a lower-demand window. Ad-hoc is never rescheduled.</div>
+    <div id="recList"></div>
+  </section>
+
+  <div class="card">
+    <h2>Jobs <span style="font-weight:400;color:var(--text-muted);font-size:12px">(by class)</span></h2>
+    <table><thead><tr><th>Job / source</th><th>Cron / trigger</th><th>Queue</th><th>Class</th><th>TZ</th><th>~dur</th><th id="colMetric">Load/day</th></tr></thead><tbody id="jobTable"></tbody></table>
+  </div>
+
+  <div class="note">Static mockup, synthetic data. Cron = projected via Cronos (deterministic) or historical actuals. Ad-hoc = historical demand profile (Average or p95 over lookback). Combined overlay = place controllable cron into the gaps of real on-demand load.</div>
+</div>
+<div id="tip"></div>
+<script src="heatmap-mockup-v4.js"></script>
+</body>
+</html>
