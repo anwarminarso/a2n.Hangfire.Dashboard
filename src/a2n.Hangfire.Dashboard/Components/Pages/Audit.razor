@@ -58,6 +58,10 @@ else
         </div>
     </div>
 
+    <div class="d-flex justify-content-end align-items-center mb-2">
+        <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
+    </div>
+
     @if (_entries is null)
     {
         <p class="text-body-secondary">Loading...</p>
@@ -133,32 +137,17 @@ else
             </div>
         </div>
 
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
-            <div class="text-body-secondary small">
-                Showing @_entries.Count entr@(_entries.Count == 1 ? "y" : "ies")
-                @if (_pageOffset > 0)
-                {
-                    <text> · skipping first @_pageOffset</text>
-                }
-            </div>
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary" disabled="@(_pageOffset == 0)" @onclick="PrevPage">
-                    <i class="bi bi-chevron-left"></i> Previous
-                </button>
-                <button class="btn btn-outline-secondary" disabled="@(_entries.Count < _pageSize)" @onclick="NextPage">
-                    Next <i class="bi bi-chevron-right"></i>
-                </button>
-            </div>
-        </div>
+        <Pager TotalCount="_total" PageSize="_pageSize" From="_from" OnPageChanged="HandlePageChanged" />
     }
 }
 
 @code {
-    private const int _pageSize = 50;
     private const int _debounceMs = 350;
 
     private IReadOnlyList<AuditLogEntry> _entries;
-    private int _pageOffset;
+    private int _from;
+    private int _pageSize = 20;
+    private long _total;
 
     private string _actionPrefix = string.Empty;
     private string _userFilter = string.Empty;
@@ -174,7 +163,9 @@ else
     private async Task LoadAsync()
     {
         var filter = BuildFilter();
-        _entries = await Task.Run(() => AuditLog.Query(filter, _pageOffset, _pageSize));
+        var page = await Task.Run(() => AuditLog.QueryPage(filter, _from, _pageSize));
+        _entries = page.Items;
+        _total = page.TotalCount;
     }
 
     private AuditLogFilter BuildFilter() => new()
@@ -206,7 +197,7 @@ else
 
     private async Task ApplyFilters()
     {
-        _pageOffset = 0;
+        _from = 0;
         await LoadAsync();
     }
 
@@ -215,20 +206,21 @@ else
         _actionPrefix = string.Empty;
         _userFilter = string.Empty;
         _targetFilter = string.Empty;
-        _pageOffset = 0;
+        _from = 0;
         await LoadAsync();
     }
 
-    private async Task PrevPage()
+    private async Task HandlePageChanged((int From, int PageSize) e)
     {
-        if (_pageOffset == 0) return;
-        _pageOffset = Math.Max(0, _pageOffset - _pageSize);
+        _from = e.From;
+        _pageSize = e.PageSize;
         await LoadAsync();
     }
 
-    private async Task NextPage()
+    private async Task HandlePageSizeChanged(int newSize)
     {
-        _pageOffset += _pageSize;
+        _pageSize = newSize;
+        _from = 0;
         await LoadAsync();
     }
 

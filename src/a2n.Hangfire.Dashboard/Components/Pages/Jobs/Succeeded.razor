@@ -52,7 +52,7 @@
                                                @onchange="() => ToggleJob(job.Key)" />
                                     </td>
                                     <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                    <td>@GetJobName(job.Value)</td>
+                                    <td><span class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</span></td>
                                     <td>@GetPerformanceDuration(job.Value)</td>
                                     <td>@GetLatency(job.Value)</td>
                                     <td class="text-end">

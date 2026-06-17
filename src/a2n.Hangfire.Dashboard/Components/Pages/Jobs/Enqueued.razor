@@ -92,7 +92,7 @@ else
                                         </td>
                                         <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                         <td><span class="badge bg-secondary">@(job.Value?.State ?? "N/A")</span></td>
-                                        <td>@GetJobName(job.Value)</td>
+                                        <td><span class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</span></td>
                                         <td class="text-end">
                                             @if (job.Value?.EnqueuedAt.HasValue == true)
                                             {

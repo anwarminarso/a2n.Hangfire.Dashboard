@@ -97,7 +97,7 @@
                 <div class="form-text">
                     @(_isEdit
                         ? "The identifier cannot be changed when editing an existing job."
-                        : "A unique, stable id for this recurring job (e.g. nightly-cleanup). Lowercase letters, digits, underscore, and dash only.")
+                        : "A unique, stable id for this recurring job (e.g. nightly-cleanup or IShopifyJob.ShopifyStockSyncFromSapAsync). Letters, digits, dot, underscore, and dash only.")
                 </div>
             </div>
         </div>
@@ -363,6 +363,11 @@
 
     private bool _isEdit => !string.IsNullOrWhiteSpace(JobId);
 
+    // Existing recurring job ids (active + stopped), captured once for a NEW recurring job so the
+    // Job ID field can flag a duplicate inline before submit — create must not silently overwrite an
+    // existing job. Null in edit/enqueue mode.
+    private HashSet<string> _existingRecurringIds;
+
     // True when the selected method (or its declaring class) carries a QueueAttribute, making the
     // queue read-only with a precedence notice (Req 13.3).
     private bool _queueAttributePresent => _selectedMethod?.Queue is { IsPresent: true };
@@ -373,11 +378,25 @@
 
     // Hangfire's queue-name rule (EnqueuedState.ValidateQueueName): ^[a-z0-9_-]+$, with no length
     // bound of its own — storage imposes the practical cap (SQL Server's queue column is
-    // historically NVARCHAR(50)). The same strict rule is applied to a NEW recurring Job ID because
-    // it is carried in the /recurring/edit/{JobId} route (Req 7a, 7d).
+    // historically NVARCHAR(50)).
     private const int MaxQueueLength = 50;
-    private const int MaxIdentifierLength = 50;
-    private static readonly System.Text.RegularExpressions.Regex _identifierPattern =
+
+    // Recurring job IDs are stored as hash keys (recurring-job:{id}), not in the NVARCHAR(50) queue
+    // column, so they carry a far more generous practical bound. Real-world IDs derived from
+    // nameof(IInterface.Method) (e.g. IChannelEngineJob.ChannelEngineOrderDispatchFromShipStreamAsync)
+    // routinely exceed 50 characters (Issue #11).
+    private const int MaxIdentifierLength = 100;
+
+    // Hangfire permits mixed-case recurring job IDs — e.g. those AddOrUpdate<T> derives from
+    // nameof(IShopifyJob.ShopifyStockSyncFromSapAsync). The Job ID rule therefore accepts upper- and
+    // lower-case letters, digits, dot, underscore, and dash, matching what Hangfire itself allows
+    // (Issue #11). The id is URL-escaped into the /recurring/edit/{JobId} route, so these characters
+    // stay route-safe.
+    private static readonly System.Text.RegularExpressions.Regex _jobIdPattern =
+        new(@"^[A-Za-z0-9_.\-]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Hangfire's queue-name rule (EnqueuedState.ValidateQueueName) is strict lowercase: ^[a-z0-9_-]+$.
+    private static readonly System.Text.RegularExpressions.Regex _queueNamePattern =
         new("^[a-z0-9_-]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     // Inline validation messages (null = valid). Blank values do not raise an error while the
@@ -391,7 +410,10 @@
             // edit route keeps working for ids created before this rule existed (Req 7d).
             if (_isEdit || string.IsNullOrWhiteSpace(_jobId)) return null;
             if (_jobId.Length > MaxIdentifierLength) return $"Job ID must be {MaxIdentifierLength} characters or fewer.";
-            if (!_identifierPattern.IsMatch(_jobId)) return "Job ID must consist of lowercase letters, digits, underscore, and dash characters only.";
+            if (!_jobIdPattern.IsMatch(_jobId)) return "Job ID must consist of letters, digits, dot, underscore, and dash characters only.";
+            // Creating must not overwrite an existing recurring job (active or stopped).
+            if (_existingRecurringIds is not null && _existingRecurringIds.Contains(_jobId))
+                return $"A recurring job with id '{_jobId}' already exists. Choose a different id.";
             return null;
         }
     }
@@ -403,7 +425,7 @@
             // A QueueAttribute makes the queue read-only and its value wins, so there is nothing to validate.
             if (_queueAttributePresent || string.IsNullOrWhiteSpace(_queue)) return null;
             if (_queue.Length > MaxQueueLength) return $"Queue name must be {MaxQueueLength} characters or fewer.";
-            if (!_identifierPattern.IsMatch(_queue)) return "Queue name must consist of lowercase letters, digits, underscore, and dash characters only.";
+            if (!_queueNamePattern.IsMatch(_queue)) return "Queue name must consist of lowercase letters, digits, underscore, and dash characters only.";
             return null;
         }
     }
@@ -458,6 +480,24 @@
         _jobId = JobId ?? "";
         _queue = string.IsNullOrWhiteSpace(InitialQueue) ? EffectiveQueue.DefaultQueue : InitialQueue;
         _timeZoneId = InitialTimeZoneId ?? "";
+
+        // For a NEW recurring job, capture the existing ids (active + stopped) so the Job ID field
+        // flags duplicates inline; create must not silently overwrite an existing job. Best-effort —
+        // the submit path re-checks live storage to catch ids created since the form loaded.
+        if (Mode == JobBuilderMode.Recurring && !_isEdit)
+        {
+            try
+            {
+                var ids = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var existing in Monitor.GetRecurringJobs()) ids.Add(existing.Id);
+                foreach (var id in Monitor.GetStoppedRecurringJobIds()) ids.Add(id);
+                _existingRecurringIds = ids;
+            }
+            catch
+            {
+                // A storage hiccup leaves inline duplicate-detection off; submit still re-checks.
+            }
+        }
     }
 
     // The picker selected (or re-selected) a method; (re)build the parameter builder from it and
@@ -579,6 +619,31 @@
         if (JobIdError is not null) { _error = JobIdError; return; }
         if (QueueError is not null) { _error = QueueError; return; }
         if (TimeZoneError is not null) { _error = TimeZoneError; return; }
+
+        // Creating must not overwrite an existing recurring job: reject a duplicate id, re-checked
+        // here against live storage to catch ids created since the form loaded. Edit legitimately
+        // updates the existing job, so this guard applies to create only.
+        if (!_isEdit)
+        {
+            var jobId = _jobId;
+            var duplicate = await Task.Run(() =>
+            {
+                try
+                {
+                    return Monitor.GetRecurringJobs().Any(j => string.Equals(j.Id, jobId, StringComparison.Ordinal))
+                        || Monitor.GetStoppedRecurringJobIds().Contains(jobId);
+                }
+                catch
+                {
+                    return false;
+                }
+            });
+            if (duplicate)
+            {
+                _error = $"A recurring job with id '{jobId}' already exists. Choose a different id.";
+                return;
+            }
+        }
 
         _submitting = true;
         try

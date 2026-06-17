@@ -25,7 +25,7 @@
 }
 else
 {
-    <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div class="d-flex gap-2">
             @if (Options.EnableJobManagement)
             {
@@ -40,11 +40,20 @@ else
                 <i class="bi bi-trash"></i> Delete
             </button>
         </div>
-        <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
+        <div class="d-flex align-items-center gap-2 ms-auto">
+            @* Client-side filter over the loaded recurring jobs (Issue #13). Matches the job id and
+               the resolved job name; also narrows the Stopped Jobs section. *@
+            <div class="input-group input-group-sm" style="width: 18rem;">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="search" class="form-control" id="recurring-filter" placeholder="Filter by id or job name"
+                       value="@_filter" @oninput="OnFilterChanged" aria-label="Filter recurring jobs" />
+            </div>
+            <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
+        </div>
     </div>
 
     @* Stopped Jobs Section *@
-    @if (Options.EnableJobManagement && _stoppedJobs.Count > 0)
+    @if (Options.EnableJobManagement && FilteredStopped.Count > 0)
     {
         <div class="card mb-3">
             <div class="card-header">
@@ -64,13 +73,13 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var stopped in _stoppedJobs)
+                            @foreach (var stopped in FilteredStopped)
                             {
                                 <tr class="table-secondary">
-                                    <td class="font-monospace">@stopped.Id</td>
+                                    <td><span class="hf-job-name font-monospace" title="@stopped.Id">@stopped.Id</span></td>
                                     <td><code class="font-monospace">@stopped.Cron</code></td>
                                     <td>@(stopped.TimeZone ?? "UTC")</td>
-                                    <td>@stopped.TypeName.@stopped.MethodName</td>
+                                    <td><span class="hf-job-name" title="@($"{stopped.TypeName}.{stopped.MethodName}")">@stopped.TypeName.@stopped.MethodName</span></td>
                                     <td>
                                         @if (stopped.StoppedAt.HasValue)
                                         {
@@ -91,12 +100,12 @@ else
         </div>
     }
 
-    @if (_jobs.Count == 0 && _stoppedJobs.Count == 0)
+    @if ((_jobs?.Count ?? 0) == 0 && _stoppedJobs.Count == 0)
     {
         <EmptyState Icon="arrow-repeat" Color="secondary"
                     Message="No recurring jobs configured." />
     }
-    else if (_jobs.Count > 0)
+    else if (FilteredJobs.Count > 0)
     {
         <div class="card">
             <div class="card-body p-0">
@@ -119,16 +128,16 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var job in _jobs)
+                            @foreach (var job in FilteredJobs)
                             {
                                 <tr>
                                     <td>
                                         <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" />
                                     </td>
-                                    <td class="font-monospace">@job.Id</td>
+                                    <td><span class="hf-job-name font-monospace" title="@job.Id">@job.Id</span></td>
                                     <td><code class="font-monospace">@job.Cron</code></td>
                                     <td>@(job.TimeZoneId ?? "UTC")</td>
-                                    <td>@GetJobName(job)</td>
+                                    <td><span class="hf-job-name" title="@GetJobName(job)">@GetJobName(job)</span></td>
                                     <td class="text-end">
                                         @if (job.NextExecution.HasValue)
                                         {
@@ -196,6 +205,13 @@ else
         </div>
     }
 
+    @* Filter is active but nothing matched across both the active and stopped lists (Issue #13). *@
+    @if ((_jobs?.Count ?? 0) + _stoppedJobs.Count > 0 && FilteredJobs.Count == 0 && FilteredStopped.Count == 0)
+    {
+        <EmptyState Icon="search" Color="secondary"
+                    Message="@($"No recurring jobs match \"{_filter}\".")" />
+    }
+
     @* Delete Confirmation Modal *@
     <ConfirmModal Visible="@_showDeleteConfirm"
                   Title="Confirm Delete"
@@ -213,6 +229,40 @@ else
     private int _pageSize = 20;
     private Timer _refreshTimer;
     private string _successMessage;
+
+    // Client-side filter text (Issue #13). Matches job id and resolved job name, case-insensitive.
+    private string _filter = "";
+
+    // The active recurring jobs after applying the filter (Issue #13).
+    private IReadOnlyList<RecurringJobDto> FilteredJobs =>
+        _jobs is null
+            ? Array.Empty<RecurringJobDto>()
+            : string.IsNullOrWhiteSpace(_filter)
+                ? _jobs
+                : _jobs.Where(MatchesFilter).ToList();
+
+    // The stopped recurring jobs after applying the same filter (Issue #13).
+    private List<StoppedJobInfo> FilteredStopped =>
+        string.IsNullOrWhiteSpace(_filter)
+            ? _stoppedJobs
+            : _stoppedJobs
+                .Where(s => Contains(s.Id) || Contains($"{s.TypeName}.{s.MethodName}"))
+                .ToList();
+
+    private bool MatchesFilter(RecurringJobDto job) =>
+        Contains(job.Id) || Contains(GetJobName(job));
+
+    private bool Contains(string value) =>
+        !string.IsNullOrEmpty(value) &&
+        value.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private void OnFilterChanged(ChangeEventArgs e)
+    {
+        _filter = e.Value?.ToString() ?? "";
+        // A narrowed view shouldn't keep selections for rows that are no longer visible.
+        _selectedJobs.RemoveWhere(id => !FilteredJobs.Any(j => j.Id == id));
+        _selectAll = FilteredJobs.Count > 0 && FilteredJobs.All(j => _selectedJobs.Contains(j.Id));
+    }
 
     // Carries the deleted job id when arriving from the edit-form delete so a confirmation can be
     // shown on the list (Issue #10 — success message on delete).
@@ -314,19 +364,20 @@ else
     private void ToggleJob(string id)
     {
         if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id);
-        _selectAll = _jobs != null && _selectedJobs.Count == _jobs.Count;
+        _selectAll = FilteredJobs.Count > 0 && FilteredJobs.All(j => _selectedJobs.Contains(j.Id));
     }
     private void ToggleAll(ChangeEventArgs e)
     {
         if (_jobs is null) return;
         if ((bool)(e.Value ?? false))
         {
-            _selectedJobs = new(_jobs.Select(j => j.Id));
+            // Select only the currently visible (filtered) jobs (Issue #13).
+            foreach (var job in FilteredJobs) _selectedJobs.Add(job.Id);
             _selectAll = true;
         }
         else
         {
-            _selectedJobs.Clear();
+            foreach (var job in FilteredJobs) _selectedJobs.Remove(job.Id);
             _selectAll = false;
         }
     }

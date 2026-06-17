@@ -53,7 +53,7 @@ else
                                 </td>
                                 <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                 <td>
-                                    <div>@GetJobName(job.Value)</div>
+                                    <div class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</div>
                                     @if (!string.IsNullOrEmpty(job.Value?.Reason))
                                     {
                                         <div class="text-muted small">@TruncateReason(job.Value.Reason)</div>

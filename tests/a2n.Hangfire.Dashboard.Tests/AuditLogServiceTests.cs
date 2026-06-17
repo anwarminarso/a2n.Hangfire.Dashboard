@@ -132,4 +132,50 @@ public class AuditLogServiceTests
 
         Assert.Empty(AllEntries(svc));
     }
+
+    // --- QueryPage: numbered-pager support (filtered total + page slice) --------------------
+
+    [Fact]
+    public void QueryPage_ReturnsFilteredTotal_AndPageSlice()
+    {
+        var svc = Create();
+        for (var i = 0; i < 5; i++)
+        {
+            svc.Log(AuditAction.QueuePaused, target: $"q{i}");
+            System.Threading.Thread.Sleep(2);
+        }
+
+        var first = svc.QueryPage(new AuditLogFilter(), from: 0, count: 2);
+        Assert.Equal(5, first.TotalCount);   // total across all pages
+        Assert.Equal(2, first.Items.Count);  // page slice honours count
+
+        var last = svc.QueryPage(new AuditLogFilter(), from: 4, count: 2);
+        Assert.Equal(5, last.TotalCount);
+        Assert.Single(last.Items);           // only the remaining entry on the last page
+    }
+
+    [Fact]
+    public void QueryPage_TotalCount_ReflectsFilter()
+    {
+        var svc = Create();
+        svc.Log(AuditAction.QueuePaused, target: "alpha");
+        svc.Log(AuditAction.JobDeleted, target: "beta");
+        svc.Log(AuditAction.QueueResumed, target: "gamma");
+
+        var queueOnly = svc.QueryPage(new AuditLogFilter { ActionPrefix = "queue." }, from: 0, count: 10);
+        Assert.Equal(2, queueOnly.TotalCount);
+        Assert.Equal(2, queueOnly.Items.Count);
+    }
+
+    [Fact]
+    public void QueryPage_NewestFirst()
+    {
+        var svc = Create();
+        svc.Log(AuditAction.QueuePaused, target: "q1");
+        System.Threading.Thread.Sleep(5);
+        svc.Log(AuditAction.QueueResumed, target: "q2");
+
+        var page = svc.QueryPage(new AuditLogFilter(), from: 0, count: 10);
+        Assert.Equal(AuditAction.QueueResumed, page.Items[0].Action);
+    }
 }

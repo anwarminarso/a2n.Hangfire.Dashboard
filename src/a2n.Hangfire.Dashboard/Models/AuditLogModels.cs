@@ -94,3 +94,11 @@ public class AuditLogOptions
     /// </summary>
     public int MaxEntries { get; set; } = 10_000;
 }
+
+/// <summary>
+/// A page of audit-log entries plus the total number of entries matching the query's filter, used
+/// to render a numbered pager on the Audit Log page.
+/// </summary>
+/// <param name="Items">The entries for the requested page, newest-first.</param>
+/// <param name="TotalCount">Total entries matching the filter across all pages.</param>
+public sealed record AuditLogPage(IReadOnlyList<AuditLogEntry> Items, int TotalCount);

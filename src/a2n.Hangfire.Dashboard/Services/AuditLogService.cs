@@ -175,6 +175,56 @@ public class AuditLogService
         }
     }
 
+    /// <summary>
+    /// Returns a page of audit entries (newest-first) together with the total number of entries that
+    /// match <paramref name="filter"/>, so the UI can render a numbered pager. Unlike
+    /// <see cref="Query(AuditLogFilter, int, int)"/> this evaluates the full filtered set to produce
+    /// an exact total; the work is bounded by <see cref="AuditLogOptions.MaxEntries"/> and the page
+    /// is admin-only, so a single pass over the (capped) set is acceptable.
+    /// </summary>
+    public AuditLogPage QueryPage(AuditLogFilter filter, int from, int count)
+    {
+        if (count <= 0 || !_options.AuditLog.Enabled)
+            return new AuditLogPage(Array.Empty<AuditLogEntry>(), 0);
+
+        try
+        {
+            using var connection = _storage.GetReadOnlyConnection();
+            if (connection is not JobStorageConnection storageConnection)
+                return new AuditLogPage(Array.Empty<AuditLogEntry>(), 0);
+
+            // See Query(): int.MaxValue overflows the SQL providers' "@endingAt + 1".
+            const int maxIndex = int.MaxValue - 1;
+            var ids = storageConnection.GetRangeFromSet(SetKey, 0, maxIndex);
+
+            // Newest-first (ids begin with zero-padded ticks, so an ordinal sort is chronological).
+            var sortedIds = ids.OrderByDescending(s => s, StringComparer.Ordinal);
+
+            var matched = new List<AuditLogEntry>();
+            foreach (var id in sortedIds)
+            {
+                var hash = storageConnection.GetAllEntriesFromHash(EntryKeyPrefix + id);
+                if (hash is null || hash.Count == 0) continue;
+                if (hash.ContainsKey("_deleted")) continue;
+
+                var entry = HashToEntry(id, hash);
+                if (!Matches(entry, filter)) continue;
+                matched.Add(entry);
+            }
+
+            var page = from >= matched.Count
+                ? (IReadOnlyList<AuditLogEntry>)Array.Empty<AuditLogEntry>()
+                : matched.GetRange(from, Math.Min(count, matched.Count - from));
+
+            return new AuditLogPage(page, matched.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "AuditLogService.QueryPage failed");
+            return new AuditLogPage(Array.Empty<AuditLogEntry>(), 0);
+        }
+    }
+
     /// <summary>Manually trims old entries beyond retention or max-entries cap.</summary>
     public void TrimAsync()
     {
