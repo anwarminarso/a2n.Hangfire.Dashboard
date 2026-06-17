@@ -35,6 +35,8 @@ Navigate to `/hangfire`. Done.
 
 Create and schedule jobs **with their arguments** directly from the dashboard — no code change, no redeploy. This closes a long-standing gap: the recurring editor previously built jobs with empty arguments, so parameterized methods couldn't be scheduled correctly ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)).
 
+> **2.4.2 (patch)** — recurring jobs now accept mixed-case/dotted ids and editable never-fire cron expressions ([#11](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/11)); a client-side filter on the Recurring Jobs page ([#13](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/13)); long job names no longer break the table layout ([#12](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/12)); a duplicate-id guard when creating; and the Audit Log page gains an items-per-page selector and paged navigation. See the [changelog](CHANGELOG.md).
+
 > **2.4.1 (patch)** — searchable method picker; contract-aware resolution so interface/abstract targets keep their class-level `[Tag]`/`[Queue]` and display names; fixed editing a recurring job whose method takes an injected parameter ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)); consistent solid-red Delete buttons across all job pages. See the [changelog](CHANGELOG.md).
 
 | | Feature | What you get |
@@ -96,7 +98,7 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Feature | Description |
 |---------|-------------|
 | Job monitoring | Job state pages, batch operations, servers, retries |
-| Recurring jobs | Create, edit, start, and stop recurring jobs from the UI |
+| Recurring jobs | Create, edit, start, and stop recurring jobs from the UI, with a client-side id/name filter |
 | Job Builder | 🆕 Create & schedule jobs **with typed arguments** — guided parameter form (+ JSON), method discovery, overload-safe resolution, and one-off enqueue at `/jobs/enqueue` — see [Job Builder](#job-builder) |
 | Visual cron builder | 🆕 Build cron schedules field-by-field with a human-readable description and next-run preview |
 | Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
@@ -109,7 +111,7 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
 | Health checks | 🆕 `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
 | Queue pause / maintenance | 🆕 Pause individual queues or enable global maintenance mode — see [Operations](#operations) |
-| Audit log | 🆕 Every admin action recorded (who, when, what) — see [Operations](#operations) |
+| Audit log | 🆕 Every admin action recorded (who, when, what) — filterable, paged — see [Operations](#operations) |
 | Realtime updates | Live metrics via SignalR |
 | Authorization | Local-only default (same as Hangfire); optional async filters and `LoginPath` redirect |
 | Theming | Dark, light, or auto; responsive layout |
@@ -523,7 +525,7 @@ Every admin action performed through the dashboard is recorded:
 
 Each entry captures: timestamp (UTC), user (or `(anonymous)` for unauthenticated local requests), client IP, action, target, optional reason, and a small metadata bag (e.g., batch counts).
 
-The `/audit` page filters by action prefix (job/jobs/recurring/queue/maintenance), user (substring), and target. Storage uses Hangfire's KV primitives — no schema changes. Configurable retention:
+The `/audit` page filters by action prefix (job/jobs/recurring/queue/maintenance), user (substring), and target, with an items-per-page selector and paged navigation. Storage uses Hangfire's KV primitives — no schema changes. Configurable retention:
 
 ```csharp
 AuditLog = new AuditLogOptions

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.4.2 — Recurring & Audit Follow-up
+
+> **Patch release.** Operator-feedback fixes for the Recurring Jobs surface and the Job Builder form ([#11](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/11), [#12](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/12), [#13](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/13)), plus Audit Log grid parity.
+
+### Fixed
+
+- **Recurring job IDs could not use uppercase or dots ([#11](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/11)).** The Create/Edit form held a new Job ID to a strict lowercase rule (`^[a-z0-9_-]+$`), rejecting the mixed-case/dotted ids that `AddOrUpdate<T>` produces (e.g. `IShopifyJob.ShopifyStockSyncFromSapAsync`). The rule now accepts upper- and lower-case letters, digits, dot, underscore, and dash, and the length cap was raised 50 → 100 (recurring ids are stored as hash keys, not in the NVARCHAR(50) queue column). Queue names keep the strict lowercase rule (`EnqueuedState.ValidateQueueName`).
+- **Editing a recurring job and saving without touching the schedule failed ([#11](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/11)).** `ScheduleBuilder` did not emit its loaded schedule on init, so the form had no cron until the operator interacted with a schedule control — saving first reported "a valid cron expression is required." It now emits the loaded schedule state on initialization. Intentionally unreachable "never-fire" expressions (e.g. `0 0 31 2 *`) round-trip as valid with a "no upcoming occurrence" note instead of an error.
+- **Long job names broke the recurring table layout ([#12](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/12)).** Job name and id columns are now constrained with `text-overflow: ellipsis` and a hover tooltip showing the full value (`.hf-job-name`), applied across the recurring and job-list grids, so a single long value can no longer widen the table and push later columns off-screen.
+
+### Added
+
+- **Recurring jobs filter ([#13](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/13)).** A client-side filter input on the Recurring Jobs page narrows both the active and stopped lists by job id and resolved job name; selection follows the filtered view.
+- **Duplicate recurring job id rejected on create.** Entering an id that already exists (active or stopped) on the create form flags it inline and blocks submission, re-checked against live storage at submit so a create never silently overwrites an existing recurring job. Edit still updates the existing job.
+- **Audit Log grid parity.** The Audit Log page now uses the shared items-per-page selector and a numbered pager (matching the job-list grids), backed by a new `AuditLogService.QueryPage` that returns the page slice plus the filtered total. The existing action/user/target filters are preserved.
+
+### Internal
+
+- New bunit/service tests: schedule initial-emit + never-fire validity, Job ID mixed-case acceptance and duplicate rejection, the recurring-list filter, and `AuditLogService.QueryPage`. The backlog now records [#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14) (recurring schedule heatmap) and [#15](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/15) (dynamic job chaining).
+
 ## 2.4.1 — Job Builder Follow-up
 
 > **Patch release.** Polishes the v2.4.0 Job Builder: a searchable method picker, correct attribute/display-name resolution for interface and abstract contracts, a fix for editing recurring jobs whose method takes an injected parameter ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)), and a consistent destructive-action button style across all job pages.
