@@ -3,6 +3,7 @@ using System.Linq;
 using Bunit;
 using Hangfire;
 using Hangfire.InMemory;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using a2n.Hangfire.Dashboard;
@@ -248,6 +249,58 @@ public class RecurringEditorComponentTests
         // Switch to JSON mode: an absent/empty Args yields an empty Parameter_JSON array "[]" (Req 3.2).
         JsonModeButton(cut).Click();
         Assert.Equal("[]", ParameterJsonTextarea(cut).GetAttribute("value"));
+    }
+
+    // --- Issue #11 — editing a never-fire job and saving without touching the schedule -------
+
+    [Fact]
+    public void Edit_Submit_Without_Touching_Schedule_Succeeds_For_NeverFire_Cron()
+    {
+        var (ctx, svc, opts) = NewContext();
+        using var _ctx = ctx;
+
+        // The fixture method is discovered via the loaded-assembly (custom) path, so allow custom
+        // invocation — this test isolates the schedule-state behavior, not the custom-method gate.
+        opts.AllowArbitraryMethodInvocation = true;
+
+        // Seed a job registered with an intentionally unreachable ("never-fire") cron — the pattern
+        // operators use to keep a job manual-trigger-only (Issue #11).
+        var seed = svc.CreateOrUpdateRecurringJob(Request(
+            jobId: "recurring-editor-neverfire",
+            method: nameof(RecurringEditorFixtureJob.DoNothing),
+            parameterJson: "[]",
+            cron: "0 0 31 2 *"));
+        Assert.True(seed.Success, seed.Error);
+
+        var nav = ctx.Services.GetRequiredService<NavigationManager>();
+
+        var cut = ctx.RenderComponent<RecurringEditor>(p => p
+            .Add(c => c.JobId, "recurring-editor-neverfire"));
+
+        // The schedule shows the never-fire cron, pre-filled in Manual mode.
+        Assert.Equal("0 0 31 2 *", cut.Find("#cron-manual").GetAttribute("value"));
+
+        // Click "Update recurring job" WITHOUT touching the schedule. Before the fix the schedule
+        // state was never emitted on load, so the submit failed with "A valid cron expression is
+        // required"; now the loaded cron is emitted on init and the edit succeeds (Issue #11).
+        cut.FindAll("button")
+            .Single(b => b.TextContent.Contains("Update recurring job", StringComparison.Ordinal))
+            .Click();
+
+        // Success navigates back to the recurring jobs list. If a submission error is shown instead,
+        // surface it to make the failure actionable.
+        try
+        {
+            cut.WaitForState(() => nav.Uri.EndsWith("recurring", StringComparison.Ordinal), TimeSpan.FromSeconds(5));
+        }
+        catch (Exception)
+        {
+            var error = cut.FindAll("div.alert-danger");
+            Assert.Fail(error.Count > 0
+                ? $"Submit did not navigate; error shown: {error[0].TextContent.Trim()}"
+                : "Submit did not navigate and no error alert was rendered.");
+        }
+        Assert.EndsWith("recurring", nav.Uri, StringComparison.Ordinal);
     }
 }
 

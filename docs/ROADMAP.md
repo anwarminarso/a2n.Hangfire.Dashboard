@@ -304,6 +304,19 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 ---
 
+## v2.4.2 — Recurring & Job Builder Follow-up ✅
+
+**Goal**: Address operator feedback on the recurring jobs surface and the Job Builder form.
+
+- ✅ **Mixed-case recurring job IDs** ([#11](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/11)) — the Create/Edit form's Job ID rule no longer forces lowercase; it now accepts upper/lower-case letters, digits, dot, underscore, and dash (e.g. `IShopifyJob.ShopifyStockSyncFromSapAsync`), matching what Hangfire's `AddOrUpdate<T>` permits. The identifier length cap was raised (50 → 100) since IDs are stored as hash keys, not in the NVARCHAR(50) queue column. The strict lowercase rule still applies to queue names (Hangfire's `EnqueuedState.ValidateQueueName`).
+- ✅ **Never-fire cron expressions editable** ([#11](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/11)) — the Schedule Builder now emits its loaded schedule state on initialization, so editing a recurring job and saving without touching the schedule no longer fails with "a valid cron expression is required." Intentionally unreachable expressions (e.g. `0 0 31 2 *`) round-trip as valid — Cronos/Hangfire parse them successfully — with a clear note that the job won't run on a schedule and can be triggered manually.
+- ✅ **Long job names / ids no longer break table layout** ([#12](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/12)) — the recurring and job-list name/id columns are constrained with `max-width` + ellipsis (`.hf-job-name`) and a hover tooltip showing the full value, so a single long value can't widen the table and hide later columns.
+- ✅ **Recurring jobs filter** ([#13](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/13)) — a client-side filter input on the Recurring Jobs page narrows both the active and stopped lists by job id and resolved job name; selection state follows the filtered view.
+- ✅ **Duplicate recurring job id rejected on create** — the Job Builder flags an existing id (active or stopped) inline and blocks submission, re-checking live storage at submit so a create never silently overwrites an existing recurring job. Edit still updates the existing job.
+- ✅ **Audit Log grid parity** — the Audit Log page now uses the shared items-per-page selector and numbered pager (matching the job-list grids) via a new `AuditLogService.QueryPage` that returns the page slice plus the filtered total; the existing action/user/target filters are preserved.
+
+---
+
 ## v2.5 — Notifications & Alert Rules (Planned)
 
 **Goal**: Alert the right channel when something goes wrong, without polling the dashboard. Granular plan replacing the original single-bullet "Webhook notifications".
@@ -354,12 +367,14 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 Items considered but explicitly **not prioritized**. Will be reconsidered when 5+ users explicitly request them.
 
+- [ ] **Recurring schedule heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) — heatmap of job execution frequency by queue × day × hour to surface scheduling density, overlap, and overload hotspots. Reference: [Hangfire.Community.Dashboard.Heatmap](https://github.com/brodrigz/Hangfire.Community.Dashboard.Heatmap). Same demand-driven treatment as the Gantt timeline below — revisit once several users request it.
 - [ ] **Job Execution Timeline (Gantt)** — visually impressive but adoption is estimated to be low for typical small/medium deployments. Reconsider after v2.3 ships and based on demand.
 - [ ] **Multi-instance federation** — dashboard switcher for dev/staging/prod or sharded Hangfire deployments. Storage adapter is already modular, so the architecture is ready when demand appears.
 - [ ] **Replay with modified arguments** — failed-job rerun with edited arguments (powerful but easy to misuse without RBAC; gate behind the audit log shipped in v2.3 Operations).
 - [ ] **Failure clustering / fingerprint** — group Failed page by exception fingerprint (Sentry-style). Significant debug-experience improvement; defer until the v2.3 trigger-engine stabilizes the data path.
 - [ ] **Search by job argument value** — index `Job.Arguments` for support-case lookups (`customerId == "C-12345"`). Requires storage adapter changes per provider.
 - [x] **Visual cron builder** — interactive recurring-job editor instead of plain cron string input. ✅ **Done in v2.4** (`ScheduleBuilder` — field-by-field Every/Specific/Range/Step + manual input with human-readable description and next-run preview).
+- [ ] **Dynamic job chaining / visual chain builder** ([#15](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/15)) — operator-managed continuation/fan-out so downstream jobs can be added without a redeploy. **Out of scope** for the dashboard: building, persisting, and resolving chain definitions at runtime is a Hangfire core concern that sits below the dashboard layer. Recorded as a discussion item only.
 - [ ] **Browser push notifications** — explicitly **out of scope**. Ops teams don't monitor via browser tabs; webhook + email cover the use case.
 - [ ] **Configurable homepage widgets** — over-engineered for a focused dashboard; revisit only on explicit demand.
 - [ ] **CLI companion** (`hangfire-cli` global tool) — depends on the v2.3 REST API.
@@ -392,6 +407,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.3.1 | Realtime analytics fixes: SQL Server `GROUP BY` (error 144), fixed-cadence broadcast loop, NuGet XML docs | ✅ Done |
 | v2.4.0 | **Job Builder**: typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page (closes #8) | ✅ Done |
 | v2.4.1 | **Job Builder follow-up**: searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix (#10), consistent destructive-action buttons | ✅ Done |
+| v2.4.2 | **Recurring & Job Builder follow-up**: mixed-case job IDs + never-fire cron edit (#11), long-name ellipsis (#12), recurring jobs filter (#13) | ✅ Done |
 | v2.5.0 | **Notifications & alert rules**: Slack/Teams/Discord/webhook/email channels, 8 trigger types, cooldown, rule editor + history | Planned |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |

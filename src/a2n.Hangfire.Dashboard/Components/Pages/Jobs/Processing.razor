@@ -83,7 +83,7 @@
                                             {
                                                 <i class="bi bi-exclamation-triangle text-warning me-1" title="Server heartbeat timeout — job may be aborted"></i>
                                             }
-                                            @GetJobName(job.Value)
+                                            <span class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</span>
                                         </td>
                                         <td class="text-end">
                                             @if (job.Value.StartedAt.HasValue)

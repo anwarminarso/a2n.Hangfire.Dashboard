@@ -263,6 +263,77 @@ public class JobBuilderComponentTests
     }
 
     // =======================================================================================
+    // Job ID validation (Issue #11 — mixed-case / dotted identifiers)
+    // =======================================================================================
+
+    [Theory]
+    [InlineData("IShopifyJob.ShopifyStockSyncFromSapAsync")] // mixed-case + dots, as AddOrUpdate<T> produces
+    [InlineData("Nightly_Cleanup-2")]                        // mixed-case + underscore + dash
+    [InlineData("nightly-cleanup")]                          // the previously-allowed lowercase form
+    public void JobId_Accepts_MixedCase_And_Dotted_Identifiers(string id)
+    {
+        var h = NewContext();
+        using var _ = h.Ctx;
+
+        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+
+        cut.Find("#job-builder-id").Input(id);
+
+        // A Hangfire-compatible id is accepted: no invalid styling and no inline validation message
+        // (Issue #11). Queue defaults to "default" and the time zone is blank, so neither raises one.
+        var input = cut.Find("#job-builder-id");
+        Assert.DoesNotContain("is-invalid", input.GetAttribute("class") ?? string.Empty);
+        Assert.Empty(cut.FindAll(".invalid-feedback"));
+    }
+
+    [Theory]
+    [InlineData("bad id")]   // space
+    [InlineData("bad/id")]   // slash
+    [InlineData("bad:id")]   // colon
+    public void JobId_Rejects_Disallowed_Characters(string id)
+    {
+        var h = NewContext();
+        using var _ = h.Ctx;
+
+        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+
+        cut.Find("#job-builder-id").Input(id);
+
+        // Characters outside [A-Za-z0-9_.-] are still rejected with inline feedback.
+        var input = cut.Find("#job-builder-id");
+        Assert.Contains("is-invalid", input.GetAttribute("class") ?? string.Empty);
+    }
+
+    [Fact]
+    public void JobId_Flags_Existing_Recurring_Id_As_Duplicate_On_Create()
+    {
+        var h = NewContext(registered: Describe(typeof(Jbc164_PlainJob), nameof(Jbc164_PlainJob.RunNoArgs)));
+        using var _ = h.Ctx;
+
+        // Seed an existing recurring job so its id is already taken.
+        var seed = h.Service.CreateOrUpdateRecurringJob(new RecurringJobRequest(
+            JobId: "jbc164-existing",
+            TypeName: typeof(Jbc164_PlainJob).FullName,
+            MethodName: nameof(Jbc164_PlainJob.RunNoArgs),
+            ParameterJson: "[]",
+            Cron: "0 0 * * *",
+            Queue: "default",
+            TimeZoneId: null,
+            IsCustomMethod: false));
+        Assert.True(seed.Success, seed.Error);
+
+        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+
+        // Entering the existing id on a create form flags a duplicate inline — create must not
+        // silently overwrite an existing recurring job.
+        cut.Find("#job-builder-id").Input("jbc164-existing");
+
+        var input = cut.Find("#job-builder-id");
+        Assert.Contains("is-invalid", input.GetAttribute("class") ?? string.Empty);
+        Assert.Contains("already exists", cut.Markup);
+    }
+
+    // =======================================================================================
     // Queue control states (Req 13.2, 13.3, 13.4)
     // =======================================================================================
 

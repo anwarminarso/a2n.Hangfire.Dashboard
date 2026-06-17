@@ -148,4 +148,43 @@ public class ScheduleBuilderComponentTests
         Assert.Equal("not a cron", captured.Cron);
         Assert.False(captured.IsValid);
     }
+
+    // -- Issue #11: initial schedule state is emitted on load (no interaction required) ----------
+
+    [Fact]
+    public void EmitsInitialScheduleState_OnLoad_WithoutInteraction()
+    {
+        using var ctx = new Bunit.TestContext();
+
+        ScheduleBuilder.ScheduleState captured = null;
+        var cut = ctx.RenderComponent<ScheduleBuilder>(parameters => parameters
+            .Add(p => p.OnScheduleChanged, (ScheduleBuilder.ScheduleState s) => captured = s));
+
+        // The builder emits its initial (default) schedule state on load so the parent has a cron and
+        // its validity immediately — without the operator touching a schedule control (Issue #11).
+        Assert.NotNull(captured);
+        Assert.False(string.IsNullOrWhiteSpace(captured.Cron));
+        Assert.True(captured.IsValid);
+    }
+
+    [Fact]
+    public void EmitsInitialScheduleState_ForNeverFireCron_AsValid()
+    {
+        using var ctx = new Bunit.TestContext();
+
+        ScheduleBuilder.ScheduleState captured = null;
+        var cut = ctx.RenderComponent<ScheduleBuilder>(parameters => parameters
+            .Add(p => p.InitialCron, "0 0 31 2 *")
+            .Add(p => p.OnScheduleChanged, (ScheduleBuilder.ScheduleState s) => captured = s));
+
+        // An intentionally unreachable ("never-fire") expression is emitted on load and reported
+        // valid (Issue #11): Cronos/Hangfire parse it successfully even though it never occurs.
+        Assert.NotNull(captured);
+        Assert.Equal("0 0 31 2 *", captured.Cron);
+        Assert.True(captured.IsValid);
+
+        // The UI explains there is no upcoming occurrence rather than flagging it as an error.
+        Assert.Contains("no upcoming occurrence", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("The cron expression is invalid", cut.Markup);
+    }
 }

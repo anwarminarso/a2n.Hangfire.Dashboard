@@ -136,7 +136,7 @@
             {
                 <div class="mt-2 d-flex align-items-center gap-2 text-body-secondary small">
                     <i class="bi bi-calendar-x"></i>
-                    <span>No upcoming occurrence for this expression.</span>
+                    <span>This expression has no upcoming occurrence, so the job will not run on a schedule. It can still be started with a manual trigger.</span>
                 </div>
             }
         }
@@ -207,7 +207,13 @@
                 _cron = CronDescriber.Build(CurrentFields());
             }
 
-            Recompute(notify: false);
+            // Emit the initial schedule state so the parent (JobBuilder) has the loaded cron and its
+            // validity immediately — without requiring the operator to touch a schedule control.
+            // This makes editing a recurring job and saving without changing the schedule work, and
+            // lets intentional never-fire expressions (e.g. "0 0 31 2 *") round-trip as valid since
+            // Cronos/Hangfire parse them successfully even though they have no next occurrence
+            // (Issue #11).
+            Recompute(notify: true);
             return;
         }
 

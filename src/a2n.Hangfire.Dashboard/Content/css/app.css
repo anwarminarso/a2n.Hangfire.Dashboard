@@ -1220,3 +1220,19 @@ a.hf-st-link:hover .hf-st-link-icon {
     overflow-y: auto;
 }
 .hf-combobox-menu .hf-method-option { cursor: pointer; }
+
+/* ===== Long identifier / job-name cells (Issue #12) =====
+   Constrains long job ids and resolved job names in table cells so a single long value can't
+   widen the table and push later columns off-screen. The full value remains available via the
+   element's title (hover) tooltip. */
+.hf-job-name {
+    display: inline-block;
+    max-width: 22rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+@media (max-width: 991.98px) {
+    .hf-job-name { max-width: 14rem; }
+}
