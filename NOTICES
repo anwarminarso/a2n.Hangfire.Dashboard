@@ -83,3 +83,15 @@ https://github.com/nickvdyck/Hangfire.RecurringJobAdmin/blob/master/LICENSE
 
 Note: The recurring job admin functionality is a clean-room reimplementation
 inspired by the original project's feature set.
+
+================================================================================
+
+Hangfire.Community.Dashboard.Heatmap (design inspiration)
+Copyright (c) Bruno Rodrigues (brodrigz)
+Licensed under the MIT License
+https://github.com/brodrigz/Hangfire.Community.Dashboard.Heatmap/blob/master/LICENSE.md
+
+Note: The Recurring Schedule Heatmap feature in a2n.Hangfire.Dashboard is a
+clean-room implementation for the Blazor stack, inspired by this project's
+concept of visualizing recurring-job scheduling density. It does not copy
+source code from the original.

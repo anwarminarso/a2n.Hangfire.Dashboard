@@ -1,0 +1,63 @@
+@*
+    QueueHourView (task 11.2) — the "Queue × Hour" Phase 1 view described by
+    docs/mockups/heatmap-mockup-v4.html (renderQH).
+
+    Renders one row per visible queue against exactly 24 hour columns (00..23), shading each cell by
+    its Load_Metric value (Req 3.1). The value shown per cell depends on the selected display mode:
+
+      • per-day  (SelectedDay 0..6) — each cell shows its value for that single day only (Req 3.2);
+      • whole-week (SelectedDay < 0) — each cell shows its value summed across all seven days (Req 3.3).
+
+    Both modes are derived purely from the aggregated HeatmapMatrix via the existing
+    MatrixViews.SliceDay / MatrixViews.SumWeek helpers (task 4.1), so this component never
+    re-implements bucketing. The model is handed to the shared Chart.js/DOM renderer
+    window.heatmapCharts.renderQueueHour, matching the IJSRuntime interop used by the analytics chart
+    components.
+*@
+@using a2n.Hangfire.Dashboard.Models
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (Matrix is null || VisibleQueues.Count == 0)
+{
+    <EmptyState Icon="grid-3x3"
+                Message="No queues to display."
+                Subtitle="No recurring schedule contributes to the selected window." />
+}
+else
+{
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <div class="small text-body-secondary">
+            <i class="bi bi-clock me-1"></i>
+            @VisibleQueues.Count queue(s) × 24 hours
+            <span class="ms-1">· @DayModeLabel</span>
+        </div>
+        <div class="small text-body-secondary">
+            @MetricLabel
+        </div>
+    </div>
+    <div id="@_containerId" data-hm-queuehour></div>
+}
+
+@code {
+    /// <summary>The aggregated <c>queue × day × hour</c> matrix to render.</summary>
+    [Parameter, EditorRequired] public HeatmapMatrix Matrix { get; set; }
+
+    /// <summary>
+    /// The selected day index (0-based) within the projection window, or a negative value to display
+    /// the whole-week summation across all seven days (Req 3.2, 3.3).
+    /// </summary>
+    [Parameter] public int SelectedDay { get; set; } = -1;
+
+    /// <summary>Whether to apply logarithmic intensity scaling to the cell shading.</summary>
+    [Parameter] public bool LogScale { get; set; }
+
+    /// <summary>
+    /// The queues to render, in display order (e.g. the Top-N selection). When <c>null</c> the
+    /// matrix's full queue list is used.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string> Queues { get; set; }
+
+    /// <summary>The seven day labels used to title the active per-day mode; defaults to Mon..Sun.</summary>
+    [Parameter] public string[] DayLabels { get; set; }
+}

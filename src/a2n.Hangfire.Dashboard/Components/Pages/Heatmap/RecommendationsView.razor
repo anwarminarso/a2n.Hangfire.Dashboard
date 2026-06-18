@@ -1,0 +1,190 @@
+@*
+    RecommendationsView (task 18.6) — the read-only "Overlap recommendations" panel modelled on
+    docs/mockups/heatmap-mockup-v4.html (#view-rec / renderRec).
+
+    Behavior (Req 11.4, 11.6):
+      • Renders the ordered set of read-only stagger suggestions produced by RecommendationEngine.Analyze
+        — one card per Recommendation showing the affected queue, the peak time expressed in the
+        Viewer_Time_Zone, the weekdays the cluster repeats on, the current peak concurrency, and the
+        simulated post-stagger peak concurrency (Req 11.4).
+      • High-severity recommendations (detected peak exceeds Worker_Capacity) are styled distinctly from
+        standard ones; the demand-collision flag is surfaced with the suggested lower-combined-load
+        alternative window when the engine reports one (Req 19.4 context).
+      • This component is STRICTLY read-only presentation: it NEVER renders any control that mutates a
+        recurring job's cron expression — no "auto-stagger", apply, or per-job edit actions (Req 11.6).
+        Unlike the mockup (which shows demo "Auto-stagger" / job buttons), only before/after information
+        is displayed.
+      • WHEN there are no recommendations (no overlap clusters, or the engine produced none), an
+        empty-state indication is rendered instead of an empty list.
+
+    The engine reports each peak as a minute-of-day already expressed in the analyzed (viewer-local)
+    time space, so the peak/suggested times are formatted as HH:mm; the Viewer_Time_Zone id is shown
+    alongside for context (Req 11.4). The hosting page computes the recommendations via HeatmapService
+    and passes them in — this component does not call any service directly.
+*@
+@namespace a2n.Hangfire.Dashboard.Components.Pages.Heatmap
+@using System.Globalization
+@using a2n.Hangfire.Dashboard.Models
+
+<div class="card" data-hm-recommendations>
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h6 class="mb-0">
+            <i class="bi bi-lightbulb me-1" aria-hidden="true"></i>Overlap recommendations
+            @if (Recommendations is { Count: > 0 })
+            {
+                <span class="badge text-bg-primary ms-1">@Recommendations.Count</span>
+            }
+        </h6>
+        <span class="small text-body-secondary">
+            Times shown in @TimeZoneLabel
+        </span>
+    </div>
+    <div class="card-body">
+        <p class="small text-body-secondary mb-3">
+            Cron clusters flagged with a stagger simulation; a warning appears when a slot collides with
+            high ad-hoc demand and a lower-demand window is suggested. These are read-only suggestions —
+            ad-hoc jobs are never rescheduled and no cron expression is changed.
+        </p>
+
+        @if (Recommendations is null || Recommendations.Count == 0)
+        {
+            @* Req 11.x — nothing to suggest: show an empty state rather than an empty list. *@
+            <EmptyState Icon="emoji-smile" Color="success"
+                        Message="No cron overlap clusters in the current selection."
+                        Subtitle="Staggering would not reduce any peak, so there is nothing to suggest." />
+        }
+        else
+        {
+            <div class="d-flex flex-column gap-3">
+                @foreach (var rec in VisibleRecommendations)
+                {
+                    var isHigh = rec.Severity == RecommendationSeverity.High;
+                    <div class="border rounded p-3 @(isHigh ? "border-danger" : string.Empty)"
+                         data-hm-recommendation data-severity="@SeverityLabel(rec.Severity)">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                            <span class="d-inline-flex align-items-center gap-2">
+                                <span class="badge @(isHigh ? "text-bg-danger" : "text-bg-secondary")">
+                                    @SeverityLabel(rec.Severity)
+                                </span>
+                                <span class="fw-semibold">
+                                    <span class="badge text-bg-light border me-1">@rec.Queue</span>
+                                    @FormatMinuteOfDay(rec.PeakMinuteOfDay)
+                                </span>
+                            </span>
+                            @if (rec.CollidesWithHighDemand)
+                            {
+                                <span class="badge text-bg-warning">
+                                    <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>demand collision
+                                </span>
+                            }
+                        </div>
+
+                        <div class="mb-2">
+                            <b>@rec.CurrentPeak</b> cron job@(rec.CurrentPeak == 1 ? string.Empty : "s") run together;
+                            staggering cuts the peak to
+                            <span class="badge text-bg-success">~@rec.StaggeredPeak</span>.
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-3 small text-body-secondary">
+                            <span>
+                                <i class="bi bi-calendar-week me-1" aria-hidden="true"></i>@WeekdaysLabel(rec.Weekdays)
+                            </span>
+                            <span>
+                                Current peak: <span class="text-body">@rec.CurrentPeak</span>
+                                <i class="bi bi-arrow-right mx-1" aria-hidden="true"></i>
+                                After stagger: <span class="text-body">@rec.StaggeredPeak</span>
+                            </span>
+                        </div>
+
+                        @if (rec.CollidesWithHighDemand && rec.SuggestedMinuteOfDay is int suggested)
+                        {
+                            <div class="alert alert-warning d-flex align-items-start gap-2 small mt-2 mb-0" role="note">
+                                <i class="bi bi-info-circle mt-1" aria-hidden="true"></i>
+                                <span>
+                                    This slot also carries high on-demand load. Consider
+                                    <b>@FormatMinuteOfDay(suggested)</b> — the lowest combined (ad-hoc + cron) load window.
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            @if (Recommendations.Count > MaxVisible)
+            {
+                <p class="small text-body-secondary mt-3 mb-0">
+                    <i class="bi bi-funnel me-1" aria-hidden="true"></i>Showing the top @MaxVisible of @Recommendations.Count
+                    recommendations, ordered by peak concurrency. Enable <em>Hide sub-hourly</em> to focus on the
+                    significant clusters.
+                </p>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly string[] WeekdayAbbreviations =
+        { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+
+    /// <summary>
+    /// The ordered, read-only recommendations to render, as produced by
+    /// <c>RecommendationEngine.Analyze</c> (the hosting page/service computes them — Req 11.4). May be
+    /// <c>null</c> or empty, in which case the empty state is shown.
+    /// </summary>
+    [Parameter] public IReadOnlyList<Recommendation> Recommendations { get; set; }
+
+    /// <summary>
+    /// The maximum number of recommendation cards to render. The list is ordered by descending peak
+    /// concurrency, so the most significant clusters are kept; a footer notes how many were elided.
+    /// Guards against overwhelming the page when many sub-hourly jobs produce hundreds of clusters.
+    /// </summary>
+    [Parameter] public int MaxVisible { get; set; } = 50;
+
+    /// <summary>The capped, ordered subset of recommendations actually rendered.</summary>
+    private IEnumerable<Recommendation> VisibleRecommendations =>
+        Recommendations is null
+            ? Enumerable.Empty<Recommendation>()
+            : Recommendations.Take(MaxVisible < 1 ? 1 : MaxVisible);
+
+    /// <summary>
+    /// The Viewer_Time_Zone id the peak/suggested times are expressed in; <c>null</c> or empty means
+    /// UTC. Used only to label the times for context (Req 11.4).
+    /// </summary>
+    [Parameter] public string ViewerTimeZoneId { get; set; }
+
+    private string TimeZoneLabel =>
+        string.IsNullOrWhiteSpace(ViewerTimeZoneId) ? "UTC" : ViewerTimeZoneId.Trim();
+
+    private static string SeverityLabel(RecommendationSeverity severity) =>
+        severity == RecommendationSeverity.High ? "High" : "Standard";
+
+    /// <summary>
+    /// Formats a minute-of-day (0..1439) as a 24-hour <c>HH:mm</c> clock label. Out-of-range values are
+    /// clamped so the view never throws on unexpected engine output.
+    /// </summary>
+    private static string FormatMinuteOfDay(int minuteOfDay)
+    {
+        var clamped = Math.Clamp(minuteOfDay, 0, (24 * 60) - 1);
+        var hour = clamped / 60;
+        var minute = clamped % 60;
+        return string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", hour, minute);
+    }
+
+    /// <summary>
+    /// Renders the set of weekdays the cluster repeats on as a compact, ordered abbreviation list
+    /// (e.g. "Mon, Wed, Fri"); returns an em dash when no weekdays are present.
+    /// </summary>
+    private static string WeekdaysLabel(IReadOnlyList<DayOfWeek> weekdays)
+    {
+        if (weekdays is null || weekdays.Count == 0)
+        {
+            return "—";
+        }
+
+        var labels = weekdays
+            .Distinct()
+            .OrderBy(d => (int)d)
+            .Select(d => WeekdayAbbreviations[(int)d]);
+
+        return string.Join(", ", labels);
+    }
+}

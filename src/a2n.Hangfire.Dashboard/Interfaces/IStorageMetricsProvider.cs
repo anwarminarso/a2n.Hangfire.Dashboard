@@ -163,4 +163,24 @@ public interface IStorageMetricsProvider
     /// <param name="ct">Cancellation token</param>
     Task<IReadOnlyList<JobTypeVolumeDto>> GetJobTypeVolumeAsync(
         int count, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+
+    /// <summary>
+    /// Returns historical recurring-schedule activity bucketed by queue × day-of-week × hour over the
+    /// supplied time range. Only recurring-originated executions are counted — i.e. executions that
+    /// carry a <c>RecurringJobId</c> — with per-bucket fire counts, failure counts, and duration
+    /// statistics (min/avg/max/p95 in milliseconds).
+    /// </summary>
+    /// <remarks>
+    /// This is a default interface method that returns an empty list, allowing the dashboard and
+    /// any provider that does not yet support historical recurring buckets to compile and degrade
+    /// gracefully. The SQL Server adapter (task 13.2) and the PostgreSQL adapter (task 13.3) override
+    /// this with a Dapper query that filters to recurring-originated executions and groups by
+    /// queue × dayIndex × hour.
+    /// </remarks>
+    /// <param name="from">Start of time range (inclusive)</param>
+    /// <param name="to">End of time range (exclusive)</param>
+    /// <param name="ct">Cancellation token</param>
+    Task<IReadOnlyList<HistoricalScheduleBucket>> GetRecurringScheduleBucketsAsync(
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<HistoricalScheduleBucket>>(System.Array.Empty<HistoricalScheduleBucket>());
 }

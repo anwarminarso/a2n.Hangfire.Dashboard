@@ -641,6 +641,7 @@ This project builds on the excellent work of the Hangfire community:
 - [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console) — console output for background jobs
 - [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags) — job tagging
 - [Hangfire.RecurringJobAdmin](https://github.com/bamotav/Hangfire.RecurringJobAdmin) — recurring job management UI
+- [Hangfire.Community.Dashboard.Heatmap](https://github.com/brodrigz/Hangfire.Community.Dashboard.Heatmap) by Bruno Rodrigues (brodrigz) — design inspiration for the recurring schedule heatmap (clean-room Blazor implementation, no source code copied)
 
 Community extensions are listed on the [Hangfire Extensions](https://www.hangfire.io/extensions.html) page. This project is community-maintained and is not officially supported by Hangfire OÜ.
 

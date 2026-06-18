@@ -1,0 +1,25 @@
+@*
+    Per-queue small-multiples view (task 11.3) — renders one `day × hour` heatmap per visible queue,
+    with every small-multiple shaded using a SINGLE shared color-ramp scale spanning the global
+    minimum and maximum cell values across all visible queues, so that equal values render at equal
+    intensity in every small-multiple and cell intensities are directly comparable (Req 3.7).
+
+    The shared ramp domain is the matrix's [Min, Max] (the global domain — Property 11), and the
+    actual shading / contrast / keyboard + tooltip behavior is performed by the
+    `window.heatmapCharts.renderPerQueue` renderer in Content/js/heatmap.js. This component only maps
+    the computed HeatmapMatrix into that renderer's model and manages the JS lifecycle, following the
+    same IJSRuntime interop pattern as the existing analytics charts.
+*@
+@namespace a2n.Hangfire.Dashboard.Components.Pages.Heatmap
+@using a2n.Hangfire.Dashboard.Models
+
+@if (!HasVisibleData)
+{
+    <EmptyState Icon="grid-3x3-gap"
+                Message="No per-queue schedule to display."
+                Subtitle="No populated cells were found for the visible queues in the selected window." />
+}
+else
+{
+    <div class="heatmap-perqueue" id="@_containerId" aria-label="Per-queue schedule small multiples"></div>
+}

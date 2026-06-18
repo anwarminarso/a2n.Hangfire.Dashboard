@@ -562,6 +562,106 @@ ORDER BY s.CreatedAt DESC";
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<HistoricalScheduleBucket>> GetRecurringScheduleBucketsAsync(
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        // Count ONLY recurring-originated executions: jobs carrying a 'RecurringJobId' parameter
+        // (INNER JOIN to JobParameter). Ad-hoc executions are excluded (Req 7.3, 7.7).
+        // Each job is counted once via its current state (j.StateId = s.Id) and bucketed by
+        // queue × dayIndex (0 = Monday … 6 = Sunday) × hour (0–23). The day index uses
+        // DATEDIFF from a known Monday (1900-01-01) so it is independent of @@DATEFIRST / language.
+        // Queue resolution mirrors the other metrics queries (Job.Queue / CurrentQueue parameter,
+        // then State.Data '$.Queue', then 'default'); the subquery sits in a derived table so the
+        // outer query can GROUP BY the computed column (SQL Server error 144 forbids it inline).
+        var sql = $@"
+WITH Executions AS (
+    SELECT COALESCE(
+               (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+                WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+                ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+               JSON_VALUE(s.Data, '$.Queue'),
+               'default') AS QueueName,
+           (DATEDIFF(DAY, '19000101', s.CreatedAt) % 7) AS DayIndex,
+           DATEPART(HOUR, s.CreatedAt) AS [Hour],
+           s.Name AS StateName,
+           CAST(JSON_VALUE(s.Data, '$.PerformanceDuration') AS BIGINT) AS DurationMs
+    FROM {Table("State")} s
+    INNER JOIN {Table("Job")} j ON j.Id = s.JobId AND j.StateId = s.Id
+    INNER JOIN {Table("JobParameter")} rp ON rp.JobId = j.Id AND rp.Name = 'RecurringJobId'
+    WHERE s.Name IN ('Succeeded', 'Failed')
+      AND s.CreatedAt >= @From AND s.CreatedAt < @To
+)
+SELECT QueueName,
+       DayIndex,
+       [Hour],
+       COUNT(*) AS FireCount,
+       SUM(CASE WHEN StateName = 'Failed' THEN 1 ELSE 0 END) AS FailureCount,
+       COALESCE(MIN(CAST(DurationMs AS FLOAT)), 0) AS MinMs,
+       COALESCE(AVG(CAST(DurationMs AS FLOAT)), 0) AS AvgMs,
+       COALESCE(MAX(CAST(DurationMs AS FLOAT)), 0) AS MaxMs
+FROM Executions
+GROUP BY QueueName, DayIndex, [Hour]";
+
+        // PERCENTILE_CONT is a window (not aggregate) function, so p95 is computed in a separate
+        // pass partitioned by the same bucket key and merged in-memory (matches GetJobDurationStatsAsync).
+        var percentileSql = $@"
+WITH Executions AS (
+    SELECT COALESCE(
+               (SELECT TOP 1 jp.Value FROM {Table("JobParameter")} jp
+                WHERE jp.JobId = j.Id AND jp.Name IN ({SqlHelper.JobQueueParameterInList})
+                ORDER BY CASE jp.Name WHEN '{SqlHelper.JobQueueParameterName}' THEN 0 ELSE 1 END),
+               JSON_VALUE(s.Data, '$.Queue'),
+               'default') AS QueueName,
+           (DATEDIFF(DAY, '19000101', s.CreatedAt) % 7) AS DayIndex,
+           DATEPART(HOUR, s.CreatedAt) AS [Hour],
+           CAST(JSON_VALUE(s.Data, '$.PerformanceDuration') AS BIGINT) AS DurationMs
+    FROM {Table("State")} s
+    INNER JOIN {Table("Job")} j ON j.Id = s.JobId AND j.StateId = s.Id
+    INNER JOIN {Table("JobParameter")} rp ON rp.JobId = j.Id AND rp.Name = 'RecurringJobId'
+    WHERE s.Name IN ('Succeeded', 'Failed')
+      AND s.CreatedAt >= @From AND s.CreatedAt < @To
+      AND JSON_VALUE(s.Data, '$.PerformanceDuration') IS NOT NULL
+)
+SELECT DISTINCT QueueName,
+       DayIndex,
+       [Hour],
+       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY DurationMs)
+           OVER (PARTITION BY QueueName, DayIndex, [Hour]) AS P95Ms
+FROM Executions";
+
+        using var connection = CreateConnection();
+        var basicRows = (await connection.QueryAsync<ScheduleBucketRow>(
+            new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct)))
+            .ToList();
+
+        var percentiles = (await connection.QueryAsync<SchedulePercentileRow>(
+            new CommandDefinition(percentileSql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct)))
+            .ToDictionary(p => (p.QueueName ?? "default", p.DayIndex, p.Hour));
+
+        var results = new List<HistoricalScheduleBucket>(basicRows.Count);
+        foreach (var row in basicRows)
+        {
+            var queue = row.QueueName ?? "default";
+            percentiles.TryGetValue((queue, row.DayIndex, row.Hour), out var pct);
+
+            results.Add(new HistoricalScheduleBucket
+            {
+                Queue = queue,
+                DayIndex = row.DayIndex,
+                Hour = row.Hour,
+                FireCount = row.FireCount,
+                FailureCount = row.FailureCount,
+                MinMs = row.MinMs,
+                AvgMs = row.AvgMs,
+                MaxMs = row.MaxMs,
+                P95Ms = pct?.P95Ms ?? 0
+            });
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc />
     public async Task<AverageStateTimingsDto> GetAverageStateTimingsAsync(
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
@@ -1038,6 +1138,26 @@ ORDER BY RecurringJobIdStored, rn";
     {
         public string JobType { get; set; }
         public long ExecutionCount { get; set; }
+    }
+
+    private class ScheduleBucketRow
+    {
+        public string QueueName { get; set; }
+        public int DayIndex { get; set; }
+        public int Hour { get; set; }
+        public long FireCount { get; set; }
+        public long FailureCount { get; set; }
+        public double MinMs { get; set; }
+        public double AvgMs { get; set; }
+        public double MaxMs { get; set; }
+    }
+
+    private class SchedulePercentileRow
+    {
+        public string QueueName { get; set; }
+        public int DayIndex { get; set; }
+        public int Hour { get; set; }
+        public double P95Ms { get; set; }
     }
 
     #endregion

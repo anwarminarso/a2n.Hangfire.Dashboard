@@ -92,8 +92,17 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
     DashboardTitle = "My Dashboard",
 
-   AllowArbitraryMethodInvocation = true, // Allow invoking any method on the Job Details page (use with caution in production)
-   EnableJobManagement = true, // Show "Enqueue Job"/"Create Recurring Job" buttons and allow editing existing recurring jobs in the UI
+    AllowArbitraryMethodInvocation = true, // Allow invoking any method on the Job Details page (use with caution in production)
+    EnableJobManagement = true, // Show "Enqueue Job"/"Create Recurring Job" buttons and allow editing existing recurring jobs in the UI
+
+    // Recurring Schedule Heatmap: projects upcoming recurring-job fires onto a day x hour grid so you
+    // can spot scheduling collisions and rebalance load. Enabled by default; shown here explicitly.
+    // With a SQL Server / PostgreSQL adapter configured you also get the Historical source, Demand
+    // Profile, and recommendations; on InMemory storage it runs in the storage-agnostic Projected mode.
+    Heatmap = new HeatmapOptions
+    {
+        Enabled = true,
+    },
 
     // Make stack-trace file references clickable. While developing locally, the Local() preset
     // opens files in VS Code via the vscode:// protocol. For shared dashboards, swap to a remote

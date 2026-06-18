@@ -1,4 +1,5 @@
 using System.Reflection;
+using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.Security;
 using Hangfire;
 using Hangfire.Dashboard;
@@ -143,6 +144,13 @@ public class DashboardUIOptions
     public QueueOperationsOptions QueueOperations { get; set; } = new QueueOperationsOptions();
 
     /// <summary>
+    /// Configuration for the Recurring Schedule Heatmap page — gates the page and supplies the
+    /// default class / source / window / load / aggregation selections plus caching and historical
+    /// query timeouts. Mirrors <see cref="AuditLog"/> and <see cref="QueueOperations"/>.
+    /// </summary>
+    public HeatmapOptions Heatmap { get; set; } = new HeatmapOptions();
+
+    /// <summary>
     /// Copies every configurable option value from this instance onto <paramref name="target"/>.
     /// Used to push host-supplied options onto the DI-registered singleton that Blazor components
     /// inject. Reflection over the public read/write properties means a newly added option is
@@ -168,6 +176,7 @@ public class DashboardUIOptions
         target.HealthCheckThresholds ??= new HealthThresholds();
         target.AuditLog ??= new AuditLogOptions();
         target.QueueOperations ??= new QueueOperationsOptions();
+        target.Heatmap ??= new HeatmapOptions();
     }
 
     /// <summary>

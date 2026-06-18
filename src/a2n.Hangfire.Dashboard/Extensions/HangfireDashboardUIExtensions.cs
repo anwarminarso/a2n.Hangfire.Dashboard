@@ -166,10 +166,24 @@ public static class HangfireDashboardUIExtensions
         // Register AnalyticsService (checks IStorageMetricsProvider availability at runtime)
         services.AddScoped<AnalyticsService>();
 
+        // Register HeatmapService (checks IStorageMetricsProvider availability at runtime)
+        services.AddScoped<HeatmapService>();
+
+        // Heatmap demand-aware helpers. Both resolve IStorageMetricsProvider optionally and degrade
+        // gracefully (empty profile / default durations) when no provider is registered, mirroring
+        // AnalyticsService. Scoped to match HeatmapService so they share the request scope.
+        services.AddScoped<EstimatedDurationResolver>();
+        services.AddScoped<DemandProfileProvider>();
+
         // Register AnalyticsBroadcastService only if metrics provider is available
         if (builder.HasMetricsProvider)
         {
             services.AddHostedService<AnalyticsBroadcastService>();
+
+            // The ad-hoc Demand_Rollup is only meaningful on storages that expose historical metrics
+            // (SQL Server / PostgreSQL). Registering it here gates it exactly like the analytics
+            // broadcast; on other storages the demand/Combined features stay dark (Req 16.7, 16.9).
+            services.AddHostedService<DemandRollupService>();
         }
 
         return services;
