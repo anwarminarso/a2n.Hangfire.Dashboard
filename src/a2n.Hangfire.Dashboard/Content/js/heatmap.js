@@ -39,8 +39,15 @@
     };
 
     // Stable fallback queue colors derived from the queue name when the caller
-    // does not supply an explicit color.
-    var QUEUE_PALETTE = ['#4dabf7', '#f783ac', '#ffa94d', '#38d9a9', '#b197fc', '#ffe066', '#ff8787', '#9775fa', '#74c0fc', '#63e6be'];
+    // does not supply an explicit color. This 20-entry palette and the hashing
+    // in queueColor() are mirrored by Internal/QueueColors.cs so server-rendered
+    // badges and these JS-rendered dots/legends agree for any queue. Keep in sync.
+    var QUEUE_PALETTE = [
+        '#4dabf7', '#f783ac', '#ffa94d', '#38d9a9', '#b197fc',
+        '#ffe066', '#ff8787', '#9775fa', '#74c0fc', '#63e6be',
+        '#ff922b', '#a9e34b', '#e599f7', '#66d9e8', '#ffc078',
+        '#8ce99a', '#da77f2', '#f06595', '#5c7cfa', '#3bc9db'
+    ];
 
     // -----------------------------------------------------------------------
     // Theme — read the effective theme resolved by theme.js (Req 15.2/15.7).
@@ -170,9 +177,16 @@
         return f.danger;
     }
 
-    // Deterministic fallback color for a queue name.
+    // Deterministic fallback color for a queue name. When the hosting page has
+    // pushed a collision-free queue→color map (setQueueColors), that mapping wins
+    // so every renderer agrees with the server-rendered badges/chips.
+    var queueColorOverrides = {};
+
     function queueColor(name) {
         if (!name) return QUEUE_PALETTE[0];
+        if (queueColorOverrides && queueColorOverrides[name]) {
+            return queueColorOverrides[name];
+        }
         var seed = 7;
         for (var i = 0; i < name.length; i++) {
             seed = (seed * 31 + name.charCodeAt(i)) >>> 0;
@@ -352,6 +366,42 @@
             showTip(html, r.left + r.width / 2, r.top + r.height / 2);
         });
         el.addEventListener('blur', hideTip);
+        maybeWireDrill(el, cell);
+    }
+
+    // -----------------------------------------------------------------------
+    // Cell-click drill-down — when the hosting Blazor page has registered a
+    // DotNetObjectReference (heatmapCharts.registerDrillDown), a populated cell
+    // whose queue and day are unambiguous becomes clickable and opens the
+    // drill-down drawer for that cell via [JSInvokable] OpenCellDrawerAsync.
+    // Cells without a resolvable queue (e.g. the day-collapsed Queue×Hour rows
+    // expose only the queue but not a single day) are left non-interactive.
+    // -----------------------------------------------------------------------
+    var drillRef = null;
+
+    function maybeWireDrill(el, cell) {
+        if (!drillRef) return;
+        var queue = cell.queue || cell.dominantQueue;
+        if (!queue || typeof cell.day !== 'number' || !(cell.value > 0)) return;
+
+        el.style.cursor = 'pointer';
+        el.setAttribute('data-hm-drill', '');
+
+        var fire = function () {
+            try {
+                drillRef.invokeMethodAsync('OpenCellDrawerAsync', queue, cell.day, cell.hour);
+            } catch (e) {
+                // Circuit gone / ref disposed — nothing to do.
+            }
+        };
+
+        el.addEventListener('click', fire);
+        el.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                fire();
+            }
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -611,6 +661,10 @@
 
         if (!opts.compact) {
             grid.appendChild(makeHourHeader(hours, labelW));
+        } else {
+            // Per-queue small multiples must fit their card without a horizontal
+            // scrollbar — flag the grid so mountResponsive skips the 520px min-width.
+            grid.setAttribute('data-hm-compact', '1');
         }
 
         var cellLookup = indexCells(model.cells);
@@ -684,12 +738,24 @@
 
         var labels = model.labels || [];
         var adhoc = model.adhoc || [];
+        var queues = model.queues || [];
         var cron = model.cron || [];
 
-        // Flag over-capacity buckets with a distinct border (Req 4.9).
-        var cronBorder = labels.map(function (_, i) {
-            var total = (adhoc[i] || 0) + (cron[i] || 0);
-            return total > capacity ? dangerColor : 'transparent';
+        // Combined total per hour (ad-hoc + every queue) used to flag over-capacity buckets.
+        var hourCount = labels.length;
+        var totals = [];
+        for (var i = 0; i < hourCount; i++) {
+            var t = (adhoc[i] || 0);
+            for (var q = 0; q < queues.length; q++) {
+                t += (queues[q].data[i] || 0);
+            }
+            if (!queues.length) {
+                t += (cron[i] || 0);
+            }
+            totals.push(t);
+        }
+        var overBorder = totals.map(function (t) {
+            return t > capacity ? dangerColor : 'transparent';
         });
 
         var datasets = [];
@@ -702,14 +768,33 @@
                 stack: 'concurrency'
             });
         }
-        datasets.push({
-            label: 'Cron',
-            data: cron,
-            backgroundColor: hexToRgba(cronColor, 0.9),
-            borderColor: cronBorder,
-            borderWidth: { top: 2, left: 0, right: 0, bottom: 0 },
-            stack: 'concurrency'
-        });
+
+        if (queues.length) {
+            // One stacked bar layer per queue, colored by the shared queue palette so the chart
+            // matches the chips/badges. The over-capacity flag is drawn on the topmost layer.
+            queues.forEach(function (q, qi) {
+                var color = queueColor(q.queue);
+                var isTop = qi === queues.length - 1;
+                datasets.push({
+                    label: q.queue,
+                    data: q.data,
+                    backgroundColor: hexToRgba(color, 0.9),
+                    borderColor: isTop ? overBorder : 'transparent',
+                    borderWidth: isTop ? { top: 2, left: 0, right: 0, bottom: 0 } : 0,
+                    stack: 'concurrency'
+                });
+            });
+        } else {
+            // Fallback single cron layer (no per-queue breakdown available).
+            datasets.push({
+                label: 'Cron',
+                data: cron,
+                backgroundColor: hexToRgba(cronColor, 0.9),
+                borderColor: overBorder,
+                borderWidth: { top: 2, left: 0, right: 0, bottom: 0 },
+                stack: 'concurrency'
+            });
+        }
 
         var capacityLinePlugin = {
             id: 'heatmapCapacityLine',
@@ -767,6 +852,9 @@
                     y: {
                         stacked: true,
                         beginAtZero: true,
+                        // Ensure the capacity reference line (and any headroom above the peak) is
+                        // always within view, even when the plotted concurrency is well below capacity.
+                        suggestedMax: Math.max(capacity || 0, model.peak || 0) * 1.1,
                         grid: { color: gridColor },
                         ticks: { color: textColor },
                         title: { display: true, text: 'concurrent jobs', color: textColor }
@@ -822,12 +910,15 @@
     }
 
     // Mount a grid inside a responsive (overflow-x) wrapper for small viewports.
+    // Compact grids (per-queue small multiples) opt out of the fixed min-width so
+    // they shrink to fit their card instead of forcing a horizontal scrollbar.
     function mountResponsive(container, grid) {
         clearContainer(container);
+        var compact = grid.getAttribute && grid.getAttribute('data-hm-compact') === '1';
         var wrapper = document.createElement('div');
         wrapper.style.cssText = 'overflow-x:auto;width:100%';
         var inner = document.createElement('div');
-        inner.style.cssText = 'min-width:520px';
+        inner.style.cssText = compact ? 'min-width:0' : 'min-width:520px';
         inner.appendChild(grid);
         wrapper.appendChild(inner);
         container.appendChild(wrapper);
@@ -916,6 +1007,20 @@
         renderConcurrency: function (canvasId, model) {
             renderRegistry.set(canvasId, { container: null, fn: renderConcurrency, model: model });
             return renderConcurrency(canvasId, model);
+        },
+
+        // Register the hosting page's DotNetObjectReference so populated cells
+        // become clickable and open the drill-down drawer (OpenCellDrawerAsync).
+        registerDrillDown: function (dotNetRef) {
+            drillRef = dotNetRef || null;
+            return true;
+        },
+
+        // Push a collision-free queue→color map so every renderer (dots, legends,
+        // bubbles) agrees with the server-rendered badges and chips.
+        setQueueColors: function (map) {
+            queueColorOverrides = map || {};
+            return true;
         },
 
         // Cleanup.

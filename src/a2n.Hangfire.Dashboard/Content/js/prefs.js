@@ -42,6 +42,17 @@
         },
         setBool: function (key, value) {
             safeSet(key, value ? '1' : '0');
+        },
+        // Returns the browser's IANA time-zone id (e.g. "Asia/Jakarta"), or an empty
+        // string when the runtime cannot report one. Used to seed the heatmap "View TZ"
+        // selection on first load before any explicit user choice is persisted.
+        getBrowserTimeZone: function () {
+            try {
+                var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                return tz || '';
+            } catch (e) {
+                return '';
+            }
         }
     };
 
