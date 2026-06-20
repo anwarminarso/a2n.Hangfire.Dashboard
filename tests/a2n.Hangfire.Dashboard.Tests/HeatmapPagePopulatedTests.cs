@@ -132,10 +132,10 @@ public class HeatmapPagePopulatedTests
 
         var cut = RenderLoaded(ctx);
 
-        // Populated cells (contributing job count > 0) are offered in the "Inspect cell" picker, the
-        // per-queue drill-down entry point (Req 10.1). Each option carries a job count label.
-        var inspect = cut.FindAll("select option").Select(o => o.TextContent).ToList();
-        Assert.Contains(inspect, t => t.Contains("job"));
+        // Populated cells (contributing job count > 0) are now drilled into by clicking a cell or a
+        // recommendation (heatmap.js → OpenCellDrawerAsync); the page surfaces a hint when there are
+        // drillable cells rather than the former "Inspect cell" picker (Req 10.1).
+        Assert.Contains("Click a populated cell", cut.Markup);
     }
 
     [Fact]

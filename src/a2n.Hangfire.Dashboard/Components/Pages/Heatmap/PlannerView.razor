@@ -89,9 +89,10 @@ else
                             <div class="@CellClass(cell)"
                                  role="gridcell"
                                  tabindex="0"
-                                 style="@cell.BackgroundStyle"
+                                 style="@CellStyle(cell)"
                                  title="@cell.Title"
-                                 aria-label="@cell.AriaLabel">
+                                 aria-label="@cell.AriaLabel"
+                                 @onclick="@(() => InspectCellAsync(cell))">
                                 @if (cell.HasDot)
                                 {
                                     <span class="hf-pl-dot" style="@cell.DotStyle"></span>

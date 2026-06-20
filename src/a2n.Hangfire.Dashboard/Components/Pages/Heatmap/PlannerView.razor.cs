@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using a2n.Hangfire.Dashboard.Heatmap;
+using a2n.Hangfire.Dashboard.Internal;
 using a2n.Hangfire.Dashboard.Models;
 using Microsoft.AspNetCore.Components;
 
@@ -60,14 +61,6 @@ public partial class PlannerView : ComponentBase
     private const double MinShadeAlpha = 0.10;
     private const double MaxShadeAlpha = 0.85;
 
-    // Deterministic queue palette mirrored from Content/js/heatmap.js (QUEUE_PALETTE / queueColor) so
-    // the dot tints match the legend swatches and the sibling Punchcard view.
-    private static readonly string[] QueuePalette =
-    {
-        "#4dabf7", "#f783ac", "#ffa94d", "#38d9a9", "#b197fc",
-        "#ffe066", "#ff8787", "#9775fa", "#74c0fc", "#63e6be"
-    };
-
     private static readonly string[] WeekdayLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
 
     /// <summary>
@@ -120,6 +113,20 @@ public partial class PlannerView : ComponentBase
     /// the other heatmap views.
     /// </summary>
     [Parameter] public IReadOnlyList<string> VisibleQueues { get; set; }
+
+    /// <summary>
+    /// The collision-free queue → color map shared with the chips, table badges, and JS renderers so
+    /// the cron dots and legend swatches match the rest of the page. Falls back to the deterministic
+    /// per-name color when a queue is absent or no map is supplied.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
+
+    /// <summary>
+    /// Raised when the operator clicks a populated planner cell. The cell is attributed to its
+    /// dominant cron queue (a single representative queue) so the hosting page can open the drill-down
+    /// drawer for that <c>(queue, day, hour)</c>.
+    /// </summary>
+    [Parameter] public EventCallback<PlannerCellSelection> OnCellInspect { get; set; }
 
     // Computed per parameter set.
     private bool _showShading;
@@ -196,6 +203,12 @@ public partial class PlannerView : ComponentBase
             ? MatrixViews.DominantQueuePerCell(cron)
             : new Dictionary<(int DayIndex, int Hour), string>();
 
+        // The dominant queue used for drill-down (independent of the color source), so a cell click
+        // can attribute the cell to a single representative queue under both Projected and Historical.
+        var drillDominant = _showDots && cron is not null
+            ? MatrixViews.DominantQueuePerCell(cron)
+            : new Dictionary<(int DayIndex, int Hour), string>();
+
         var failureByCell = _showDots && Source == HeatmapSource.Historical
             ? CollapseHistorical()
             : new Dictionary<(int DayIndex, int Hour), HeatmapHistoricalCell>();
@@ -203,7 +216,7 @@ public partial class PlannerView : ComponentBase
         var (nowDay, nowHour) = ResolveNowMarker(tz);
 
         _dayLabels = BuildDayLabels(Window, tz);
-        _grid = BuildGrid(planner, threshold, maxDemand, maxCron, dominant, failureByCell, nowDay, nowHour);
+        _grid = BuildGrid(planner, threshold, maxDemand, maxCron, dominant, drillDominant, failureByCell, nowDay, nowHour);
         _bestWindowLabel = BuildBestWindowLabel();
         _caption = BuildCaption();
         _legendQueues = _showDots && Source == HeatmapSource.Projected
@@ -225,6 +238,7 @@ public partial class PlannerView : ComponentBase
         double maxDemand,
         double maxCron,
         IReadOnlyDictionary<(int DayIndex, int Hour), string> dominant,
+        IReadOnlyDictionary<(int DayIndex, int Hour), string> drillDominant,
         IReadOnlyDictionary<(int DayIndex, int Hour), HeatmapHistoricalCell> failureByCell,
         int nowDay,
         int nowHour)
@@ -281,6 +295,13 @@ public partial class PlannerView : ComponentBase
                     && _bestWindow.DayIndex == day
                     && _bestWindow.Hour == hour;
 
+                // Attribute a populated cell to its dominant cron queue for drill-down (Req 10.1).
+                string drillQueue = null;
+                if (cronValue > 0d && drillDominant.TryGetValue((day, hour), out var dq))
+                {
+                    drillQueue = dq;
+                }
+
                 row[hour] = new PlannerCellView(
                     day,
                     hour,
@@ -294,6 +315,7 @@ public partial class PlannerView : ComponentBase
                     isSafe,
                     isBest,
                     isNow,
+                    drillQueue,
                     BuildCellAria(day, hour, demandValue, cronValue, isSafe, isBest, isNow),
                     BuildCellTitle(day, hour, demandValue, cronValue, isSafe, isBest, isNow));
             }
@@ -325,7 +347,7 @@ public partial class PlannerView : ComponentBase
 
         return dominant.TryGetValue((day, hour), out var queue)
             ? QueueColorCss(queue)
-            : QueuePalette[0];
+            : QueueColorCss(null);
     }
 
     /// <summary>
@@ -680,23 +702,18 @@ public partial class PlannerView : ComponentBase
     }
 
     /// <summary>
-    /// Maps a queue name to a deterministic palette color, mirroring
-    /// <c>Content/js/heatmap.js</c> (<c>queueColor</c>) and the Punchcard legend.
+    /// Maps a queue name to its color, preferring the shared collision-free <see cref="QueueColorMap"/>
+    /// (so the dots match the chips/badges) and falling back to the deterministic per-name color.
     /// </summary>
-    private static string QueueColorCss(string queue)
+    private string QueueColorCss(string queue)
     {
-        if (string.IsNullOrEmpty(queue))
+        if (!string.IsNullOrEmpty(queue) && QueueColorMap is not null &&
+            QueueColorMap.TryGetValue(queue, out var color))
         {
-            return QueuePalette[0];
+            return color;
         }
 
-        uint seed = 7;
-        foreach (var ch in queue)
-        {
-            seed = (seed * 31) + ch;
-        }
-
-        return QueuePalette[seed % (uint)QueuePalette.Length];
+        return QueueColors.ColorFor(queue);
     }
 
     /// <summary>
@@ -751,12 +768,35 @@ public partial class PlannerView : ComponentBase
         return css;
     }
 
+    /// <summary>Combines a cell's background shade with a pointer cursor when it is drillable.</summary>
+    private static string CellStyle(PlannerCellView cell) =>
+        cell.DrillQueue is not null
+            ? (cell.BackgroundStyle ?? string.Empty) + "cursor:pointer;"
+            : cell.BackgroundStyle;
+
     /// <summary>The sparse hour-axis label: shows the hour every three columns, blank otherwise.</summary>
     private static string HourLabel(int hour) =>
         hour % 3 == 0 ? hour.ToString("00", CultureInfo.InvariantCulture) : string.Empty;
 
-    /// <summary>Markup-facing wrapper over the deterministic queue palette color.</summary>
-    private static string QueueColor(string queue) => QueueColorCss(queue);
+    /// <summary>Markup-facing wrapper over the queue color (shared map, deterministic fallback).</summary>
+    private string QueueColor(string queue) => QueueColorCss(queue);
+
+    /// <summary>Invokes the cell-inspect callback for a populated cell with a resolvable queue.</summary>
+    private Task InspectCellAsync(PlannerCellView cell)
+    {
+        if (cell.DrillQueue is null || !OnCellInspect.HasDelegate)
+        {
+            return Task.CompletedTask;
+        }
+
+        return OnCellInspect.InvokeAsync(new PlannerCellSelection(cell.DrillQueue, cell.Day, cell.Hour));
+    }
+
+    /// <summary>A clicked planner cell attributed to its dominant cron queue.</summary>
+    /// <param name="Queue">The cell's dominant cron queue.</param>
+    /// <param name="DayIndex">The cell's zero-based day index within the window.</param>
+    /// <param name="Hour">The cell's clock hour (0–23).</param>
+    public sealed record PlannerCellSelection(string Queue, int DayIndex, int Hour);
 
     /// <summary>The projection of a single planner cell onto the DOM render model.</summary>
     private sealed record PlannerCellView(
@@ -772,6 +812,7 @@ public partial class PlannerView : ComponentBase
         bool IsSafe,
         bool IsBest,
         bool IsNow,
+        string DrillQueue,
         string AriaLabel,
         string Title);
 }

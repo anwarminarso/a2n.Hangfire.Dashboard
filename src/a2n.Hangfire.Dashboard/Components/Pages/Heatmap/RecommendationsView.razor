@@ -24,7 +24,9 @@
 *@
 @namespace a2n.Hangfire.Dashboard.Components.Pages.Heatmap
 @using System.Globalization
+@using a2n.Hangfire.Dashboard.Internal
 @using a2n.Hangfire.Dashboard.Models
+@using Microsoft.AspNetCore.Components.Web
 
 <div class="card" data-hm-recommendations>
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -59,24 +61,34 @@
                 @foreach (var rec in VisibleRecommendations)
                 {
                     var isHigh = rec.Severity == RecommendationSeverity.High;
-                    <div class="border rounded p-3 @(isHigh ? "border-danger" : string.Empty)"
-                         data-hm-recommendation data-severity="@SeverityLabel(rec.Severity)">
+                    var queueColor = QueueColorFor(rec.Queue);
+                    <div class="hf-rec-card rounded p-3 @(isHigh ? "hf-rec-card--high" : "hf-rec-card--med")"
+                         data-hm-recommendation data-severity="@SeverityLabel(rec.Severity)"
+                         role="button" tabindex="0"
+                         title="Inspect the jobs in this cluster"
+                         @onclick="() => InspectAsync(rec)"
+                         @onkeydown="@(e => OnCardKeyDown(e, rec))">
                         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                             <span class="d-inline-flex align-items-center gap-2">
-                                <span class="badge @(isHigh ? "text-bg-danger" : "text-bg-secondary")">
-                                    @SeverityLabel(rec.Severity)
+                                <span class="badge @(isHigh ? "text-bg-danger" : "text-bg-warning") text-uppercase"
+                                      style="font-size:.65rem;letter-spacing:.03em;">
+                                    @(isHigh ? "High" : "Med")
                                 </span>
-                                <span class="fw-semibold">
-                                    <span class="badge text-bg-light border me-1">@rec.Queue</span>
-                                    @FormatMinuteOfDay(rec.PeakMinuteOfDay)
+                                <span class="fw-semibold d-inline-flex align-items-center gap-2">
+                                    <span class="hf-q-dot" style="background-color:@queueColor;"></span>
+                                    <span>@rec.Queue</span>
+                                    <span class="text-body-secondary">· @FormatMinuteOfDay(rec.PeakMinuteOfDay)</span>
                                 </span>
                             </span>
-                            @if (rec.CollidesWithHighDemand)
-                            {
-                                <span class="badge text-bg-warning">
-                                    <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>demand collision
-                                </span>
-                            }
+                            <span class="d-inline-flex align-items-center gap-2">
+                                @if (rec.CollidesWithHighDemand)
+                                {
+                                    <span class="badge text-bg-warning">
+                                        <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>demand collision
+                                    </span>
+                                }
+                                <i class="bi bi-chevron-right text-body-secondary" aria-hidden="true"></i>
+                            </span>
                         </div>
 
                         <div class="mb-2">
@@ -98,7 +110,7 @@
 
                         @if (rec.CollidesWithHighDemand && rec.SuggestedMinuteOfDay is int suggested)
                         {
-                            <div class="alert alert-warning d-flex align-items-start gap-2 small mt-2 mb-0" role="note">
+                            <div class="hf-rec-note d-flex align-items-start gap-2 small mt-2" role="note">
                                 <i class="bi bi-info-circle mt-1" aria-hidden="true"></i>
                                 <span>
                                     This slot also carries high on-demand load. Consider
@@ -153,6 +165,37 @@
 
     private string TimeZoneLabel =>
         string.IsNullOrWhiteSpace(ViewerTimeZoneId) ? "UTC" : ViewerTimeZoneId.Trim();
+
+    /// <summary>
+    /// Raised when the operator clicks (or activates via keyboard) a recommendation card. The hosting
+    /// page opens the drill-down drawer for the recommendation's cluster cell.
+    /// </summary>
+    [Parameter] public EventCallback<Recommendation> OnInspect { get; set; }
+
+    /// <summary>
+    /// Optional collision-free queue → color map so the per-recommendation queue dot matches the
+    /// chips, table badges, and view legends. Falls back to the per-name color when absent.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
+
+    /// <summary>Resolves the dot color for a queue from the supplied map, or the deterministic color.</summary>
+    private string QueueColorFor(string queue) =>
+        QueueColorMap is not null && queue is not null && QueueColorMap.TryGetValue(queue, out var color)
+            ? color
+            : QueueColors.ColorFor(queue);
+
+    /// <summary>Opens the drill-down for a clicked recommendation when a handler is wired.</summary>
+    private Task InspectAsync(Recommendation rec) =>
+        OnInspect.HasDelegate ? OnInspect.InvokeAsync(rec) : Task.CompletedTask;
+
+    /// <summary>Activates a recommendation card with Enter/Space for keyboard users.</summary>
+    private async Task OnCardKeyDown(KeyboardEventArgs e, Recommendation rec)
+    {
+        if (e.Key is "Enter" or " " or "Spacebar")
+        {
+            await InspectAsync(rec);
+        }
+    }
 
     private static string SeverityLabel(RecommendationSeverity severity) =>
         severity == RecommendationSeverity.High ? "High" : "Standard";
