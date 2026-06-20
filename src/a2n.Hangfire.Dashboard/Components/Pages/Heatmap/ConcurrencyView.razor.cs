@@ -162,89 +162,96 @@ public partial class ConcurrencyView : ComponentBase, IAsyncDisposable
     /// </remarks>
     private object BuildModel()
     {
-        var cronPerSlot = SumVisibleQueues();
-
         var labels = new string[HoursPerDay];
-        var cron = new double[HoursPerDay];
-        var adhoc = new double[HoursPerDay];
-        // Only overlay the ad-hoc demand baseline in Combined mode (Req 19.1/19.2).
-        var adhocBaseline = IsCombined ? AdHocBaselinePerSlot : null;
-
         for (var hour = 0; hour < HoursPerDay; hour++)
         {
             labels[hour] = $"{hour:00}:00";
+        }
 
-            double cronPeak = 0;
-            double adhocPeak = 0;
-            var start = hour * MinutesPerHour;
-            var end = start + MinutesPerHour;
-
-            for (var minute = start; minute < end; minute++)
+        // Ad-hoc baseline (Combined only) reduced to hourly peaks.
+        var adhocBaseline = IsCombined ? AdHocBaselinePerSlot : null;
+        var adhoc = new double[HoursPerDay];
+        if (adhocBaseline is not null)
+        {
+            for (var hour = 0; hour < HoursPerDay; hour++)
             {
-                if (cronPerSlot[minute] > cronPeak)
+                double peak = 0;
+                var start = hour * MinutesPerHour;
+                var end = Math.Min(start + MinutesPerHour, adhocBaseline.Count);
+                for (var minute = start; minute < end; minute++)
                 {
-                    cronPeak = cronPerSlot[minute];
+                    if (adhocBaseline[minute] > peak)
+                    {
+                        peak = adhocBaseline[minute];
+                    }
                 }
 
-                if (adhocBaseline is not null && minute < adhocBaseline.Count && adhocBaseline[minute] > adhocPeak)
-                {
-                    adhocPeak = adhocBaseline[minute];
-                }
+                adhoc[hour] = peak;
             }
-
-            cron[hour] = cronPeak;
-            adhoc[hour] = adhocPeak;
         }
 
         var hasAdHoc = adhoc.Any(v => v > 0);
+
+        // One stacked layer per visible queue: its hourly peak concurrency. The authoritative combined
+        // peak is reported separately (Result.PeakConcurrency); these per-queue bars are the visual
+        // breakdown of where the pressure comes from (Req: split the cron layer per queue).
+        var queues = new List<object>();
+        var series = Result?.PerQueueSeries;
+        if (series is not null)
+        {
+            foreach (var queueSeries in series.OrderBy(s => s.Queue, StringComparer.Ordinal))
+            {
+                if (VisibleQueues is not null && !VisibleQueues.Contains(queueSeries.Queue, StringComparer.Ordinal))
+                {
+                    continue;
+                }
+
+                var perSlot = queueSeries.ConcurrencyPerSlot;
+                if (perSlot is null)
+                {
+                    continue;
+                }
+
+                var data = new double[HoursPerDay];
+                var any = false;
+                for (var hour = 0; hour < HoursPerDay; hour++)
+                {
+                    double peak = 0;
+                    var start = hour * MinutesPerHour;
+                    var end = Math.Min(start + MinutesPerHour, perSlot.Count);
+                    for (var minute = start; minute < end; minute++)
+                    {
+                        if (perSlot[minute] > peak)
+                        {
+                            peak = perSlot[minute];
+                        }
+                    }
+
+                    data[hour] = peak;
+                    if (peak > 0)
+                    {
+                        any = true;
+                    }
+                }
+
+                if (any)
+                {
+                    queues.Add(new { queue = queueSeries.Queue, data });
+                }
+            }
+        }
 
         return new
         {
             labels,
             // Emitted only in Combined mode (renderer omits the ad-hoc dataset when the array is empty).
             adhoc = hasAdHoc ? adhoc : Array.Empty<double>(),
-            cron,
+            queues,
             capacity = Capacity,
             peak = Result.PeakConcurrency,
             peakMinute = Result.PeakMinuteOfDay,
             worstDayLabel = DayLabel
         };
-    }
-
-    /// <summary>
-    /// Sums the per-queue concurrency series into a single per-minute total, honoring the visible
-    /// queue filter. Order-independent: addition over the (possibly filtered) series is commutative.
-    /// </summary>
-    private double[] SumVisibleQueues()
-    {
-        var total = new double[MinutesPerDay];
-        var series = Result?.PerQueueSeries;
-        if (series is null)
-        {
-            return total;
-        }
-
-        foreach (var queueSeries in series)
-        {
-            if (VisibleQueues is not null && !VisibleQueues.Contains(queueSeries.Queue, StringComparer.Ordinal))
-            {
-                continue;
-            }
-
-            var perSlot = queueSeries.ConcurrencyPerSlot;
-            if (perSlot is null)
-            {
-                continue;
-            }
-
-            var count = Math.Min(perSlot.Count, MinutesPerDay);
-            for (var minute = 0; minute < count; minute++)
-            {
-                total[minute] += perSlot[minute];
-            }
-        }
-
-        return total;
     }
 
     /// <inheritdoc />
