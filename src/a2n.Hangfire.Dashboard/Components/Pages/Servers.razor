@@ -47,7 +47,7 @@ else
                                 <td>
                                     @foreach (var queue in server.Queues)
                                     {
-                                        <span class="badge bg-secondary me-1">@queue</span>
+                                        <QueueBadge Queue="@queue" CssClass="me-1" />
                                     }
                                 </td>
                                 <td>@FormatRelativeTime(server.StartedAt)</td>

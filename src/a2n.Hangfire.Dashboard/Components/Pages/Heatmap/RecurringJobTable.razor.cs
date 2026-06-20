@@ -38,6 +38,18 @@ public partial class RecurringJobTable
     /// </summary>
     [Parameter] public IReadOnlyList<string> LongPeriodJobIds { get; set; }
 
+    /// <summary>
+    /// Optional collision-free queue → color map (the heatmap's available-queue palette). When
+    /// supplied, queue badges use these colors so the table matches the chips and view legends.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
+
+    /// <summary>Resolves the badge color for a queue from the supplied map, or null to fall back.</summary>
+    private string QueueColorFor(string queue) =>
+        QueueColorMap is not null && queue is not null && QueueColorMap.TryGetValue(queue, out var color)
+            ? color
+            : null;
+
     /// <summary>The computed display rows, rebuilt whenever the parameters change.</summary>
     private IReadOnlyList<RowModel> Rows { get; set; } = Array.Empty<RowModel>();
 

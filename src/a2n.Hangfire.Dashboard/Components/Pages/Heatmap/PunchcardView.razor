@@ -21,6 +21,7 @@
     IJSRuntime interop — mirroring how the Analytics chart components wrap analyticsCharts.renderChart.
 *@
 @using a2n.Hangfire.Dashboard.Heatmap
+@using a2n.Hangfire.Dashboard.Internal
 @using a2n.Hangfire.Dashboard.Models
 @inject IJSRuntime JS
 @implements IAsyncDisposable
@@ -85,6 +86,12 @@
 
     /// <summary>The viewer time-zone id used to locate the current day/hour marker; empty means UTC.</summary>
     [Parameter] public string ViewerTimeZoneId { get; set; }
+
+    /// <summary>
+    /// The collision-free queue → color map shared with the rest of the page so the legend swatches
+    /// match the bubble tints. Falls back to the deterministic per-name color when absent.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
 
     private string MetricLabel => Matrix?.Metric == LoadMetric.WorkerMinutes ? "worker-minutes" : "fires";
 
@@ -288,30 +295,18 @@
     }
 
     /// <summary>
-    /// Mirrors the renderer's deterministic queue palette so the legend swatches match the bubble
-    /// tints produced by <c>heatmapCharts.queueColor</c>.
+    /// Resolves the legend swatch color for a queue, preferring the shared collision-free map so the
+    /// swatches match the bubble tints (which use the same map via heatmapCharts.setQueueColors).
     /// </summary>
-    private static string QueueColorCss(string queue)
+    private string QueueColorCss(string queue)
     {
-        // Deterministic palette mirrored from Content/js/heatmap.js (QUEUE_PALETTE / queueColor).
-        string[] palette =
+        if (!string.IsNullOrEmpty(queue) && QueueColorMap is not null &&
+            QueueColorMap.TryGetValue(queue, out var color))
         {
-            "#4dabf7", "#f783ac", "#ffa94d", "#38d9a9", "#b197fc",
-            "#ffe066", "#ff8787", "#9775fa", "#74c0fc", "#63e6be"
-        };
-
-        if (string.IsNullOrEmpty(queue))
-        {
-            return palette[0];
+            return color;
         }
 
-        uint seed = 7;
-        foreach (var ch in queue)
-        {
-            seed = (seed * 31) + ch;
-        }
-
-        return palette[seed % (uint)palette.Length];
+        return QueueColors.ColorFor(queue);
     }
 
     public async ValueTask DisposeAsync()

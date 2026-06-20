@@ -302,7 +302,16 @@ else if (_result is not null)
                                     <td>
                                         <span class="badge @GetStateBadgeClass(item.State)">@(item.State ?? "Unknown")</span>
                                     </td>
-                                    <td>@(item.Queue ?? "—")</td>
+                                    <td>
+                                        @if (string.IsNullOrEmpty(item.Queue))
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            <QueueBadge Queue="@item.Queue" />
+                                        }
+                                    </td>
                                     <td class="text-end">
                                         @if (item.LastStateChange.HasValue)
                                         {

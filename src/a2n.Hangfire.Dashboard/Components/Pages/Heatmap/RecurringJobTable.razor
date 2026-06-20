@@ -79,7 +79,7 @@ else
                                         <code class="font-monospace">@row.CronExpression</code>
                                     }
                                 </td>
-                                <td><span class="badge text-bg-light border">@row.Queue</span></td>
+                                <td><QueueBadge Queue="@row.Queue" Color="@QueueColorFor(row.Queue)" /></td>
                                 <td>@row.TimeZoneLabel</td>
                                 <td class="text-end">@row.DurationLabel</td>
                                 <td class="text-end">
