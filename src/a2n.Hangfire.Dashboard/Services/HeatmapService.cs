@@ -398,7 +398,7 @@ public class HeatmapService
 
         try
         {
-            var buckets = await QueryHistoricalBucketsAsync(window, ct).ConfigureAwait(false);
+            var buckets = await QueryHistoricalBucketsAsync(query.LookbackWeeks, ct).ConfigureAwait(false);
             var result = BuildHistoricalResult(buckets, query.LoadMetric, window);
 
             // Cache only successful historical results; transient failures are not cached so the next
@@ -425,13 +425,16 @@ public class HeatmapService
     }
 
     /// <summary>
-    /// Queries the registered metrics provider for the window's recurring-schedule buckets, enforcing
-    /// a hard timeout (<see cref="HeatmapOptions.HistoricalQueryTimeoutSeconds"/>, default 10s). The
-    /// timeout is enforced even when a provider ignores its cancellation token, throwing
+    /// Queries the registered metrics provider for the recurring-schedule buckets, enforcing a hard
+    /// timeout (<see cref="HeatmapOptions.HistoricalQueryTimeoutSeconds"/>, default 10s). The buckets
+    /// are keyed by day-of-week × hour, so the query aggregates the trailing
+    /// <paramref name="lookbackWeeks"/> weeks of executions (now − N×7 days … now) into those
+    /// day-of-week buckets — this is what makes the Lookback control change the Historical heatmap.
+    /// The timeout is enforced even when a provider ignores its cancellation token, throwing
     /// <see cref="TimeoutException"/> so the caller reverts to the Projected source (Req 7.5).
     /// </summary>
     private async Task<IReadOnlyList<HistoricalScheduleBucket>> QueryHistoricalBucketsAsync(
-        ProjectionWindow window,
+        int lookbackWeeks,
         CancellationToken ct)
     {
         var timeoutSeconds = _options.Heatmap?.HistoricalQueryTimeoutSeconds ?? 10;
@@ -442,12 +445,17 @@ public class HeatmapService
 
         var timeout = TimeSpan.FromSeconds(timeoutSeconds);
 
+        // The bucket query aggregates by day-of-week × hour over the lookback window ending now, so a
+        // wider Lookback produces more robust day-of-week averages (Req: Lookback drives Historical).
+        var weeks = lookbackWeeks < 1 ? 1 : lookbackWeeks;
+        var to = DateTimeOffset.UtcNow;
+        var from = to.AddDays(-7 * weeks);
+
         // Linked source lets us best-effort cancel the in-flight query on timeout; the WhenAny race
         // guarantees we stop waiting at the deadline even if the provider never observes the token.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-        var queryTask = _metricsProvider.GetRecurringScheduleBucketsAsync(
-            window.StartInclusive, window.EndExclusive, timeoutCts.Token);
+        var queryTask = _metricsProvider.GetRecurringScheduleBucketsAsync(from, to, timeoutCts.Token);
 
         var completed = await Task.WhenAny(queryTask, Task.Delay(timeout, ct)).ConfigureAwait(false);
         if (completed != queryTask)
@@ -618,15 +626,16 @@ public class HeatmapService
 
     /// <summary>
     /// Builds the cache key for an aggregation request from the active source, projection-window
-    /// kind, viewer time zone, and load metric (Req 13.1). The source is passed explicitly so the
-    /// Projected fallback served on a historical failure reuses the stable Projected key rather than
-    /// the requesting Historical key. The load metric is part of the key because each cell stores only
-    /// the value for the active metric, so switching metrics requires a recompute.
+    /// kind, viewer time zone, load metric, the "hide sub-hourly" toggle (which changes the projected
+    /// matrix), and the lookback weeks (which change the historical aggregation). The source is passed
+    /// explicitly so the Projected fallback served on a historical failure reuses the stable Projected
+    /// key rather than the requesting Historical key.
     /// </summary>
     private static string BuildCacheKey(HeatmapSource source, HeatmapQuery query)
     {
         var tz = string.IsNullOrWhiteSpace(query.ViewerTimeZoneId) ? "UTC" : query.ViewerTimeZoneId.Trim();
-        return $"heatmap:{source}:{query.WindowKind}:{tz}:{query.LoadMetric}";
+        var sub = query.HideSubHourly ? 1 : 0;
+        return $"heatmap:{source}:{query.WindowKind}:{tz}:{query.LoadMetric}:sub{sub}:lb{query.LookbackWeeks}";
     }
 
     /// <summary>
@@ -927,12 +936,9 @@ public class HeatmapService
             return Array.Empty<HeatmapHistoricalCell>();
         }
 
-        var viewerTz = HeatmapTime.ResolveTimeZone(query.ViewerTimeZoneId);
-        var window = HeatmapTime.BuildWindow(query.WindowKind, DateTimeOffset.UtcNow, viewerTz);
-
         try
         {
-            var buckets = await QueryHistoricalBucketsAsync(window, ct).ConfigureAwait(false);
+            var buckets = await QueryHistoricalBucketsAsync(query.LookbackWeeks, ct).ConfigureAwait(false);
 
             // Collapse the per-queue buckets onto (dayIndex, hour): sum fire/failure counts and take
             // the maximum p95 across the position (matching the planner's CollapseHistorical).
