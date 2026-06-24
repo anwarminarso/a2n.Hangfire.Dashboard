@@ -1279,3 +1279,30 @@ a.hf-st-link:hover .hf-st-link-icon {
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
 }
+
+/* ===== Failed-job exception cell (Issue #17) =====
+   A long exception message (especially one long unbroken token) used to stretch the table wider
+   than the viewport, pushing the "Failed" column off-screen behind a horizontal scrollbar. Force
+   long text to wrap/break and cap the height so the message scrolls vertically inside its own cell
+   instead of widening the table. The short Reason summary above it stays truncated with a tooltip. */
+.hf-exception-message {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: pre-wrap;
+    max-height: 12rem;
+    overflow-y: auto;
+}
+
+/* ===== Method Picker option layout (Issue #18) =====
+   In the registered-method dropdown each option is a flex row with the label on the left and a
+   Contract/Implementation pill on the right. Without a shrinkable label a long job/type name pushed
+   the flex layout and left the pill misaligned. Letting the label shrink (min-width:0) and break
+   keeps the pill consistently anchored to the top-right regardless of name length. */
+.hf-method-option > span.text-start {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.hf-method-option > span.text-start .font-monospace {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}

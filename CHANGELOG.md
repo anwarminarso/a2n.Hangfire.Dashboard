@@ -12,6 +12,17 @@
   - **Controls:** job class (Cron / Ad-hoc / Combined), projection window (idealized week / next 7 days), load metric (fire count / worker-minutes), demand statistic, lookback weeks, worker capacity (detected or overridden), per-queue filtering, hide sub-hourly, and log scale.
   - Honors per-job time zones and a selectable viewer time zone (defaulting to the browser zone, persisted), light/dark theme, deterministic per-queue colors shared across the dashboard, click-to-drill-down into a cell's contributing jobs, and is keyboard / screen-reader accessible.
 
+## 2.4.3 — Dashboard UI/UX Fixes
+
+> **Patch release.** Operator-feedback UI/UX fixes reported against the 2.4 line: the Failed Jobs table, the Create Job method dropdown, the Recurring Jobs search box, and dark-theme persistence ([#17](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/17), [#18](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/18), [#19](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/19), [#20](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/20)).
+
+### Fixed
+
+- **Failed Jobs table pushed the "Failed" column off-screen ([#17](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/17)).** A long exception message — especially one long unbroken token — stretched the table wider than the viewport, hiding the date column behind a horizontal scrollbar. The exception text now wraps/breaks (`overflow-wrap: anywhere; word-break: break-word`, `.hf-exception-message`) and is height-capped with its own vertical scroll, so every column stays visible without horizontal scrolling.
+- **Create Job dropdown pill misaligned for long names ([#18](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/18)).** In the registered-method picker, a long job/type name pushed the Contract/Implementation pill out of position because the label couldn't shrink. The label now shrinks and breaks (`min-width: 0`), keeping the pill consistently anchored to the top-right regardless of name length.
+- **Recurring Jobs search dropped characters when typing quickly ([#19](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/19)).** The filter box echoed a server-side value back to the input on every keystroke over the Blazor Server circuit, so fast typing overwrote in-flight characters (`Hello` → `Hllo`). The input is now uncontrolled — keystrokes are never reset — while filtering still applies as you type.
+- **Dark mode reverted to light on a new session / after navigation ([#20](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/20)).** Blazor enhanced navigation reset the `<html>` element to the server-rendered document, which carries no `data-bs-theme`, stripping the persisted theme. The theme is now re-applied on Blazor's `enhancedload` event, with a `MutationObserver` guard (loop-safe) that restores `data-bs-theme` if anything removes it.
+
 ## 2.4.2 — Recurring & Audit Follow-up
 
 > **Patch release.** Operator-feedback fixes for the Recurring Jobs surface and the Job Builder form ([#11](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/11), [#12](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/12), [#13](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/13)), plus Audit Log grid parity.
