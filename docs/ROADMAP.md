@@ -317,6 +317,17 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 ---
 
+## v2.4.3 — Dashboard UI/UX Fixes ✅
+
+**Goal**: Operator-feedback UI/UX fixes reported against the 2.4 line.
+
+- ✅ **Failed Jobs table column overflow** ([#17](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/17)) — a long exception message no longer widens the table and hides the "Failed" date column behind a horizontal scrollbar; the message wraps/breaks (`.hf-exception-message`) and is height-capped with its own vertical scroll.
+- ✅ **Create Job dropdown pill alignment** ([#18](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/18)) — the registered-method picker's Contract/Implementation pill stays anchored top-right for long job/type names; the label now shrinks and breaks (`min-width: 0`).
+- ✅ **Recurring Jobs search dropped characters** ([#19](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/19)) — the filter input is now uncontrolled, so typing quickly over the Blazor Server circuit no longer overwrites in-flight characters; filtering still applies as you type.
+- ✅ **Dark theme persistence** ([#20](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/20)) — the persisted theme survives Blazor enhanced navigation and new sessions; it is re-applied on `enhancedload` with a `MutationObserver` guard that restores `data-bs-theme` if it is stripped.
+
+---
+
 ## v2.5 — Notifications & Alert Rules (Planned)
 
 **Goal**: Alert the right channel when something goes wrong, without polling the dashboard. Granular plan replacing the original single-bullet "Webhook notifications".
@@ -408,6 +419,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.4.0 | **Job Builder**: typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page (closes #8) | ✅ Done |
 | v2.4.1 | **Job Builder follow-up**: searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix (#10), consistent destructive-action buttons | ✅ Done |
 | v2.4.2 | **Recurring & Job Builder follow-up**: mixed-case job IDs + never-fire cron edit (#11), long-name ellipsis (#12), recurring jobs filter (#13), duplicate-id guard on create, Audit Log grid parity | ✅ Done |
+| v2.4.3 | **Dashboard UI/UX fixes**: Failed-table column overflow (#17), Create Job dropdown pill alignment (#18), recurring search dropped characters (#19), dark-theme persistence (#20) | ✅ Done |
 | v2.5.0 | **Notifications & alert rules**: Slack/Teams/Discord/webhook/email channels, 8 trigger types, cooldown, rule editor + history | Planned |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
