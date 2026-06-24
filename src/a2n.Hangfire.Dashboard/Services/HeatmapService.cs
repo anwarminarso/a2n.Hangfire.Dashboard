@@ -1255,21 +1255,12 @@ public class HeatmapService
     {
         var job = dto.Job;
 
-        // Prefer the job's own (InvocationData) queue: the modern Hangfire API
-        // `RecurringJob.AddOrUpdate(id, queue, …)` stores the target queue here (serialized as "q"),
-        // while the top-level recurring "Queue" hash field stays "default". The job is enqueued to
-        // this InvocationData queue at trigger time, so it is the authoritative effective queue.
-        if (job != null && !string.IsNullOrWhiteSpace(job.Queue))
-        {
-            return job.Queue;
-        }
-
-        // Older API path: the queue was stored in the recurring job's top-level "Queue" field.
-        if (!string.IsNullOrWhiteSpace(dto.Queue))
-        {
-            return dto.Queue;
-        }
-
+        // A [Queue] attribute on the method (or its declaring type — e.g. an interface carrying
+        // [Queue("background")] for a DI-dispatched job) is what actually routes the job at enqueue
+        // time, so it takes precedence. This matches EffectiveQueue.Resolve (Req 13.6, 13.7) used on
+        // the create/enqueue paths. Hangfire writes the "default" sentinel into the stored queue
+        // fields when no explicit queue was given, so consulting the stored value first (as before)
+        // masked attribute-routed queues and showed "default" on the planner (issue #14 follow-up).
         if (job != null)
         {
             try
@@ -1284,8 +1275,21 @@ public class HeatmapService
             }
             catch
             {
-                // Reflection failure → fall through to the default queue.
+                // Reflection failure → fall through to the stored/explicit queue.
             }
+        }
+
+        // No applicable attribute. Prefer the job's own InvocationData queue: the modern Hangfire API
+        // `RecurringJob.AddOrUpdate(id, queue, …)` stores the target queue here (serialized as "q").
+        if (job != null && !string.IsNullOrWhiteSpace(job.Queue))
+        {
+            return job.Queue;
+        }
+
+        // Older API path: the queue was stored in the recurring job's top-level "Queue" field.
+        if (!string.IsNullOrWhiteSpace(dto.Queue))
+        {
+            return dto.Queue;
         }
 
         return ScheduleAggregator.DefaultQueue;
