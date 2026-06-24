@@ -43,10 +43,13 @@ else
         <div class="d-flex align-items-center gap-2 ms-auto">
             @* Client-side filter over the loaded recurring jobs (Issue #13). Matches the job id and
                the resolved job name; also narrows the Stopped Jobs section. *@
+            @* Uncontrolled input: we intentionally do NOT bind the value back to the element while
+               typing. Echoing a server-side value on every keystroke is what dropped characters when
+               typing quickly over the Blazor Server circuit (Issue #19); filtering is debounced. *@
             <div class="input-group input-group-sm" style="width: 18rem;">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input type="search" class="form-control" id="recurring-filter" placeholder="Filter by id or job name"
-                       value="@_filter" @oninput="OnFilterChanged" aria-label="Filter recurring jobs" />
+                       @oninput="OnFilterInput" aria-label="Filter recurring jobs" />
             </div>
             <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
         </div>
@@ -256,7 +259,11 @@ else
         !string.IsNullOrEmpty(value) &&
         value.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    private void OnFilterChanged(ChangeEventArgs e)
+    // Applies the client-side filter (Issue #13). The bound input is intentionally uncontrolled — we
+    // never push a server-side value back to the element — so typing quickly can no longer have its
+    // characters overwritten by a round-trip echo (Issue #19). Filtering itself stays synchronous so
+    // Blazor's implicit re-render after the event reliably refreshes the list.
+    private void OnFilterInput(ChangeEventArgs e)
     {
         _filter = e.Value?.ToString() ?? "";
         // A narrowed view shouldn't keep selections for rows that are no longer visible.
