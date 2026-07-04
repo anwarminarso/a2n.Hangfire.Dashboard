@@ -180,10 +180,16 @@ public static class HangfireDashboardUIExtensions
         {
             services.AddHostedService<AnalyticsBroadcastService>();
 
-            // The ad-hoc Demand_Rollup is only meaningful on storages that expose historical metrics
-            // (SQL Server / PostgreSQL). Registering it here gates it exactly like the analytics
-            // broadcast; on other storages the demand/Combined features stay dark (Req 16.7, 16.9).
-            services.AddHostedService<DemandRollupService>();
+            // Demand rollup: SQL adapters use DemandRollupService; rollup-based adapters use the
+            // unified ExecutionRollupCollector which maintains both demand and metrics rollups.
+            if (builder.UsesRollupMetrics)
+            {
+                // ExecutionRollupCollector is registered by UseRollupMetrics().
+            }
+            else
+            {
+                services.AddHostedService<DemandRollupService>();
+            }
         }
 
         return services;

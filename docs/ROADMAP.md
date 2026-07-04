@@ -101,6 +101,8 @@ samples/
 - ✅ `GenericQueryProvider` fallback (IMonitoringApi + client-side filtering)
 - ✅ `a2n.Hangfire.Dashboard.SqlServer` (Dapper + T-SQL, JSON_VALUE, PERCENTILE_CONT)
 - ✅ `a2n.Hangfire.Dashboard.PostgreSql` (Dapper + Npgsql, ->> operator, PERCENTILE_CONT)
+- ✅ `a2n.Hangfire.Dashboard.Rollup` (rollup-based metrics for Redis / in-memory / non-SQL)
+- ✅ `a2n.Hangfire.Dashboard.Redis` (convenience `UseRedisStorage()` entry point)
 - ✅ LIKE/ILIKE pattern sanitization
 - ✅ Parameterized queries only — zero string concatenation
 - ✅ DI registration via `DashboardStorageOptionsBuilder` pattern
@@ -395,6 +397,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v1.3 | Storage query interfaces + GenericQueryProvider fallback | ✅ Done |
 | v1.4 | SQL Server adapter (`a2n.Hangfire.Dashboard.SqlServer`) | ✅ Done |
 | v1.5 | PostgreSQL adapter (`a2n.Hangfire.Dashboard.PostgreSql`) | ✅ Done |
+| v2.6 | Rollup / Redis metrics adapters (`a2n.Hangfire.Dashboard.Rollup`, `.Redis`) | ✅ Done |
 | v1.6 | Analytics Dashboard (Overview + Performance + Failures + Queues + Recurring) | ✅ Done |
 | v2.0 | Phase 2 complete | ✅ Done |
 | v2.1 | Search & query refactor + JobDisplayName + SQL Server fixes | ✅ Done |

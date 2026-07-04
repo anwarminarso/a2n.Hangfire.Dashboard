@@ -148,10 +148,23 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | [`a2n.Hangfire.Dashboard`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard) | Main dashboard UI (search, console, tags, recurring admin) |
 | [`a2n.Hangfire.Dashboard.SqlServer`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.SqlServer) | Storage-specific queries + full analytics for SQL Server |
 | [`a2n.Hangfire.Dashboard.PostgreSql`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.PostgreSql) | Storage-specific queries + full analytics for PostgreSQL |
+| [`a2n.Hangfire.Dashboard.Rollup`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.Rollup) | Rollup-based analytics for non-SQL storages (Redis, in-memory, other NoSQL) |
+| [`a2n.Hangfire.Dashboard.Redis`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.Redis) | Convenience entry point for Redis — registers rollup metrics (`UseRedisStorage()`) |
 | [`a2n.Hangfire.Console`](https://www.nuget.org/packages/a2n.Hangfire.Console) | Console integration (Hangfire.Console-compatible API) |
 | [`a2n.Hangfire.Tags`](https://www.nuget.org/packages/a2n.Hangfire.Tags) | Tags integration (Hangfire.Tags-compatible storage) |
 
-Without a storage adapter package, search and core dashboard features work; the **Analytics** pages require `a2n.Hangfire.Dashboard.SqlServer` or `a2n.Hangfire.Dashboard.PostgreSql`.
+Without a storage adapter package, search and core dashboard features work; the **Analytics** pages and heatmap **Historical** source require a metrics adapter:
+
+- **SQL Server / PostgreSQL** — `UseSqlServerStorage()` / `UsePostgreSqlStorage()` (direct SQL queries; best accuracy)
+- **Redis / in-memory / other non-SQL** — `UseRedisStorage()` or `UseRollupMetrics()` (incremental rollup; forward-only historical data)
+
+```csharp
+// Redis (Hangfire Pro or community StackExchange.Redis storage already configured)
+builder.Services.AddHangfireDashboardUI(options => options.UseRedisStorage());
+
+// Any other non-SQL Hangfire storage
+builder.Services.AddHangfireDashboardUI(options => options.UseRollupMetrics());
+```
 
 ---
 
@@ -560,6 +573,8 @@ src/
 ├── a2n.Hangfire.Dashboard/             # Main dashboard (Blazor + SignalR + Analytics)
 ├── a2n.Hangfire.Dashboard.SqlServer/   # SQL Server adapter (Dapper + T-SQL)
 ├── a2n.Hangfire.Dashboard.PostgreSql/  # PostgreSQL adapter (Dapper + Npgsql)
+├── a2n.Hangfire.Dashboard.Rollup/      # Rollup metrics engine for non-SQL storages
+├── a2n.Hangfire.Dashboard.Redis/       # Redis / non-SQL entry point (UseRedisStorage)
 ├── a2n.Hangfire.Console/               # Console integration (Hangfire.Console-compatible)
 └── a2n.Hangfire.Tags/                  # Tags integration (Hangfire.Tags-compatible)
 

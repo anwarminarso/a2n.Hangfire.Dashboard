@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RootNamespace>a2n.Hangfire.Dashboard.Redis</RootNamespace>
+    <PackageId>a2n.Hangfire.Dashboard.Redis</PackageId>
+    <Description>Redis and non-SQL storage entry point for a2n.Hangfire.Dashboard analytics. Registers rollup-based metrics so analytics and heatmap historical features work without SQL queries.</Description>
+    <PackageTags>hangfire;dashboard;redis;rollup;metrics;analytics;storage;aspnetcore;dotnet</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\a2n.Hangfire.Dashboard.Rollup\a2n.Hangfire.Dashboard.Rollup.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\" Condition="Exists('icon.png')" />
+  </ItemGroup>
+</Project>

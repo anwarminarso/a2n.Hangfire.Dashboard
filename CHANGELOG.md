@@ -12,9 +12,13 @@
 
 - Merged the stable **2.4.3** dashboard fixes — Failed-table column overflow ([#17](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/17)), Create Job dropdown pill alignment ([#18](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/18)), recurring search dropped characters ([#19](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/19)), and dark-theme persistence ([#20](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/20)). See the 2.4.3 entry below.
 
+### Added
+
+- **Rollup metrics adapters for non-SQL storages.** New packages `a2n.Hangfire.Dashboard.Rollup` and `a2n.Hangfire.Dashboard.Redis` register rollup-based `IStorageMetricsProvider` plus a unified `ExecutionRollupCollector` so Analytics and heatmap Historical/ad-hoc demand work on Redis, in-memory, and other NoSQL Hangfire storages without SQL queries. Historical metrics are forward-only from first collector run (same model as the demand rollup).
+
 ### Known limitations
 
-- **Planner estimated duration requires a metrics-capable storage adapter.** Historical p95 durations are sourced via `IStorageMetricsProvider` (SQL Server / PostgreSQL). On storages without a metrics adapter the estimate falls back to the configured default (floored at 1 minute). Storage-agnostic duration estimation (e.g. for Redis / in-memory) is tracked as a separate feature.
+- **Rollup metrics are approximate and forward-only.** Percentiles use reservoir sampling; historical data accumulates from the first collector run. SQL Server / PostgreSQL adapters remain preferable when relational job history is available.
 
 ## 2.5.0-beta.1 — Recurring Schedule Heatmap (pre-release)
 

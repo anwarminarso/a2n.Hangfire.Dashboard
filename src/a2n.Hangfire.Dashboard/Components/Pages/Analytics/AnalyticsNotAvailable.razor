@@ -60,6 +60,20 @@ else
                                     </div>
                                 </div>
                             </div>
+                            <div class="col-12 col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="bi bi-database me-2"></i>Redis / non-SQL
+                                        </h6>
+                                        <code class="d-block mb-2">a2n.Hangfire.Dashboard.Redis</code>
+                                        <small class="text-body-secondary">
+                                            For Hangfire on Redis, in-memory, or other non-SQL storages.
+                                            Uses incremental rollup metrics (forward-only historical data).
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <h5 class="mb-3">Configuration</h5>
@@ -80,10 +94,19 @@ else
 });</code></pre>
                         </div>
 
+                        <div class="mb-3">
+                            <h6>Redis / non-SQL (rollup metrics)</h6>
+                            <pre class="bg-body-tertiary p-3 rounded"><code>builder.Services.AddHangfireDashboardUI(options =>
+{
+    options.UseRedisStorage();
+    // or: options.UseRollupMetrics();
+});</code></pre>
+                        </div>
+
                         <div class="alert alert-info mb-0">
                             <i class="bi bi-info-circle me-2"></i>
                             Without a storage adapter, the dashboard still provides full job management functionality.
-                            Only the analytics section requires a dedicated adapter for database-level metrics queries.
+                            Analytics requires SQL Server, PostgreSQL, or rollup metrics (Redis / non-SQL).
                         </div>
                     </div>
                 </div>
