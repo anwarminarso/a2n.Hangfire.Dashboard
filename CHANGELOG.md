@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.5.0 — Recurring Schedule Heatmap
+
+> **Feature release.** The Recurring Schedule Heatmap ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) is now generally available and merged to `main`. Plan controllable cron jobs around real on-demand load — projected from cron expressions and bucketed by queue, day, and hour — with new rollup-based analytics so Historical and demand views also work on non-SQL storages.
+
+### Added
+
+- **Recurring Schedule Heatmap ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)).** A new **Schedule Heatmap** page (under the Management nav group) visualizing recurring-job scheduling density by queue, day, and hour:
+  - **Views:** Planner (projected cron over ad-hoc demand with low-load "safe windows"), Punchcard, Queue × Hour, Per-queue small multiples, Calendar (color by volume/failure/duration), Concurrency (per-queue stacked, duration-aware, with a worker-capacity reference line and over-capacity flagging), and Recommendations (overlapping-cluster detection with a before/after stagger impact).
+  - **Sources:** a storage-agnostic **Projected** source (computed from cron expressions) on any storage, plus a **Historical** source and ad-hoc demand overlay on SQL Server / PostgreSQL — or on any storage via the new rollup adapters (degrades gracefully where unavailable).
+  - **Controls:** job class (Cron / Ad-hoc / Combined), projection window (idealized week / next 7 days), load metric (fire count / worker-minutes), demand statistic, lookback weeks, worker capacity (detected or overridden), per-queue filtering, hide sub-hourly, and log scale.
+  - Honors per-job time zones and a selectable viewer time zone, light/dark theme, deterministic per-queue colors shared across the dashboard, click-to-drill-down into a cell's contributing jobs, and is keyboard / screen-reader accessible.
+- **Rollup metrics adapters for non-SQL storages ([#21](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/21)).** New packages `a2n.Hangfire.Dashboard.Rollup` and `a2n.Hangfire.Dashboard.Redis` register a rollup-based `IStorageMetricsProvider` plus a unified `ExecutionRollupCollector` that samples recent succeeded/failed jobs via Hangfire's core `IMonitoringApi` and aggregates per job-type stats (reservoir-sampled percentiles). This makes Analytics and heatmap Historical / ad-hoc demand — and the Planner's **estimated job duration** — work on Redis, in-memory, and other non-SQL Hangfire storages, instead of falling back to the floored 1-minute default.
+
+### Fixed
+
+- **Planner showed the wrong queue for attribute-routed jobs ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14) follow-up).** A recurring job routed by a `[Queue]` attribute appeared under `default` instead of its real queue. `HeatmapService.ResolveQueue` now resolves the `[Queue]` attribute on the method (or its declaring type/interface) ahead of the stored `default` sentinel, matching the create/enqueue paths.
+- **Planner estimated durations wrong on non-SQL storage ([#21](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/21)).** Without a metrics provider, every job's estimated duration fell back to the floored 1-minute default (e.g. a ~3-minute job shown as `1m`). With the rollup adapters registered, the Planner and Concurrency views now reflect real processing time on any storage.
+
+### Known limitations
+
+- **Rollup metrics are approximate and forward-only.** Percentiles use reservoir sampling; historical data accumulates from the first collector run. SQL Server / PostgreSQL adapters remain preferable when relational job history is available.
+
+### Includes
+
+- All **2.4.3** dashboard UI/UX fixes ([#17](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/17)–[#20](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/20)) — see the 2.4.3 entry below.
+
 ## 2.5.0-beta.2 — Recurring Schedule Heatmap (pre-release)
 
 > **Pre-release.** Second cut of the Recurring Schedule Heatmap ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)), rebased on the 2.4.3 stable line so it now also carries the #17–#20 dashboard fixes. Still on the `feature/recurring-schedule-heatmap` branch; not merged to `main`.

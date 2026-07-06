@@ -330,9 +330,11 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 ---
 
-## v2.5 — Recurring Schedule Heatmap (Pre-release) 🧪
+## v2.5.0 — Recurring Schedule Heatmap ✅
 
-**Goal**: Visualize recurring-job scheduling density — by queue, day, and hour — to surface overlap and overload hotspots, and plan controllable cron jobs around real on-demand load ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)). Currently shipping as a pre-release (`2.5.0-beta.2`) from the `feature/recurring-schedule-heatmap` branch.
+**Goal**: Visualize recurring-job scheduling density — by queue, day, and hour — to surface overlap and overload hotspots, and plan controllable cron jobs around real on-demand load ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)). Shipped in `2.5.0` and merged to `main`; also adds rollup-based metrics adapters (`a2n.Hangfire.Dashboard.Rollup` / `.Redis`) so Analytics, the Historical/demand sources, and the Planner's estimated durations work on non-SQL storages ([#21](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/21)).
+
+- **Rollup metrics adapters ([#21](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/21))** — a storage-agnostic `IStorageMetricsProvider` backed by an `ExecutionRollupCollector` that samples succeeded/failed jobs via the core `IMonitoringApi`, so Redis / in-memory storages get Analytics, heatmap Historical/demand, and realistic Planner estimated durations (no more floored 1-minute fallback).
 
 - **Views** — Planner (projected cron over ad-hoc demand with low-load "safe windows"), Punchcard, Queue × Hour, Per-queue small multiples, Calendar, Concurrency (duration-aware, with a worker-capacity reference line and over-capacity flagging), and Recommendations (overlapping-cluster detection with a before/after stagger impact).
 - **Sources** — a storage-agnostic **Projected** source (computed from cron expressions) on any storage, plus a **Historical** source and ad-hoc demand overlay on SQL Server / PostgreSQL (degrades gracefully — toggles hidden — elsewhere).
@@ -410,7 +412,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.4.1 | **Job Builder follow-up**: searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix (#10), consistent destructive-action buttons | ✅ Done |
 | v2.4.2 | **Recurring & Job Builder follow-up**: mixed-case job IDs + never-fire cron edit (#11), long-name ellipsis (#12), recurring jobs filter (#13), duplicate-id guard on create, Audit Log grid parity | ✅ Done |
 | v2.4.3 | **Dashboard UI/UX fixes**: Failed-table column overflow (#17), Create Job dropdown pill alignment (#18), recurring search dropped characters (#19), dark-theme persistence (#20) | ✅ Done |
-| v2.5.0 | **Recurring Schedule Heatmap** (#14) — Planner, Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, stagger Recommendations; Projected (any storage) + Historical (SQL/PG) sources | 🧪 Pre-release |
+| v2.5.0 | **Recurring Schedule Heatmap** (#14) — Planner, Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, stagger Recommendations; Projected (any storage) + Historical (SQL/PG or rollup adapters) sources; storage-agnostic estimated durations via rollup metrics (#21) | ✅ Done |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |

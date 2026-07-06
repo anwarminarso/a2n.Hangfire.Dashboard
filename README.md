@@ -11,7 +11,7 @@ Open source (LGPL-3.0-or-later). Requires Hangfire 1.8+ and ASP.NET Core (.NET 8
 
 ---
 
-![Dashboard Overview](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/overview.png)
+![Dashboard Overview](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/overview.png)
 
 ## Get Started in 30 Seconds
 
@@ -28,6 +28,21 @@ app.UseHangfireDashboardUI("/hangfire");
 Navigate to `/hangfire`. Done.
 
 > **Authorization:** By default, only **local requests** are allowed (same as the Hangfire dashboard). For remote access, set `Authorization = []` or add your own filters. See [CHANGELOG.md](CHANGELOG.md) and [`samples/SampleAppAuth`](samples/SampleAppAuth) for a cookie login example.
+
+---
+
+## 🚀 What's New in 2.5 — Recurring Schedule Heatmap
+
+Plan controllable cron jobs around **real on-demand load**. The new **Schedule Heatmap** projects your recurring jobs — and actual ad-hoc demand — onto a **queue × day × hour** grid so you can spot collisions, find the quietest window to schedule, and rebalance load. See the [showcase below](#-recurring-schedule-heatmap).
+
+| | Feature | What you get |
+|---|---------|--------------|
+| 🗺️ | **Seven views** | Planner (cron over ad-hoc demand with low-load "safe windows"), Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, and stagger Recommendations. |
+| 🔀 | **Projected + Historical** | A storage-agnostic **Projected** source (from cron expressions) on any storage; a **Historical** source and ad-hoc demand overlay on SQL Server / PostgreSQL — or on any storage via the new rollup adapters. Degrades gracefully where unavailable. |
+| 🧰 | **Rollup metrics for non-SQL storage** ([#21](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/21)) | New `a2n.Hangfire.Dashboard.Rollup` / `a2n.Hangfire.Dashboard.Redis` packages bring Analytics, heatmap Historical, and realistic **estimated durations** to Redis, in-memory, and other NoSQL storages — no SQL required. |
+| 🔎 | **Drill-down & a11y** | Click any cell to inspect the jobs scheduled in that slot. Honors per-job & viewer time zones, light/dark theme, and is keyboard / screen-reader accessible. |
+
+See the [changelog](CHANGELOG.md) for the full list.
 
 ---
 
@@ -101,6 +116,7 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 |---------|-------------|
 | Job monitoring | Job state pages, batch operations, servers, retries |
 | Recurring jobs | Create, edit, start, and stop recurring jobs from the UI, with a client-side id/name filter |
+| Schedule Heatmap | 🆕 Visualize recurring-job density by queue × day × hour and plan cron around real demand — Planner, Punchcard, Calendar, Concurrency, Recommendations, and more (see [Schedule Heatmap](#-recurring-schedule-heatmap)) |
 | Job Builder | 🆕 Create & schedule jobs **with typed arguments** — guided parameter form (+ JSON), method discovery, overload-safe resolution, and one-off enqueue at `/jobs/enqueue` — see [Job Builder](#job-builder) |
 | Visual cron builder | 🆕 Build cron schedules field-by-field with a human-readable description and next-run preview |
 | Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
@@ -123,21 +139,47 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 
 ## Screenshots
 
+### ⭐ Recurring Schedule Heatmap
+
+Project your recurring (cron) jobs — and real ad-hoc demand — onto a **queue × day × hour** grid to spot collisions, find the quietest window to schedule, and rebalance load. Multiple views, click-through drill-down, and (with a storage adapter) a Historical/Demand source.
+
+| Planner — cron over ad-hoc demand |
+|:---:|
+| ![Schedule Heatmap Planner](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/heatmap.png) |
+
+| Punchcard | Calendar |
+|:---:|:---:|
+| ![Punchcard](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/heatmap-punchcard.png) | ![Calendar](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/heatmap-calendar.png) |
+
+| Concurrency | Overlap Recommendations |
+|:---:|:---:|
+| ![Concurrency](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/heatmap-concurrency.png) | ![Recommendations](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/heatmap-recommendations.png) |
+
+| Cell drill-down — jobs scheduled in a slot |
+|:---:|
+| ![Drill-down](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/heatmap-drilldown.png) |
+
+### More
+
 | Home & Realtime Charts | Console Viewer |
 |:---:|:---:|
-| ![Home](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/home.png) | ![Console](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/console-viewer.png) |
+| ![Home](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/home.png) | ![Console](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/console-viewer.png) |
 
 | Tags & Search | Recurring Jobs |
 |:---:|:---:|
-| ![Tags](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/tags.png) | ![Recurring](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/recurring.png) |
+| ![Tags](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/tags.png) | ![Recurring](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/recurring.png) |
 
 | Advanced Search | Analytics |
 |:---:|:---:|
-| ![Advanced Search](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/search.png) | ![Analytics](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/performance.png) |
+| ![Advanced Search](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/search.png) | ![Analytics](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/performance.png) |
+
+| Enqueue Job (typed args) | Recurring Schedule (Cron Builder) |
+|:---:|:---:|
+| ![Enqueue Job](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/enqueue-job.png) | ![Recurring Schedule](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/recurring-schedule.png) |
 
 | Light / Dark / Auto |
 |:---:|
-| ![Light / Dark / Auto theme](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/blob/main/docs/screenshots/light-dark.png) |
+| ![Light / Dark / Auto theme](https://raw.githubusercontent.com/anwarminarso/a2n.Hangfire.Dashboard/main/docs/screenshots/light-dark.png) |
 
 ---
 
@@ -623,7 +665,7 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.3.1 | ✅ Done | Realtime analytics fixes — SQL Server `GROUP BY` (error 144) fix, fixed-cadence broadcast loop, NuGet XML docs |
 | v2.4.0 | ✅ Done | **Job Builder** — create/schedule jobs with typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)) |
 | v2.4.1 | ✅ Done | **Job Builder follow-up** — searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)), consistent destructive-action buttons |
-| v2.5.0 | 🧪 Pre-release | **Recurring Schedule Heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) — visualize recurring-job scheduling density by queue × day × hour: Planner (cron over ad-hoc demand), Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, and stagger Recommendations (`2.5.0-beta.2`) |
+| v2.5.0 | ✅ Done | **Recurring Schedule Heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) — visualize recurring-job scheduling density by queue × day × hour: Planner (cron over ad-hoc demand), Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, and stagger Recommendations; plus rollup metrics adapters (Rollup / Redis) for non-SQL storages, incl. storage-agnostic estimated durations ([#21](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/21)) |
 | v2.6.0 | Planned | **Integrations** — Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export |
 | v2.7.0 | Planned | **Customization** — white-label theming, show/hide built-in pages, saved views |
 | v3.0 | Planned | Stretch goals & long-term backlog (notifications & alert rules, Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
