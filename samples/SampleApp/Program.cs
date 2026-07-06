@@ -3,6 +3,8 @@ using Hangfire;
 using Hangfire.Console;
 using Hangfire.Tags;
 using Hangfire.PostgreSql;
+using Hangfire.Redis.StackExchange;
+using a2n.Hangfire.Dashboard.Redis;
 using SampleApp.SharedJobs;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 var storageProvider = builder.Configuration["StorageProvider"] ?? "InMemory";
 var sqlServerConn = builder.Configuration.GetConnectionString("SqlServer");
 var postgreSqlConn = builder.Configuration.GetConnectionString("PostgreSql");
+var redisConn = builder.Configuration.GetConnectionString("Redis");
 
 Console.WriteLine($"[SampleApp] Storage provider: {storageProvider}");
 
@@ -33,6 +36,13 @@ builder.Services.AddHangfire(config =>
                 x.UseNpgsqlConnection(postgreSqlConn);
             });
             Console.WriteLine("[SampleApp] Using PostgreSQL storage");
+            break;
+        case "Redis":
+            config.UseRedisStorage(redisConn, new RedisStorageOptions
+            {
+                Prefix = "hangfire:",
+            });
+            Console.WriteLine("[SampleApp] Using Redis storage (analytics disabled — no dashboard adapter)");
             break;
         default:
             config.UseInMemoryStorage();
@@ -68,6 +78,15 @@ builder.Services.AddHangfireDashboardUI(options =>
             break;
         case "PostgreSql":
             options.UsePostgreSqlStorage(postgreSqlConn);
+            break;
+        case "Redis":
+            // Redis has no SQL query provider, so analytics/heatmap-historical are powered by
+            // rollup metrics: a background collector polls succeeded/failed jobs and stores
+            // aggregated rollups back in Redis. Does not open its own connection — it reuses the
+            // JobStorage configured above via UseRedisStorage(...).
+            options.UseRedisStorage();
+            break;
+        default:
             break;
             // InMemory → no adapter configured → GenericQueryProvider fallback, analytics hidden
     }
