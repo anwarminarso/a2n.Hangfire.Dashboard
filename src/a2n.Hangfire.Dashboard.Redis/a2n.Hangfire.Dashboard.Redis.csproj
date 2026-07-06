@@ -12,6 +12,6 @@
     <ProjectReference Include="..\a2n.Hangfire.Dashboard.Rollup\a2n.Hangfire.Dashboard.Rollup.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="icon.png" Pack="true" PackagePath="\" Condition="Exists('icon.png')" />
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

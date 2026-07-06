@@ -17,6 +17,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="a2n.Hangfire.Dashboard.Rollup.Tests" />
-    <None Include="icon.png" Pack="true" PackagePath="\" Condition="Exists('icon.png')" />
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>
