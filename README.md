@@ -148,10 +148,23 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | [`a2n.Hangfire.Dashboard`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard) | Main dashboard UI (search, console, tags, recurring admin) |
 | [`a2n.Hangfire.Dashboard.SqlServer`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.SqlServer) | Storage-specific queries + full analytics for SQL Server |
 | [`a2n.Hangfire.Dashboard.PostgreSql`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.PostgreSql) | Storage-specific queries + full analytics for PostgreSQL |
+| [`a2n.Hangfire.Dashboard.Rollup`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.Rollup) | Rollup-based analytics for non-SQL storages (Redis, in-memory, other NoSQL) |
+| [`a2n.Hangfire.Dashboard.Redis`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.Redis) | Convenience entry point for Redis — registers rollup metrics (`UseRedisStorage()`) |
 | [`a2n.Hangfire.Console`](https://www.nuget.org/packages/a2n.Hangfire.Console) | Console integration (Hangfire.Console-compatible API) |
 | [`a2n.Hangfire.Tags`](https://www.nuget.org/packages/a2n.Hangfire.Tags) | Tags integration (Hangfire.Tags-compatible storage) |
 
-Without a storage adapter package, search and core dashboard features work; the **Analytics** pages require `a2n.Hangfire.Dashboard.SqlServer` or `a2n.Hangfire.Dashboard.PostgreSql`.
+Without a storage adapter package, search and core dashboard features work; the **Analytics** pages and heatmap **Historical** source require a metrics adapter:
+
+- **SQL Server / PostgreSQL** — `UseSqlServerStorage()` / `UsePostgreSqlStorage()` (direct SQL queries; best accuracy)
+- **Redis / in-memory / other non-SQL** — `UseRedisStorage()` or `UseRollupMetrics()` (incremental rollup; forward-only historical data)
+
+```csharp
+// Redis (Hangfire Pro or community StackExchange.Redis storage already configured)
+builder.Services.AddHangfireDashboardUI(options => options.UseRedisStorage());
+
+// Any other non-SQL Hangfire storage
+builder.Services.AddHangfireDashboardUI(options => options.UseRollupMetrics());
+```
 
 ---
 
@@ -560,6 +573,8 @@ src/
 ├── a2n.Hangfire.Dashboard/             # Main dashboard (Blazor + SignalR + Analytics)
 ├── a2n.Hangfire.Dashboard.SqlServer/   # SQL Server adapter (Dapper + T-SQL)
 ├── a2n.Hangfire.Dashboard.PostgreSql/  # PostgreSQL adapter (Dapper + Npgsql)
+├── a2n.Hangfire.Dashboard.Rollup/      # Rollup metrics engine for non-SQL storages
+├── a2n.Hangfire.Dashboard.Redis/       # Redis / non-SQL entry point (UseRedisStorage)
 ├── a2n.Hangfire.Console/               # Console integration (Hangfire.Console-compatible)
 └── a2n.Hangfire.Tags/                  # Tags integration (Hangfire.Tags-compatible)
 
@@ -608,10 +623,10 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.3.1 | ✅ Done | Realtime analytics fixes — SQL Server `GROUP BY` (error 144) fix, fixed-cadence broadcast loop, NuGet XML docs |
 | v2.4.0 | ✅ Done | **Job Builder** — create/schedule jobs with typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)) |
 | v2.4.1 | ✅ Done | **Job Builder follow-up** — searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)), consistent destructive-action buttons |
-| v2.5.0 | Planned | **Notifications & alert rules** — Slack/Teams/Discord/webhook/email channels, 8 trigger types, cooldown, rule editor + history |
+| v2.5.0 | 🧪 Pre-release | **Recurring Schedule Heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) — visualize recurring-job scheduling density by queue × day × hour: Planner (cron over ad-hoc demand), Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, and stagger Recommendations (`2.5.0-beta.2`) |
 | v2.6.0 | Planned | **Integrations** — Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export |
 | v2.7.0 | Planned | **Customization** — white-label theming, show/hide built-in pages, saved views |
-| v3.0 | Planned | Stretch goals & long-term backlog (Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
+| v3.0 | Planned | Stretch goals & long-term backlog (notifications & alert rules, Gantt timeline, multi-instance federation, replay, fingerprint, etc.) |
 
 See the full [roadmap](docs/ROADMAP.md) for details.
 
@@ -643,6 +658,7 @@ This project builds on the excellent work of the Hangfire community:
 - [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console) — console output for background jobs
 - [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags) — job tagging
 - [Hangfire.RecurringJobAdmin](https://github.com/bamotav/Hangfire.RecurringJobAdmin) — recurring job management UI
+- [Hangfire.Community.Dashboard.Heatmap](https://github.com/brodrigz/Hangfire.Community.Dashboard.Heatmap) by Bruno Rodrigues (brodrigz) — design inspiration for the recurring schedule heatmap (clean-room Blazor implementation, no source code copied)
 
 Community extensions are listed on the [Hangfire Extensions](https://www.hangfire.io/extensions.html) page. This project is community-maintained and is not officially supported by Hangfire OÜ.
 

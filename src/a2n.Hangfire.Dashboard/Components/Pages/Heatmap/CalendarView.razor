@@ -1,0 +1,423 @@
+@*
+    CalendarView (task 11.4) — the Calendar heatmap: a 7-day × 24-hour matrix shaded with the
+    neutral Color_Ramp from docs/mockups/heatmap-mockup-v4.html.
+
+    Behavior implemented here (Phase 1, storage-agnostic):
+
+      • A 7 × 24 grid that maps each day-hour cell's aggregated Load_Metric value monotonically from
+        the lowest displayed value (empty / minimum-intensity shade) to the highest displayed value
+        (maximum-intensity shade) (Req 6.1).
+      • Zero cells render at the ramp's empty shade, visually distinct from non-zero cells (Req 6.2).
+      • The current day/hour in the Viewer_Time_Zone is marked with a persistent indicator distinct
+        from the ramp shading — but only when "now" falls inside the active Projection_Window
+        (Req 6.5); when it falls outside the window no cell is marked (Req 6.6).
+      • The color-by-failure-rate and color-by-duration modes may remain selected while the Historical
+        source is inactive; in that case every cell renders at the empty shade (Req 6.7).
+
+      • Under the active Historical source, color-by-failure-rate recolors each cell by its failure
+        rate (0..100%) and color-by-duration recolors each cell by its p95 execution duration, both
+        mapped monotonically across the ramp with the empty shade for cells that have no historical
+        executions (Req 6.3, 6.4). The per-cell failure/fire counts and p95 arrive via the
+        HistoricalCells parameter, since the HeatmapMatrix carries only a single load value per cell.
+
+    Rendering is delegated to window.heatmapCharts.renderCalendar in Content/js/heatmap.js, following
+    the existing analytics chart interop pattern (Components/Shared/AnalyticsChart.razor).
+*@
+
+@using a2n.Hangfire.Dashboard.Heatmap
+@using a2n.Hangfire.Dashboard.Models
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (Matrix is null)
+{
+    <EmptyState Icon="calendar3" Message="No schedule to display." />
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                <h5 class="card-title mb-0">Calendar — day × hour</h5>
+                <div class="d-flex align-items-center gap-3 small text-body-secondary">
+                    <span class="d-inline-flex align-items-center gap-1">
+                        <span class="hf-cal-swatch" style="background: var(--bs-tertiary-bg, #eef1f5);"></span>
+                        empty
+                    </span>
+                    <span class="d-inline-flex align-items-center gap-1">
+                        <span class="hf-cal-marker"></span>
+                        current hour
+                    </span>
+                </div>
+            </div>
+            <p class="text-body-secondary small mb-3">
+                @CaptionText
+            </p>
+            <div id="@_containerId"></div>
+        </div>
+    </div>
+}
+
+<style>
+    .hf-cal-swatch {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid var(--bs-border-color, #dee2e6);
+    }
+
+    .hf-cal-marker {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        box-shadow: inset 0 0 0 2px var(--bs-primary, #0d6efd);
+    }
+</style>
+
+@code {
+    private static readonly string[] WeekdayLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
+    private readonly string _containerId = $"hf-cal-{Guid.NewGuid():N}";
+    private object _model;
+    private bool _rendered;
+    private bool _pendingRender;
+
+    /// <summary>
+    /// The aggregated <c>queue × day × hour</c> matrix to display. The Calendar collapses the queue
+    /// dimension, summing each day-hour cell across all queues in the matrix.
+    /// </summary>
+    [Parameter, EditorRequired] public HeatmapMatrix Matrix { get; set; }
+
+    /// <summary>The viewer time-zone id used to locate the current day/hour; empty means UTC.</summary>
+    [Parameter] public string ViewerTimeZoneId { get; set; }
+
+    /// <summary>Whether to apply logarithmic intensity scaling to the ramp.</summary>
+    [Parameter] public bool LogScale { get; set; }
+
+    /// <summary>
+    /// The selected coloring mode: <c>volume</c> (default), <c>failure</c>, or <c>duration</c>.
+    /// </summary>
+    [Parameter] public string ColorBy { get; set; } = "volume";
+
+    /// <summary>
+    /// Whether the Historical source is active. When <c>false</c>, the failure / duration coloring
+    /// modes render every cell at the empty shade (Req 6.7).
+    /// </summary>
+    [Parameter] public bool HistoricalActive { get; set; }
+
+    /// <summary>
+    /// The per-cell historical execution statistics (failure/fire counts, p95) for the active window,
+    /// already collapsed to <c>day × hour</c> positions across the queue dimension. Drives the
+    /// color-by-failure-rate (Req 6.3) and color-by-duration (Req 6.4) modes; the matrix itself carries
+    /// no per-cell failure/duration data. May be <c>null</c> or empty (cells then render empty).
+    /// </summary>
+    [Parameter] public IReadOnlyList<HeatmapHistoricalCell> HistoricalCells { get; set; }
+
+    private string CaptionText
+    {
+        get
+        {
+            var metric = Matrix?.Metric == LoadMetric.WorkerMinutes ? "Worker-minutes" : "Fire count";
+            if (!IsVolumeMode && !HistoricalActive)
+            {
+                return $"Color-by-{ColorBy} needs the Historical source; cells are shown empty. Neutral ramp · {metric}.";
+            }
+
+            if (IsFailureMode && HistoricalActive)
+            {
+                return "Shaded by failure rate (0–100%) · cells with no historical executions shown empty.";
+            }
+
+            if (IsDurationMode && HistoricalActive)
+            {
+                return "Shaded by p95 execution duration · cells with no historical executions shown empty.";
+            }
+
+            return $"Neutral ramp shaded by load · {metric}.";
+        }
+    }
+
+    private bool IsVolumeMode =>
+        string.IsNullOrWhiteSpace(ColorBy) || string.Equals(ColorBy, "volume", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsFailureMode => string.Equals(ColorBy, "failure", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsDurationMode => string.Equals(ColorBy, "duration", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnParametersSet()
+    {
+        _model = Matrix is null ? null : BuildModel();
+        _pendingRender = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_pendingRender || _model is null)
+        {
+            return;
+        }
+
+        _pendingRender = false;
+
+        try
+        {
+            await JS.InvokeVoidAsync("heatmapCharts.renderCalendar", _containerId, _model);
+            _rendered = true;
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — nothing to render against.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component disposed mid-render.
+        }
+    }
+
+    /// <summary>
+    /// Projects the matrix onto the JS renderer model described by heatmap.js:
+    /// <c>{ days, dayIndices, hours, cells:[{day,hour,value}], min, max, logScale, colorMode,
+    /// metricLabel, nowDay, nowHour }</c>.
+    /// </summary>
+    private object BuildModel()
+    {
+        var window = Matrix.Window;
+        var viewerTz = HeatmapTime.ResolveTimeZone(ViewerTimeZoneId);
+
+        var dayLabels = BuildDayLabels(window, viewerTz);
+        var dayIndices = Enumerable.Range(0, HeatmapTime.WindowDays).ToArray();
+        var hours = Enumerable.Range(0, 24).ToArray();
+
+        // Resolve the current-hour marker only when "now" falls inside the active window
+        // (Req 6.5 / 6.6).
+        var nowDay = -1;
+        var nowHour = -1;
+        var now = DateTimeOffset.UtcNow;
+        if (HeatmapTime.IsInWindow(now, window))
+        {
+            var (markerDay, markerHour) = HeatmapTime.GetBucket(now, viewerTz, window);
+            if (markerDay >= 0 && markerDay < HeatmapTime.WindowDays)
+            {
+                nowDay = markerDay;
+                nowHour = markerHour;
+            }
+        }
+
+        var metricLabel = Matrix.Metric == LoadMetric.WorkerMinutes ? "Worker-minutes" : "Fire count";
+
+        // Volume mode shades by the aggregated day-hour load. The failure / duration modes light up
+        // only under the Historical source (Req 6.3, 6.4 — task 13.5); while it is inactive every
+        // cell renders at the empty shade (Req 6.7), which we achieve by emitting no populated cells.
+        if (!IsVolumeMode && !HistoricalActive)
+        {
+            return new
+            {
+                days = dayLabels,
+                dayIndices,
+                hours,
+                cells = Array.Empty<object>(),
+                min = 0d,
+                max = 0d,
+                logScale = LogScale,
+                colorMode = "ramp",
+                metricLabel,
+                nowDay,
+                nowHour
+            };
+        }
+
+        // Color-by-failure-rate (Req 6.3): under the active Historical source, recolor each cell by its
+        // failure rate (0..1; rendered as 0..100%). Cells with no historical executions are omitted so
+        // they render at the empty shade. The renderer's 'failure' color mode reads failureRate +
+        // fireCount per cell, so min/max are unused here.
+        if (IsFailureMode && HistoricalActive)
+        {
+            var historical = CollapseHistorical();
+            var failureCells = historical.Values
+                .Where(s => s.HasData)
+                .OrderBy(s => s.DayIndex)
+                .ThenBy(s => s.Hour)
+                .Select(s => (object)new
+                {
+                    day = s.DayIndex,
+                    hour = s.Hour,
+                    value = (double)s.FireCount,
+                    failureRate = s.FailureRate,
+                    fireCount = s.FireCount
+                })
+                .ToArray();
+
+            return new
+            {
+                days = dayLabels,
+                dayIndices,
+                hours,
+                cells = failureCells,
+                min = 0d,
+                max = 1d,
+                logScale = LogScale,
+                colorMode = "failure",
+                metricLabel = "Fires",
+                nowDay,
+                nowHour
+            };
+        }
+
+        // Color-by-duration (Req 6.4): under the active Historical source, recolor each cell by its p95
+        // execution duration mapped monotonically from the lowest to the highest displayed p95. Cells
+        // with no historical executions are omitted so they render at the empty shade.
+        if (IsDurationMode && HistoricalActive)
+        {
+            var historical = CollapseHistorical();
+            var withData = historical.Values.Where(s => s.HasData).ToArray();
+
+            var durationCells = withData
+                .OrderBy(s => s.DayIndex)
+                .ThenBy(s => s.Hour)
+                .Select(s => (object)new
+                {
+                    day = s.DayIndex,
+                    hour = s.Hour,
+                    value = s.P95Ms,
+                    fireCount = s.FireCount
+                })
+                .ToArray();
+
+            // Map from the lowest displayed p95 (minimum-intensity shade) to the highest (Req 6.4).
+            var durMin = withData.Length > 0 ? withData.Min(s => s.P95Ms) : 0d;
+            var durMax = withData.Length > 0 ? withData.Max(s => s.P95Ms) : 0d;
+
+            return new
+            {
+                days = dayLabels,
+                dayIndices,
+                hours,
+                cells = durationCells,
+                min = durMin,
+                max = durMax,
+                logScale = LogScale,
+                colorMode = "duration",
+                metricLabel = "p95 duration (ms)",
+                nowDay,
+                nowHour
+            };
+        }
+
+        // Collapse the queue dimension: sum each (day, hour) cell across all queues.
+        var totals = new Dictionary<(int Day, int Hour), double>();
+        foreach (var cell in Matrix.Cells.Values)
+        {
+            var key = (cell.Key.DayIndex, cell.Key.Hour);
+            totals[key] = totals.TryGetValue(key, out var sum) ? sum + cell.Value : cell.Value;
+        }
+
+        var cells = totals
+            .Where(kv => kv.Value > 0)
+            .Select(kv => (object)new { day = kv.Key.Day, hour = kv.Key.Hour, value = kv.Value })
+            .ToArray();
+
+        // Endpoint-normalize the ramp from the lowest displayed value (0 — the empty shade) to the
+        // highest day-hour total, so zero cells stay empty and the busiest cell is the darkest
+        // (Req 6.1, 6.2).
+        var max = totals.Count > 0 ? totals.Values.Max() : 0d;
+
+        return new
+        {
+            days = dayLabels,
+            dayIndices,
+            hours,
+            cells,
+            min = 0d,
+            max,
+            logScale = LogScale,
+            colorMode = "ramp",
+            metricLabel,
+            nowDay,
+            nowHour
+        };
+    }
+
+    /// <summary>
+    /// Indexes the supplied per-cell historical statistics by their <c>(day, hour)</c> position,
+    /// defensively summing fire/failure counts (and taking the largest p95) when more than one entry
+    /// shares a position. Returns an empty lookup when no historical data is supplied.
+    /// </summary>
+    private Dictionary<(int Day, int Hour), HeatmapHistoricalCell> CollapseHistorical()
+    {
+        var lookup = new Dictionary<(int Day, int Hour), HeatmapHistoricalCell>();
+        if (HistoricalCells is null)
+        {
+            return lookup;
+        }
+
+        foreach (var stat in HistoricalCells)
+        {
+            if (stat is null)
+            {
+                continue;
+            }
+
+            var key = (stat.DayIndex, stat.Hour);
+            if (lookup.TryGetValue(key, out var existing))
+            {
+                lookup[key] = existing with
+                {
+                    FireCount = existing.FireCount + stat.FireCount,
+                    FailureCount = existing.FailureCount + stat.FailureCount,
+                    P95Ms = Math.Max(existing.P95Ms, stat.P95Ms)
+                };
+            }
+            else
+            {
+                lookup[key] = stat;
+            }
+        }
+
+        return lookup;
+    }
+
+    /// <summary>
+    /// Builds the seven day-row labels: weekday names for the idealized week, calendar dates for the
+    /// next-seven-days window (matching the CSV day-labeling convention).
+    /// </summary>
+    private static string[] BuildDayLabels(ProjectionWindow window, TimeZoneInfo viewerTz)
+    {
+        if (window.Kind == ProjectionWindowKind.IdealizedWeek)
+        {
+            return (string[])WeekdayLabels.Clone();
+        }
+
+        var startLocal = TimeZoneInfo.ConvertTime(window.StartInclusive, viewerTz).Date;
+        var labels = new string[HeatmapTime.WindowDays];
+        for (var i = 0; i < HeatmapTime.WindowDays; i++)
+        {
+            var date = startLocal.AddDays(i);
+            labels[i] = date.ToString("ddd d", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return labels;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_rendered)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("heatmapCharts.destroy", _containerId);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit already gone.
+        }
+        catch (ObjectDisposedException)
+        {
+            // JS runtime disposed.
+        }
+    }
+}

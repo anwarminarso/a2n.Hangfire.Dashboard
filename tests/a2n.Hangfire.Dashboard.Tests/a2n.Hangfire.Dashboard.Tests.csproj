@@ -21,10 +21,21 @@
     <PackageReference Include="bunit" Version="1.*" />
     <PackageReference Include="FsCheck.Xunit" Version="2.*" />
     <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+    <!-- In-memory ASP.NET Core pipeline host for the heatmap authorization integration test
+         (task 21.2). Version is matched to each target framework's shared framework. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="8.0.*" Condition="'$(TargetFramework)' == 'net8.0'" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="9.0.*" Condition="'$(TargetFramework)' == 'net9.0'" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.*" Condition="'$(TargetFramework)' == 'net10.0'" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
+    <!-- Storage adapters are referenced so their IStorageMetricsProvider implementations can be
+         exercised by the DB integration tests (task 13.7). These bring Dapper / Microsoft.Data.SqlClient
+         / Npgsql in transitively. The integration tests skip gracefully when no DB is configured, so
+         this reference does not require a live database for the suite to build and pass in CI. -->
+    <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard.SqlServer\a2n.Hangfire.Dashboard.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard.PostgreSql\a2n.Hangfire.Dashboard.PostgreSql.csproj" />
   </ItemGroup>
 
 </Project>

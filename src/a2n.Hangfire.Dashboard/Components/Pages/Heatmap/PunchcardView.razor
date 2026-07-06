@@ -1,0 +1,332 @@
+@*
+    PunchcardView (task 11.1) — the storage-agnostic day × hour bubble matrix described by
+    docs/mockups/heatmap-mockup-v4.html.
+
+    Behavior (Req 3.4, 3.5, 3.6):
+      • renders a day × hour matrix where each cell's bubble area increases monotonically with its
+        Load_Metric value (Req 3.4);
+      • a cell whose value is zero is rendered with no bubble (Req 3.5) — the matrix only materializes
+        populated cells, so absent (day, hour) positions naturally render empty;
+      • under the Projected source each non-zero cell is tinted by its dominant queue, the queue
+        contributing the greatest Load_Metric value within that cell with ascending-name tie-break
+        (Req 3.6) — computed by MatrixViews.DominantQueuePerCell;
+      • under the Historical source each cell with a fire count of 1 or greater is tinted by its
+        failure rate = failureCount / fireCount on a 0.0..1.0 scale (Req 7.6, task 13.5), using the
+        per-cell statistics supplied via the HistoricalCells parameter (the HeatmapMatrix itself
+        carries only a single load value per cell, so the failure/fire counts flow in separately).
+
+    The actual DOM/Chart rendering, bubble sizing, tinting, theming and tooltips live in
+    window.heatmapCharts.renderPunchcard (Content/js/heatmap.js, task 10.3). This component is
+    responsible only for projecting the HeatmapMatrix onto that renderer's model and invoking it via
+    IJSRuntime interop — mirroring how the Analytics chart components wrap analyticsCharts.renderChart.
+*@
+@using a2n.Hangfire.Dashboard.Heatmap
+@using a2n.Hangfire.Dashboard.Internal
+@using a2n.Hangfire.Dashboard.Models
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="punchcard-view">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="small text-body-secondary">
+            @if (Source == HeatmapSource.Historical)
+            {
+                @:Bubble area scales with @MetricLabel; cells are tinted by their failure rate.
+            }
+            else
+            {
+                @:Bubble area scales with @MetricLabel; cells are tinted by their dominant queue.
+            }
+        </span>
+        <div class="flex-grow-1"></div>
+        @if (Source != HeatmapSource.Historical)
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2" aria-hidden="true">
+                @foreach (var queue in LegendQueues)
+                {
+                    <span class="d-inline-flex align-items-center gap-1 small text-body-secondary">
+                        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:@QueueColorCss(queue)"></span>@queue
+                    </span>
+                }
+            </div>
+        }
+    </div>
+
+    <div id="@_elementId"></div>
+</div>
+
+@code {
+    private readonly string _elementId = $"hm-punchcard-{Guid.NewGuid():N}";
+    private static readonly int[] Hours = Enumerable.Range(0, 24).ToArray();
+    private static readonly string[] WeekdayLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
+    private bool _needsRender;
+    private bool _rendered;
+
+    /// <summary>The aggregated <c>queue × day × hour</c> matrix to render.</summary>
+    [Parameter, EditorRequired] public HeatmapMatrix Matrix { get; set; }
+
+    /// <summary>
+    /// The active data source. Under the Historical source each non-empty cell is tinted by its
+    /// failure rate (Req 7.6) using the per-cell data supplied via <see cref="HistoricalCells"/>.
+    /// </summary>
+    [Parameter] public HeatmapSource Source { get; set; } = HeatmapSource.Projected;
+
+    /// <summary>
+    /// The per-cell historical execution statistics (failure/fire counts, p95) for the active window,
+    /// already collapsed to <c>day × hour</c> positions across the queue dimension. Supplied by the
+    /// page only when <see cref="Source"/> is <see cref="HeatmapSource.Historical"/>; the matrix
+    /// itself carries no per-cell failure data, so this lookup drives the failure-rate tint (Req 7.6).
+    /// May be <c>null</c> or empty, in which case cells fall back to a zero failure rate.
+    /// </summary>
+    [Parameter] public IReadOnlyList<HeatmapHistoricalCell> HistoricalCells { get; set; }
+
+    /// <summary>Whether to apply logarithmic bubble-area scaling.</summary>
+    [Parameter] public bool LogScale { get; set; }
+
+    /// <summary>The viewer time-zone id used to locate the current day/hour marker; empty means UTC.</summary>
+    [Parameter] public string ViewerTimeZoneId { get; set; }
+
+    /// <summary>
+    /// The collision-free queue → color map shared with the rest of the page so the legend swatches
+    /// match the bubble tints. Falls back to the deterministic per-name color when absent.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
+
+    private string MetricLabel => Matrix?.Metric == LoadMetric.WorkerMinutes ? "worker-minutes" : "fires";
+
+    private IReadOnlyList<string> LegendQueues =>
+        Matrix?.Queues ?? Array.Empty<string>();
+
+    protected override void OnParametersSet() => _needsRender = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_needsRender || Matrix is null)
+        {
+            return;
+        }
+
+        _needsRender = false;
+
+        try
+        {
+            await JS.InvokeVoidAsync("heatmapCharts.renderPunchcard", _elementId, BuildModel());
+            _rendered = true;
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — nothing to render against.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component/runtime disposed mid-render.
+        }
+    }
+
+    /// <summary>
+    /// Projects the <see cref="HeatmapMatrix"/> onto the model consumed by
+    /// <c>window.heatmapCharts.renderPunchcard</c>. Each rendered cell aggregates every queue's load
+    /// at a <c>(day, hour)</c> position (the matrix keys cells per queue) into a single bubble whose
+    /// magnitude is the summed value and whose tint is the position's dominant queue.
+    /// </summary>
+    private object BuildModel()
+    {
+        var matrix = Matrix;
+
+        // Sum each queue's contribution at a (day, hour) position into a single punchcard value, and
+        // track the contributing job count so the renderer's tooltip can report it.
+        var totals = new Dictionary<(int Day, int Hour), double>();
+        var jobCounts = new Dictionary<(int Day, int Hour), int>();
+        foreach (var cell in matrix.Cells.Values)
+        {
+            var key = (cell.Key.DayIndex, cell.Key.Hour);
+            totals.TryGetValue(key, out var sum);
+            totals[key] = sum + cell.Value;
+            jobCounts.TryGetValue(key, out var count);
+            jobCounts[key] = count + cell.ContributingJobCount;
+        }
+
+        // Dominant queue per (day, hour): greatest load wins, ascending queue name on ties (Req 3.6).
+        var dominant = MatrixViews.DominantQueuePerCell(matrix);
+
+        // Under the Historical source, index the per-cell failure/fire statistics by (day, hour) so
+        // each bubble can be tinted by its failure rate = failureCount / fireCount (Req 7.6). Defensive
+        // aggregation handles any duplicate positions by summing counts.
+        var historical = BuildHistoricalLookup();
+
+        // Punchcard bubbles scale from an empty (0) baseline up to the largest position total so the
+        // smallest non-zero cell still shows a visible bubble (Req 3.4); zero positions are omitted
+        // entirely and therefore render with no bubble (Req 3.5).
+        double max = totals.Count > 0 ? totals.Values.Max() : 0d;
+
+        var cells = totals
+            .Where(kv => kv.Value > 0)
+            .OrderBy(kv => kv.Key.Day)
+            .ThenBy(kv => kv.Key.Hour)
+            .Select(kv =>
+            {
+                dominant.TryGetValue(kv.Key, out var domQueue);
+                jobCounts.TryGetValue(kv.Key, out var jobCount);
+
+                // Historical failure-rate tint (Req 7.6): emit the cell's fire count and failure ratio
+                // so heatmapCharts.renderPunchcard colors the bubble by failure rate. Cells with a fire
+                // count of 1 or greater are tinted; absent data falls back to a 0.0 rate.
+                double failureRate = 0d;
+                long fireCount = 0;
+                if (Source == HeatmapSource.Historical
+                    && historical.TryGetValue(kv.Key, out var stat)
+                    && stat.HasData)
+                {
+                    failureRate = stat.FailureRate;
+                    fireCount = stat.FireCount;
+                }
+
+                return new
+                {
+                    day = kv.Key.Day,
+                    hour = kv.Key.Hour,
+                    value = kv.Value,
+                    dominantQueue = domQueue,
+                    contributingJobCount = jobCount,
+                    failureRate,
+                    fireCount
+                };
+            })
+            .ToArray();
+
+        var (nowDay, nowHour) = ResolveNowMarker();
+
+        return new
+        {
+            days = BuildDayLabels(),
+            dayIndices = Enumerable.Range(0, HeatmapTime.WindowDays).ToArray(),
+            hours = Hours,
+            cells,
+            min = 0d,
+            max,
+            logScale = LogScale,
+            source = Source == HeatmapSource.Historical ? "historical" : "projected",
+            metricLabel = MetricLabel,
+            nowDay,
+            nowHour
+        };
+    }
+
+    /// <summary>
+    /// Indexes the supplied per-cell historical statistics by their <c>(day, hour)</c> position,
+    /// defensively summing fire/failure counts (and taking the largest p95) when more than one entry
+    /// shares a position. Returns an empty lookup when no historical data is supplied.
+    /// </summary>
+    private Dictionary<(int Day, int Hour), HeatmapHistoricalCell> BuildHistoricalLookup()
+    {
+        var lookup = new Dictionary<(int Day, int Hour), HeatmapHistoricalCell>();
+        if (HistoricalCells is null)
+        {
+            return lookup;
+        }
+
+        foreach (var stat in HistoricalCells)
+        {
+            if (stat is null)
+            {
+                continue;
+            }
+
+            var key = (stat.DayIndex, stat.Hour);
+            if (lookup.TryGetValue(key, out var existing))
+            {
+                lookup[key] = existing with
+                {
+                    FireCount = existing.FireCount + stat.FireCount,
+                    FailureCount = existing.FailureCount + stat.FailureCount,
+                    P95Ms = Math.Max(existing.P95Ms, stat.P95Ms)
+                };
+            }
+            else
+            {
+                lookup[key] = stat;
+            }
+        }
+
+        return lookup;
+    }
+
+    /// <summary>
+    /// Builds one row label per day of the window: weekday names for the idealized week and calendar
+    /// dates (in the viewer time zone) for the next-seven-days window.
+    /// </summary>
+    private string[] BuildDayLabels()
+    {
+        var window = Matrix.Window;
+        if (window is null || window.Kind == ProjectionWindowKind.IdealizedWeek)
+        {
+            return WeekdayLabels;
+        }
+
+        var tz = HeatmapTime.ResolveTimeZone(ViewerTimeZoneId);
+        var startLocal = HeatmapTime.ToViewerLocal(window.StartInclusive, tz);
+        return Enumerable.Range(0, HeatmapTime.WindowDays)
+            .Select(i => startLocal.AddDays(i).ToString("ddd d"))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Resolves the current day/hour marker inside the window (Req 6.5 parity); returns
+    /// <c>(-1, -1)</c> when "now" falls outside the active window so no cell is marked.
+    /// </summary>
+    private (int Day, int Hour) ResolveNowMarker()
+    {
+        var window = Matrix.Window;
+        if (window is null)
+        {
+            return (-1, -1);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (!HeatmapTime.IsInWindow(now, window))
+        {
+            return (-1, -1);
+        }
+
+        var tz = HeatmapTime.ResolveTimeZone(ViewerTimeZoneId);
+        var (day, hour) = HeatmapTime.GetBucket(now, tz, window);
+        return day >= 0 && day < HeatmapTime.WindowDays ? (day, hour) : (-1, -1);
+    }
+
+    /// <summary>
+    /// Resolves the legend swatch color for a queue, preferring the shared collision-free map so the
+    /// swatches match the bubble tints (which use the same map via heatmapCharts.setQueueColors).
+    /// </summary>
+    private string QueueColorCss(string queue)
+    {
+        if (!string.IsNullOrEmpty(queue) && QueueColorMap is not null &&
+            QueueColorMap.TryGetValue(queue, out var color))
+        {
+            return color;
+        }
+
+        return QueueColors.ColorFor(queue);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_rendered)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("heatmapCharts.destroy", _elementId);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit already gone.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Runtime disposed.
+        }
+    }
+}

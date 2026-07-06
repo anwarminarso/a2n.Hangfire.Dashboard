@@ -188,3 +188,39 @@ public class SnapshotResult<T>
     public T Data { get; set; }
     public DateTimeOffset CapturedAt { get; set; }
 }
+
+/// <summary>
+/// Historical recurring-schedule bucket aggregated by queue × day-of-week × hour.
+/// Counts only recurring-originated executions (those carrying a RecurringJobId), with
+/// fire/failure counts and duration statistics. Populated by the SQL Server and PostgreSQL
+/// storage adapters (see <see cref="Interfaces.IStorageMetricsProvider.GetRecurringScheduleBucketsAsync"/>).
+/// </summary>
+public class HistoricalScheduleBucket
+{
+    /// <summary>Queue name the bucketed executions belong to.</summary>
+    public string Queue { get; set; }
+
+    /// <summary>Day-of-week index (0 = Monday … 6 = Sunday) in the aggregation's time frame.</summary>
+    public int DayIndex { get; set; }
+
+    /// <summary>Hour of day (0–23).</summary>
+    public int Hour { get; set; }
+
+    /// <summary>Number of recurring-originated executions that fired in this bucket.</summary>
+    public long FireCount { get; set; }
+
+    /// <summary>Number of those executions that failed.</summary>
+    public long FailureCount { get; set; }
+
+    /// <summary>Minimum execution duration in milliseconds.</summary>
+    public double MinMs { get; set; }
+
+    /// <summary>Average execution duration in milliseconds.</summary>
+    public double AvgMs { get; set; }
+
+    /// <summary>Maximum execution duration in milliseconds.</summary>
+    public double MaxMs { get; set; }
+
+    /// <summary>95th-percentile execution duration in milliseconds.</summary>
+    public double P95Ms { get; set; }
+}

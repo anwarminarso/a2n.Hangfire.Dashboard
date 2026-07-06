@@ -101,6 +101,8 @@ samples/
 - ✅ `GenericQueryProvider` fallback (IMonitoringApi + client-side filtering)
 - ✅ `a2n.Hangfire.Dashboard.SqlServer` (Dapper + T-SQL, JSON_VALUE, PERCENTILE_CONT)
 - ✅ `a2n.Hangfire.Dashboard.PostgreSql` (Dapper + Npgsql, ->> operator, PERCENTILE_CONT)
+- ✅ `a2n.Hangfire.Dashboard.Rollup` (rollup-based metrics for Redis / in-memory / non-SQL)
+- ✅ `a2n.Hangfire.Dashboard.Redis` (convenience `UseRedisStorage()` entry point)
 - ✅ LIKE/ILIKE pattern sanitization
 - ✅ Parameterized queries only — zero string concatenation
 - ✅ DI registration via `DashboardStorageOptionsBuilder` pattern
@@ -222,7 +224,7 @@ services.AddHangfireDashboardUI(options =>
 
 > **v2.3.1 shipped ✅** — patch release restoring realtime analytics on SQL Server (the `GetQueueDepthSnapshot`/`GetQueueThroughput` queries put a subquery in the `GROUP BY` list, hitting SQL Server error 144 and silently killing the analytics broadcast). The `AnalyticsBroadcastService` loop also moved to a `PeriodicTimer` with the three metrics queries running concurrently (`Task.WhenAll`) so the SignalR push holds its ~5s cadence under load instead of drifting. NuGet packages now ship XML API documentation.
 
-> **Note:** The notifications, integrations, and customization work originally scoped under "v2.3.x" has been promoted to its own themed minor releases — **v2.5 (Notifications)**, **v2.6 (Integrations)**, and **v2.7 (Customization)** — see below.
+> **Note:** The notifications, integrations, and customization work originally scoped under "v2.3.x" was promoted to its own themed minor releases. **v2.5 now ships the Recurring Schedule Heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)); the originally-planned **Notifications & alert rules has been deferred to the Stretch / Backlog** (not mandatory, no demand, superseded by the v2.6 Prometheus `/metrics` endpoint — see [docs/proposals/notifications-alert-rules.md](proposals/notifications-alert-rules.md)). **v2.6 (Integrations)** and **v2.7 (Customization)** keep their version numbers.
 
 #### Health Check ✅
 - ✅ HTTP endpoints `/{dashboard}/healthz` (liveness), `/healthz/ready` (readiness), `/healthz/full` (full report)
@@ -328,28 +330,15 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 ---
 
-## v2.5 — Notifications & Alert Rules (Planned)
+## v2.5 — Recurring Schedule Heatmap (Pre-release) 🧪
 
-**Goal**: Alert the right channel when something goes wrong, without polling the dashboard. Granular plan replacing the original single-bullet "Webhook notifications".
+**Goal**: Visualize recurring-job scheduling density — by queue, day, and hour — to surface overlap and overload hotspots, and plan controllable cron jobs around real on-demand load ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)). Currently shipping as a pre-release (`2.5.0-beta.2`) from the `feature/recurring-schedule-heatmap` branch.
 
-- [ ] `NotificationRule` model + storage (Hangfire hash/set, no schema changes)
-- [ ] `INotificationChannel` abstraction
-- [ ] Built-in channels: Slack, Microsoft Teams, Discord, generic HTTP webhook, SMTP email
-- [ ] Eight built-in trigger types:
-  - [ ] Failure count (>N failed in last X minutes)
-  - [ ] Failure rate (>N% failed in last X minutes)
-  - [ ] Stuck processing (single job processing >X minutes)
-  - [ ] Queue depth (queue Y has >N enqueued)
-  - [ ] Server offline (no heartbeat for X seconds)
-  - [ ] Recurring missed (recurring job not fired in expected window)
-  - [ ] Specific exception (job throws exception matching regex)
-  - [ ] Long-running job (single job duration >X minutes)
-- [ ] `NotificationRuleProcessor` background service (poll, evaluate, dispatch with cooldown)
-- [ ] Mustache-style message template engine (`{count}`, `{topException}`, `{dashboardUrl}`, ...)
-- [ ] Per-rule cooldown (default 15 min) to prevent alert spam
-- [ ] Dashboard pages: `/notifications` (rules CRUD list) and rule editor with live preview
-- [ ] "Test webhook" button (dry-run send with sample payload)
-- [ ] Notification history page (last N fires, success/failure)
+- **Views** — Planner (projected cron over ad-hoc demand with low-load "safe windows"), Punchcard, Queue × Hour, Per-queue small multiples, Calendar, Concurrency (duration-aware, with a worker-capacity reference line and over-capacity flagging), and Recommendations (overlapping-cluster detection with a before/after stagger impact).
+- **Sources** — a storage-agnostic **Projected** source (computed from cron expressions) on any storage, plus a **Historical** source and ad-hoc demand overlay on SQL Server / PostgreSQL (degrades gracefully — toggles hidden — elsewhere).
+- Honors per-job and selectable viewer time zones, light/dark theme, deterministic per-queue colors, click-to-drill-down into a cell's contributing jobs, and is keyboard / screen-reader accessible.
+
+> **Notifications & alert rules** was originally scoped for v2.5 but has been **deferred to the Stretch / Backlog** — not mandatory, no concrete demand, and largely superseded by the v2.6 Prometheus `/metrics` endpoint. The full plan and design notes are preserved in [docs/proposals/notifications-alert-rules.md](proposals/notifications-alert-rules.md) and will be revisited under the demand-driven rule (5+ explicit requests). Version numbers are intentionally **not** renumbered — v2.6 and v2.7 keep their numbers.
 
 ---
 
@@ -378,7 +367,7 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 Items considered but explicitly **not prioritized**. Will be reconsidered when 5+ users explicitly request them.
 
-- [ ] **Recurring schedule heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) — heatmap of job execution frequency by queue × day × hour to surface scheduling density, overlap, and overload hotspots. Reference: [Hangfire.Community.Dashboard.Heatmap](https://github.com/brodrigz/Hangfire.Community.Dashboard.Heatmap). Same demand-driven treatment as the Gantt timeline below — revisit once several users request it.
+- [ ] **Notifications & alert rules** (deferred from v2.5) — Slack/Teams/Discord/webhook/email channels, 8 trigger types, per-rule cooldown, rule editor + history. Deferred because it is not mandatory, has no concrete demand, and is largely superseded by the v2.6 Prometheus `/metrics` endpoint feeding existing alerting stacks (Grafana Alertmanager, etc.). Full plan + design notes preserved in [docs/proposals/notifications-alert-rules.md](proposals/notifications-alert-rules.md). Revisit on explicit demand (5+ requests); if revived, start from the ramped MVP (one generic webhook channel + 3 cheap triggers, evaluation as a recurring Hangfire job, default off).
 - [ ] **Job Execution Timeline (Gantt)** — visually impressive but adoption is estimated to be low for typical small/medium deployments. Reconsider after v2.3 ships and based on demand.
 - [ ] **Multi-instance federation** — dashboard switcher for dev/staging/prod or sharded Hangfire deployments. Storage adapter is already modular, so the architecture is ready when demand appears.
 - [ ] **Replay with modified arguments** — failed-job rerun with edited arguments (powerful but easy to misuse without RBAC; gate behind the audit log shipped in v2.3 Operations).
@@ -408,6 +397,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v1.3 | Storage query interfaces + GenericQueryProvider fallback | ✅ Done |
 | v1.4 | SQL Server adapter (`a2n.Hangfire.Dashboard.SqlServer`) | ✅ Done |
 | v1.5 | PostgreSQL adapter (`a2n.Hangfire.Dashboard.PostgreSql`) | ✅ Done |
+| v2.6 | Rollup / Redis metrics adapters (`a2n.Hangfire.Dashboard.Rollup`, `.Redis`) | ✅ Done |
 | v1.6 | Analytics Dashboard (Overview + Performance + Failures + Queues + Recurring) | ✅ Done |
 | v2.0 | Phase 2 complete | ✅ Done |
 | v2.1 | Search & query refactor + JobDisplayName + SQL Server fixes | ✅ Done |
@@ -420,7 +410,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.4.1 | **Job Builder follow-up**: searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix (#10), consistent destructive-action buttons | ✅ Done |
 | v2.4.2 | **Recurring & Job Builder follow-up**: mixed-case job IDs + never-fire cron edit (#11), long-name ellipsis (#12), recurring jobs filter (#13), duplicate-id guard on create, Audit Log grid parity | ✅ Done |
 | v2.4.3 | **Dashboard UI/UX fixes**: Failed-table column overflow (#17), Create Job dropdown pill alignment (#18), recurring search dropped characters (#19), dark-theme persistence (#20) | ✅ Done |
-| v2.5.0 | **Notifications & alert rules**: Slack/Teams/Discord/webhook/email channels, 8 trigger types, cooldown, rule editor + history | Planned |
+| v2.5.0 | **Recurring Schedule Heatmap** (#14) — Planner, Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, stagger Recommendations; Projected (any storage) + Historical (SQL/PG) sources | 🧪 Pre-release |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |

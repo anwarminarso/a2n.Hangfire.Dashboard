@@ -166,10 +166,30 @@ public static class HangfireDashboardUIExtensions
         // Register AnalyticsService (checks IStorageMetricsProvider availability at runtime)
         services.AddScoped<AnalyticsService>();
 
+        // Register HeatmapService (checks IStorageMetricsProvider availability at runtime)
+        services.AddScoped<HeatmapService>();
+
+        // Heatmap demand-aware helpers. Both resolve IStorageMetricsProvider optionally and degrade
+        // gracefully (empty profile / default durations) when no provider is registered, mirroring
+        // AnalyticsService. Scoped to match HeatmapService so they share the request scope.
+        services.AddScoped<EstimatedDurationResolver>();
+        services.AddScoped<DemandProfileProvider>();
+
         // Register AnalyticsBroadcastService only if metrics provider is available
         if (builder.HasMetricsProvider)
         {
             services.AddHostedService<AnalyticsBroadcastService>();
+
+            // Demand rollup: SQL adapters use DemandRollupService; rollup-based adapters use the
+            // unified ExecutionRollupCollector which maintains both demand and metrics rollups.
+            if (builder.UsesRollupMetrics)
+            {
+                // ExecutionRollupCollector is registered by UseRollupMetrics().
+            }
+            else
+            {
+                services.AddHostedService<DemandRollupService>();
+            }
         }
 
         return services;

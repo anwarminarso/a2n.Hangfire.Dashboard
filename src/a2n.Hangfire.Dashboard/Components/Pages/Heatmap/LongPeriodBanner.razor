@@ -1,0 +1,54 @@
+@*
+    LongPeriodBanner (task 11.6) — surfaces the Long_Period_Jobs notice from
+    docs/mockups/heatmap-mockup-v4.html.
+
+    A Long_Period_Job is a recurring job whose recurrence period exceeds seven days (e.g. monthly or
+    yearly). Such a job cannot be faithfully represented inside either seven-day Projection_Window,
+    so the heatmap acknowledges it explicitly rather than silently dropping it:
+
+      • WHEN one or more long-period jobs exist, this banner lists each job identifier and states
+        that it is not faithfully represented in the active window — and it does so regardless of
+        which Projection_Window (Idealized week / Next 7 days) is currently selected (Req 9.5).
+      • WHEN no long-period jobs exist, the banner renders nothing at all (Req 9.6).
+
+    The component is purely presentational: the caller passes the already-computed
+    HeatmapResult.LongPeriodJobIds list (produced by ProjectionEngine), so the banner is identical
+    across windows by construction.
+*@
+@namespace a2n.Hangfire.Dashboard.Components.Pages.Heatmap
+
+@if (HasLongPeriodJobs)
+{
+    <div class="alert alert-warning d-flex align-items-start gap-2" role="status"
+         data-hm-long-period-banner>
+        <i class="bi bi-calendar-week mt-1" aria-hidden="true"></i>
+        <div>
+            <div class="fw-semibold">
+                @JobIds.Count long-period job@(JobIds.Count == 1 ? string.Empty : "s") not faithfully represented in this window
+            </div>
+            <p class="small mb-2">
+                These recurring jobs repeat less often than once a week, so a seven-day projection
+                window cannot show their true cadence. They are listed here regardless of the selected
+                projection window and are kept in the recurring-job table below.
+            </p>
+            <div class="d-flex flex-wrap gap-1">
+                @foreach (var jobId in JobIds)
+                {
+                    <span class="badge text-bg-secondary font-monospace" title="@jobId">@jobId</span>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The identifiers of the recurring jobs whose recurrence period exceeds seven days
+    /// (<c>HeatmapResult.LongPeriodJobIds</c>). The same list is supplied for every projection
+    /// window, so the banner is window-independent by construction (Req 9.5).
+    /// </summary>
+    [Parameter] public IReadOnlyList<string> JobIds { get; set; }
+
+    /// <summary>Whether there is at least one long-period job to announce (Req 9.6 hides the banner otherwise).</summary>
+    private bool HasLongPeriodJobs => JobIds is { Count: > 0 };
+}

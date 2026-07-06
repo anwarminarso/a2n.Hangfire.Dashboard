@@ -564,6 +564,63 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         return rows.ToList();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<HistoricalScheduleBucket>> GetRecurringScheduleBucketsAsync(
+        DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        // Count only recurring-originated executions: jobs that carry a 'RecurringJobId' parameter
+        // (same convention as GetRecurringJobExecutionsAsync / GetRecurringJobHealthAsync). Ad-hoc
+        // executions have no such parameter and are excluded here (Req 7.7).
+        //
+        // Buckets are queue × dayIndex × hour over [from, to):
+        //   - dayIndex 0=Monday … 6=Sunday. Postgres EXTRACT(DOW) is 0=Sunday … 6=Saturday, so we
+        //     shift by +6 mod 7 to get the Monday-based index the design expects.
+        //   - hour is the clock hour (0–23) of the execution's state-creation time (s.createdat),
+        //     matching how the other timeline queries in this adapter bucket activity.
+        // Duration stats use PERCENTILE_CONT(0.95) WITHIN GROUP for p95, consistent with
+        // GetJobDurationStatsAsync / GetQueueLatencyStatsAsync.
+        var sql = $@"
+            WITH Executions AS (
+                SELECT COALESCE(
+                           (SELECT jp2.value FROM {JobParameterTable} jp2
+                            WHERE jp2.jobid = j.id AND jp2.name IN ({PgHelper.JobQueueParameterInList})
+                            ORDER BY CASE jp2.name WHEN '{PgHelper.JobQueueParameterName}' THEN 0 ELSE 1 END
+                            LIMIT 1),
+                           s.data::json ->> 'Queue',
+                           'default') AS queuename,
+                       ((EXTRACT(DOW FROM s.createdat)::int + 6) % 7) AS dayindex,
+                       EXTRACT(HOUR FROM s.createdat)::int AS hourofday,
+                       CASE WHEN s.name = 'Failed' THEN 1 ELSE 0 END AS isfailure,
+                       COALESCE((s.data::json ->> 'PerformanceDuration')::numeric, 0) AS durationms
+                FROM {JobTable} j
+                INNER JOIN {JobParameterTable} jp
+                    ON jp.jobid = j.id AND jp.name = 'RecurringJobId'
+                INNER JOIN {StateTable} s ON s.id = j.stateid
+                WHERE s.name IN ('Succeeded', 'Failed')
+                  AND s.createdat >= @From AND s.createdat < @To
+            )
+            SELECT queuename AS ""Queue"",
+                   dayindex AS ""DayIndex"",
+                   hourofday AS ""Hour"",
+                   COUNT(*) AS ""FireCount"",
+                   SUM(isfailure) AS ""FailureCount"",
+                   MIN(durationms) AS ""MinMs"",
+                   AVG(durationms) AS ""AvgMs"",
+                   MAX(durationms) AS ""MaxMs"",
+                   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY durationms) AS ""P95Ms""
+            FROM Executions
+            GROUP BY queuename, dayindex, hourofday
+            ORDER BY queuename, dayindex, hourofday";
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        var rows = await connection.QueryAsync<HistoricalScheduleBucket>(
+            new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct));
+
+        return rows.ToList();
+    }
+
     private async Task EnrichRecurringJobHealthAsync(
         NpgsqlConnection connection,
         List<RecurringJobHealthDto> results,

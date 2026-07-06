@@ -1,0 +1,52 @@
+@*
+    QueueBadge — a small colored pill identifying a queue. The background color is derived
+    deterministically from the queue name (QueueColors.ColorFor) so the same queue reads identically
+    across every dashboard surface, and the label color is chosen for WCAG-AA contrast. Used by the
+    heatmap recurring-job table, the servers page, search results, and anywhere a queue is surfaced.
+*@
+@namespace a2n.Hangfire.Dashboard.Components.Shared
+@using a2n.Hangfire.Dashboard.Internal
+
+<span class="badge hf-qcolor-badge @CssClass"
+      style="background-color:@_bg;color:@_fg;"
+      title="@(_title)">
+    @if (ShowIcon)
+    {
+        <i class="bi bi-hdd-stack me-1" aria-hidden="true"></i>
+    }
+    @_display
+</span>
+
+@code {
+    /// <summary>The queue name to render. Null/empty is shown as "default".</summary>
+    [Parameter, EditorRequired] public string Queue { get; set; }
+
+    /// <summary>Whether to prefix the badge with a queue icon.</summary>
+    [Parameter] public bool ShowIcon { get; set; }
+
+    /// <summary>Extra CSS classes appended to the badge (e.g. spacing utilities).</summary>
+    [Parameter] public string CssClass { get; set; }
+
+    /// <summary>Optional tooltip override; defaults to the queue name.</summary>
+    [Parameter] public string Title { get; set; }
+
+    /// <summary>
+    /// Optional explicit <c>#rrggbb</c> background color. When omitted the deterministic per-name
+    /// color is used; callers that have a collision-free color map (e.g. the heatmap) pass it here so
+    /// the badge matches the rest of the page.
+    /// </summary>
+    [Parameter] public string Color { get; set; }
+
+    private string _bg;
+    private string _fg;
+    private string _display;
+    private string _title;
+
+    protected override void OnParametersSet()
+    {
+        _display = string.IsNullOrWhiteSpace(Queue) ? "default" : Queue;
+        _bg = string.IsNullOrWhiteSpace(Color) ? QueueColors.ColorFor(_display) : Color;
+        _fg = QueueColors.TextColorFor(_bg);
+        _title = string.IsNullOrWhiteSpace(Title) ? _display : Title;
+    }
+}

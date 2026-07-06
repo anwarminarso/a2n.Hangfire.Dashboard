@@ -1,0 +1,1860 @@
+@*
+    Recurring Schedule Heatmap page (task 10.1) — the page shell, toolbars, and view selector
+    described by docs/mockups/heatmap-mockup-v4.html. This task implements:
+
+      • the "/heatmap" route, gated behind Heatmap_Options.Enabled — when disabled the route behaves
+        as if it does not exist (redirect home + Not Found surface) (Req 22.3);
+      • the class / source / window / tz / load / hide-sub-hourly / log toolbar and the view selector
+        (Planner, Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, Recommendations);
+      • initial control state seeded from Heatmap_Options defaults (Req 22.4, 22.5);
+      • a manual refresh action and a "data age" indicator (Req 24.2, 24.3).
+
+    All seven view bodies are wired to their components — Planner (PlannerView), Punchcard, Queue×Hour,
+    Per-queue, Calendar (Chart.js renderers in Content/js/heatmap.js), Concurrency (ConcurrencyView),
+    and Recommendations (RecommendationsView) — fed by HeatmapService (matrix, demand profile,
+    concurrency, recommendations, historical cells, recurring-job specs). The source toggle and the
+    Ad-hoc / Combined classes are only offered when a metrics provider is registered
+    (HeatmapService.IsHistoricalAvailable / IsDemandAvailable), mirroring Analytics' graceful
+    degradation (Req 7.1, 7.2, 16.7, 16.9). All asset/data access is relative so the page works behind
+    any configured AppPath prefix (Req 22.2).
+*@
+@page "/heatmap"
+@using a2n.Hangfire.Dashboard.Heatmap
+@using a2n.Hangfire.Dashboard.Internal
+@using a2n.Hangfire.Dashboard.Models
+@implements IDisposable
+@inject DashboardUIOptions Options
+@inject HeatmapService HeatmapSvc
+@inject HangfireMonitorService Monitor
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>@(_enabled ? "Schedule Heatmap" : "Not Found")</PageTitle>
+
+@if (!_enabled)
+{
+    @* Heatmap page is disabled — present the route as Not Found and bounce home (Req 22.3). *@
+    <div class="text-center py-5">
+        <i class="bi bi-question-circle display-1 text-body-secondary"></i>
+        <h1 class="h3 mt-3">Page not found</h1>
+        <p class="text-body-secondary">The page you requested is not available.</p>
+        <a class="btn btn-outline-secondary" href="">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-1">
+        <div>
+            <h2 class="fw-semibold mb-1">
+                Schedule Heatmap
+                <span class="badge rounded-pill text-bg-primary-subtle text-primary-emphasis align-middle ms-1"
+                      style="font-size: .7rem;">recurring · cron + ad-hoc</span>
+            </h2>
+            <p class="text-body-secondary mb-0">
+                Plan controllable cron jobs around real on-demand load — projected from cron expressions,
+                bucketed by queue, day, and hour.
+            </p>
+            <details class="small text-body-secondary mt-1">
+                <summary class="text-primary" style="cursor: pointer;">What do Projected / Historical, Window and Lookback mean?</summary>
+                <ul class="mt-2 mb-0 ps-3">
+                    <li><strong>Source</strong> — <em>Projected</em> is the upcoming schedule computed from cron
+                        expressions (forward-looking). <em>Historical</em> is what actually ran, read from storage.</li>
+                    <li><strong>Window</strong> — the 7-day frame the grid represents.
+                        <em>Idealized week</em> shows a normalized Mon–Sun pattern; <em>Next 7 days</em> shows the
+                        upcoming dated week. It controls the <em>shape</em> of the grid, not how far back data is read.</li>
+                    <li><strong>Lookback</strong> — only affects <em>Historical</em> / ad-hoc demand: how many past
+                        weeks of executions to aggregate (1 / 4 / 8 weeks). Projected ignores it.</li>
+                </ul>
+            </details>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            @if (_loadedAtUtc is not null)
+            {
+                <span class="small text-body-secondary" title="@_loadedAtUtc.Value.ToString("u")">
+                    <i class="bi bi-clock-history me-1"></i>updated <RelativeTime UtcTime="_loadedAtUtc.Value" />
+                </span>
+            }
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    @onclick="RefreshAsync" disabled="@_loading" title="Recompute and re-render">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    @onclick="ExportCsvAsync"
+                    disabled="@(_loading || _exporting || _result is null || _result.Matrix.Cells.Count == 0)"
+                    title="Export the currently displayed matrix as CSV">
+                @if (_exporting)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                }
+                else
+                {
+                    <i class="bi bi-filetype-csv me-1"></i>
+                }
+                Export CSV
+            </button>
+        </div>
+    </div>
+
+    @* Non-blocking notices surfaced by the projection / historical pipeline. *@
+    @if (!string.IsNullOrEmpty(_result?.HistoricalError) && !_historicalErrorDismissed)
+    {
+        <div class="alert alert-warning alert-dismissible d-flex align-items-center py-2 mt-2 mb-0" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <div class="small">@_result.HistoricalError</div>
+            <button type="button" class="btn-close" aria-label="Dismiss"
+                    @onclick="() => DismissHistoricalError()"></button>
+        </div>
+    }
+    @if (_result is { UnparseableJobIds.Count: > 0 })
+    {
+        <div class="alert alert-warning d-flex align-items-start py-2 mt-2 mb-0" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2 mt-1"></i>
+            <div class="small">
+                <strong>@_result.UnparseableJobIds.Count job(s)</strong> excluded — their cron expression
+                could not be parsed: <span class="font-monospace">@string.Join(", ", _result.UnparseableJobIds)</span>
+            </div>
+        </div>
+    }
+    @if (_result is { UnknownTimeZoneJobIds.Count: > 0 })
+    {
+        <div class="alert alert-info d-flex align-items-start py-2 mt-2 mb-0" role="alert">
+            <i class="bi bi-info-circle-fill me-2 mt-1"></i>
+            <div class="small">
+                <strong>@_result.UnknownTimeZoneJobIds.Count job(s)</strong> use an unrecognized time zone
+                and were evaluated in UTC:
+                <span class="font-monospace">@string.Join(", ", _result.UnknownTimeZoneJobIds)</span>
+            </div>
+        </div>
+    }
+
+    @* Surfaced when an inline drill-down schedule edit fails to persist (Req 10.4 wiring). *@
+    @if (!string.IsNullOrEmpty(_drawerSaveError))
+    {
+        <div class="alert alert-danger alert-dismissible d-flex align-items-center py-2 mt-2 mb-0" role="alert">
+            <i class="bi bi-exclamation-octagon-fill me-2"></i>
+            <div class="small">@_drawerSaveError</div>
+            <button type="button" class="btn-close" aria-label="Dismiss" @onclick="() => _drawerSaveError = null"></button>
+        </div>
+    }
+
+    @* Surfaced when a CSV export could not be generated or downloaded (task 19.4). *@
+    @if (!string.IsNullOrEmpty(_exportError))
+    {
+        <div class="alert alert-danger alert-dismissible d-flex align-items-center py-2 mt-2 mb-0" role="alert">
+            <i class="bi bi-exclamation-octagon-fill me-2"></i>
+            <div class="small">@_exportError</div>
+            <button type="button" class="btn-close" aria-label="Dismiss" @onclick="() => _exportError = null"></button>
+        </div>
+    }
+
+    @* ── Insights bar — four summary cards mirroring the v4 mockup. The last two are clickable and
+       jump to the Concurrency / Recommendations views (Req: layout parity with the mockup). ────── *@
+    @if (!_loading && _result is not null)
+    {
+        <div class="row row-cols-2 row-cols-lg-4 g-2 mt-3" aria-label="Heatmap insights">
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body py-2">
+                        <div class="small text-body-secondary">Best window to schedule</div>
+                        <div class="fw-semibold text-success">@(_insightBestWindow ?? "—")</div>
+                        <div class="small text-body-secondary">lowest combined load</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body py-2">
+                        <div class="small text-body-secondary">Ad-hoc demand peak</div>
+                        <div class="fw-semibold">@(_insightAdhocPeak ?? "—")</div>
+                        <div class="small text-body-secondary">@(_insightAdhocWhen ?? (_demandAvailable ? "no demand collected yet" : "needs a metrics provider"))</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100 @(_insightPeakOver ? "border-danger" : null)" role="button" tabindex="0"
+                     style="cursor: pointer;" title="View the concurrency analysis"
+                     @onclick='() => SetView("conc")'>
+                    <div class="card-body py-2">
+                        <div class="small text-body-secondary">Peak combined concurrency</div>
+                        <div class="fw-semibold @(_insightPeakOver ? "text-danger" : null)">@(_concurrency?.PeakConcurrency ?? 0)</div>
+                        <div class="small text-body-secondary">@(_insightPeakWhen ?? "—") · cap @_capacity.Capacity</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100 @(_recommendations.Any(r => r.Severity == RecommendationSeverity.High) ? "border-danger" : null)"
+                     role="button" tabindex="0" style="cursor: pointer;" title="View the overlap recommendations"
+                     @onclick='() => SetView("rec")'>
+                    <div class="card-body py-2">
+                        <div class="small text-body-secondary">Overlap suggestions</div>
+                        <div class="fw-semibold">@_recommendations.Count</div>
+                        <div class="small text-body-secondary">@(_recommendations.Count > 0 ? "click to view" : "all clear")</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── TOOLBAR 1 — class · source · window · tz | load · hide sub-hourly · log ───────────────── *@
+    <div class="card mt-3 mb-2">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <span class="small text-body-secondary">Show:</span>
+
+                @* Job_Class — Ad-hoc / Combined need a metrics provider (Req 16.7, 16.9). *@
+                <div class="btn-group btn-group-sm" role="group" aria-label="Job class">
+                    @foreach (var cls in JobClasses)
+                    {
+                        var disabled = !_historicalAvailable && cls != "Cron";
+                        <button type="button"
+                                class="btn @(_jobClass == cls ? "btn-primary" : "btn-outline-secondary")"
+                                disabled="@disabled"
+                                title="@JobClassTitle(cls)"
+                                @onclick="() => SetJobClassAsync(cls)">
+                            @cls
+                        </button>
+                    }
+                </div>
+
+                @* Source toggle — only when historical data is available (Req 7.1, 7.2). *@
+                @if (_historicalAvailable)
+                {
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Data source">
+                        <button type="button"
+                                class="btn @(_source == HeatmapSource.Projected ? "btn-primary" : "btn-outline-secondary")"
+                                title="Projected: the upcoming schedule computed from each job's cron expression (deterministic, forward-looking)."
+                                @onclick="() => SetSourceAsync(HeatmapSource.Projected)">
+                            Projected
+                        </button>
+                        <button type="button"
+                                class="btn @(_source == HeatmapSource.Historical ? "btn-primary" : "btn-outline-secondary")"
+                                title="Historical: what actually ran in the past, read from storage over the selected Lookback."
+                                @onclick="() => SetSourceAsync(HeatmapSource.Historical)">
+                            Historical
+                        </button>
+                    </div>
+                }
+
+                <div class="vr d-none d-md-block"></div>
+
+                <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                    Window
+                    <select class="form-select form-select-sm w-auto" @bind="_windowKind" @bind:after="ReloadAsync">
+                        <option value="@ProjectionWindowKind.IdealizedWeek">Idealized week</option>
+                        <option value="@ProjectionWindowKind.Next7Days">Next 7 days</option>
+                    </select>
+                </label>
+
+                <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                    View TZ
+                    <select class="form-select form-select-sm w-auto" style="max-width: 16rem;"
+                            @bind="_viewerTzId" @bind:after="OnViewerTzChangedAsync">
+                        <option value="">UTC</option>
+                        @foreach (var tz in _timeZones)
+                        {
+                            <option value="@tz.Id">@tz.DisplayName</option>
+                        }
+                    </select>
+                </label>
+
+                <div class="flex-grow-1"></div>
+
+                <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                    Load
+                    <select class="form-select form-select-sm w-auto" @bind="_loadMetric" @bind:after="ReloadAsync">
+                        <option value="@LoadMetric.FireCount">Fire count</option>
+                        <option value="@LoadMetric.WorkerMinutes">Worker-minutes</option>
+                    </select>
+                </label>
+
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="hf-hm-hidesub"
+                           @bind="_hideSubHourly" @bind:after="ReloadAsync" />
+                    <label class="form-check-label small text-body-secondary" for="hf-hm-hidesub">Hide sub-hourly</label>
+                </div>
+
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="hf-hm-log"
+                           @bind="_logScale" @bind:after="ReloadAsync" />
+                    <label class="form-check-label small text-body-secondary" for="hf-hm-log">Log scale</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── TOOLBAR 2 — demand aggregation · lookback · workers ───────────────────────────────────── *@
+    <div class="card mb-2">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap align-items-center gap-3">
+                @if (_historicalAvailable)
+                {
+                    <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                        Demand
+                        <select class="form-select form-select-sm w-auto" @bind="_aggregationStatistic" @bind:after="ReloadAsync"
+                                disabled="@(!DemandRelevant)"
+                                title="@(DemandRelevant ? "How the ad-hoc demand profile is summarized." : "Only used for Ad-hoc / Combined demand — switch class to enable.")">
+                            <option value="Average">Average</option>
+                            <option value="p95">p95 (busy)</option>
+                        </select>
+                    </label>
+
+                    <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                        Lookback
+                        <select class="form-select form-select-sm w-auto" @bind="_lookbackWeeks" @bind:after="ReloadAsync"
+                                disabled="@(!LookbackRelevant)"
+                                title="@(LookbackRelevant ? "How many trailing weeks of executions the Historical / ad-hoc demand aggregates." : "Only affects Historical and ad-hoc demand — not a Projected + Cron view.")">
+                            <option value="1">1 week</option>
+                            <option value="4">4 weeks</option>
+                            <option value="8">8 weeks</option>
+                        </select>
+                    </label>
+                }
+
+                <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                    Workers
+                    <input type="number" min="1" max="100000" class="form-control form-control-sm" style="width: 6rem;"
+                           value="@_capacityInput" @onchange="OnCapacityChanged" />
+                </label>
+                <span class="small @(_capacityInvalid ? "text-danger" : "text-body-secondary")">
+                    @if (_capacityInvalid)
+                    {
+                        <i class="bi bi-exclamation-circle me-1"></i><text>Enter an integer 1–100000.</text>
+                    }
+                    else
+                    {
+                        <span class="badge text-bg-secondary">
+                            @_capacity.Capacity worker(s) · @(_capacity.Source == CapacitySource.ManualOverride ? "manually overridden" : "detected")
+                        </span>
+                    }
+                </span>
+
+                @* Queue filter chips (cron ∪ ad-hoc) — scope every view/analysis to the selection. *@
+                @if (_availableQueues.Count > 0)
+                {
+                    <div class="vr d-none d-md-block"></div>
+                    <span class="small text-body-secondary">Queues:</span>
+                    <div class="d-flex flex-wrap align-items-center gap-1" aria-label="Queue filter">
+                        @foreach (var q in _availableQueues)
+                        {
+                            var selected = _selectedQueues.Contains(q);
+                            <button type="button"
+                                    class="btn btn-sm @(selected ? "btn-primary" : "btn-outline-secondary")"
+                                    aria-pressed="@(selected ? "true" : "false")"
+                                    title="@(selected ? "Click to hide this queue" : "Click to show this queue")"
+                                    @onclick="() => ToggleQueueAsync(q)">
+                                <span class="hf-q-dot me-1" style="background-color:@QueueColorFor(q);"></span>
+                                @q
+                                <span class="badge rounded-pill text-bg-light border ms-1" style="font-size: .65em;">@QueueClass(q)</span>
+                            </button>
+                        }
+                        <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 ms-1"
+                                disabled="@(_selectedQueues.Count == _availableQueues.Count)"
+                                @onclick="SelectAllQueuesAsync">All</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ── TOOLBAR 3 — view selector · day · color-by ───────────────────────────────────────────── *@
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="View">
+            @foreach (var view in Views)
+            {
+                <button type="button"
+                        class="btn @(_view == view.Key ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick="() => SetView(view.Key)">
+                    @view.Label
+                    @if (view.Key == "rec" && _recommendations.Count > 0)
+                    {
+                        <span class="badge rounded-pill text-bg-light border ms-1">@_recommendations.Count</span>
+                    }
+                </button>
+            }
+        </div>
+
+        <div class="flex-grow-1"></div>
+
+        @if (ShowDaySelector)
+        {
+            <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                Day
+                <select class="form-select form-select-sm w-auto" @bind="_selectedDay">
+                    <option value="-1">All week</option>
+                    @for (var d = 0; d < DayLabels.Length; d++)
+                    {
+                        var di = d;
+                        <option value="@di">@DayLabels[di]</option>
+                    }
+                </select>
+            </label>
+        }
+
+        @if (ShowColorBy)
+        {
+            <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                Color by
+                <select class="form-select form-select-sm w-auto" @bind="_colorBy">
+                    <option value="volume">Volume</option>
+                    <option value="failure">Failure rate</option>
+                    <option value="duration">Duration (p95)</option>
+                </select>
+            </label>
+        }
+
+        @if (_view == "conc")
+        {
+            <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+                Day
+                <select class="form-select form-select-sm w-auto" @bind="_concDay" @bind:after="RecomputeConcurrencyAsync">
+                    <option value="-1">Worst day (auto)</option>
+                    @for (var d = 0; d < HeatmapTime.WindowDays; d++)
+                    {
+                        var di = d;
+                        <option value="@di">@DayLabelFor(di)</option>
+                    }
+                </select>
+            </label>
+        }
+    </div>
+
+    @* ── Active view host ──────────────────────────────────────────────────────────────────────── *@
+    @if (_loading)
+    {
+        <div class="d-flex justify-content-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading…</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        @* Long-period jobs are surfaced regardless of the active window or whether the matrix has any
+           populated cells (Req 9.5, 9.6); the banner renders nothing when there are none. *@
+        <LongPeriodBanner JobIds="_result?.LongPeriodJobIds" />
+
+        @if (_result is null || (_result.Matrix.Cells.Count == 0 && !CanShowPlannerWithoutCron))
+        {
+            <EmptyState Icon="calendar3"
+                        Message="No recurring schedule to display."
+                        Subtitle="No recurring jobs were found for the selected window, or none fall inside it." />
+        }
+        else
+        {
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-1">@CurrentViewLabel</h5>
+                    <p class="text-body-secondary small mb-3">
+                        @((_displayMatrix ?? _result.Matrix).Cells.Count) populated cell(s) across @((_displayMatrix ?? _result.Matrix).Queues.Count) queue(s).
+                    </p>
+
+                    @* Drill-down is opened by clicking a populated cell (Planner / Punchcard / Per-queue
+                       cells carry a single queue + day) or a recommendation card — no picker needed. The
+                       hint is only shown for views whose cells are actually clickable. *@
+                    @if (DrillableCells.Count > 0 && CellClickAvailable)
+                    {
+                        <div class="small text-body-secondary mb-3 d-flex align-items-center gap-2">
+                            <i class="bi bi-hand-index" aria-hidden="true"></i>
+                            <span>Click a populated cell to inspect the jobs scheduled there.</span>
+                            @if (_drillDownLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            }
+                        </div>
+                    }
+
+                    @switch (_view)
+                    {
+                        case "punch":
+                            <PunchcardView Matrix="@(_displayMatrix ?? _result.Matrix)"
+                                           Source="_source"
+                                           LogScale="_logScale"
+                                           ViewerTimeZoneId="@_viewerTzId"
+                                           HistoricalCells="_historicalCells"
+                                           QueueColorMap="_queueColorMap" />
+                            break;
+
+                        case "qh":
+                            <QueueHourView Matrix="@(_displayMatrix ?? _result.Matrix)"
+                                           SelectedDay="_selectedDay"
+                                           LogScale="_logScale"
+                                           Queues="@((_displayMatrix ?? _result.Matrix).Queues)"
+                                           DayLabels="DayLabels" />
+                            break;
+
+                        case "multi":
+                            <PerQueueView Matrix="@(_displayMatrix ?? _result.Matrix)"
+                                          VisibleQueues="SelectedQueuesList()"
+                                          LogScale="_logScale" />
+                            break;
+
+                        case "cal":
+                            <CalendarView Matrix="@(_displayMatrix ?? _result.Matrix)"
+                                          ViewerTimeZoneId="@_viewerTzId"
+                                          LogScale="_logScale"
+                                          ColorBy="@_colorBy"
+                                          HistoricalActive="_source == HeatmapSource.Historical"
+                                          HistoricalCells="_historicalCells" />
+                            break;
+
+                        case "conc":
+                            @if (_concurrency is null)
+                            {
+                                <div class="d-flex justify-content-center py-5">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading…</span>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <ConcurrencyView Result="_concurrency"
+                                                 Capacity="_capacity.Capacity"
+                                                 DayLabel="@ConcurrencyDayLabel()"
+                                                 VisibleQueues="SelectedQueuesList()"
+                                                 AdHocBaselinePerSlot="_concurrencyBaseline"
+                                                 JobClass="@_jobClass" />
+                            }
+                            break;
+
+                        case "planner":
+                            <PlannerView CronMatrix="@(_displayMatrix ?? _result.Matrix)"
+                                         Demand="_displayDemand"
+                                         Window="_result.Matrix.Window"
+                                         ViewerTimeZoneId="@_viewerTzId"
+                                         JobClass="@_jobClass"
+                                         Source="_source"
+                                         LogScale="_logScale"
+                                         HistoricalCells="_historicalCells"
+                                         VisibleQueues="SelectedQueuesList()"
+                                         QueueColorMap="_queueColorMap"
+                                         OnCellInspect="OnPlannerCellInspectAsync" />
+                            break;
+
+                        case "rec":
+                            <RecommendationsView Recommendations="_recommendations"
+                                                 ViewerTimeZoneId="@_viewerTzId"
+                                                 QueueColorMap="_queueColorMap"
+                                                 OnInspect="OpenRecommendationAsync" />
+                            break;
+
+                        default:
+                            @* Defensive fallback: every view key in Views is handled above, so this is
+                               unreachable in practice. *@
+                            <EmptyState Icon="bar-chart-steps"
+                                        Message="Select a view."
+                                        Subtitle="Choose a view from the selector above." />
+                            break;
+                    }
+                </div>
+            </div>
+        }
+
+        @* Recurring-job table beneath the views (Req 9.1, 9.7). It retains every long-period job even
+           when it contributes zero cells, and shows an empty state when there are no jobs at all. *@
+        @if (_result is not null)
+        {
+            <div class="mt-3">
+                <RecurringJobTable Jobs="_specs"
+                                   Matrix="_result.Matrix"
+                                   LongPeriodJobIds="_result.LongPeriodJobIds"
+                                   QueueColorMap="_queueColorMap" />
+            </div>
+        }
+    }
+}
+
+@* ── Drill-down drawer (task 20.1 component, wired here by task 20.2) ──────────────────────────────
+   Mounted once and driven by the page: OpenCellAsync resolves the clicked cell's contributing jobs
+   via HeatmapService.GetCellJobsAsync and toggles Visible. The drawer self-guards so it never opens
+   for an empty cell, and surfaces GetCellJobsAsync load failures (DrillDownResult.Error) as a notice
+   while the page keeps its heatmap data unchanged (Req 10.1, 10.2, 10.7). Next-run times render in
+   the selected viewer time zone (Req 10.3). *@
+@if (_enabled)
+{
+    <DrillDownDrawer Visible="_drawerVisible"
+                     Result="_drillDown"
+                     CellLabel="@_drawerCellLabel"
+                     DisplayTimeZone="DrawerDisplayTimeZone"
+                     DisplayTimeZoneLabel="@DrawerDisplayTimeZoneLabel"
+                     OnClose="CloseDrawer"
+                     OnViewExecutions="ViewExecutions"
+                     OnSaveSchedule="SaveScheduleAsync" />
+}
+
+@code {
+    private static readonly string[] JobClasses = { "Cron", "Ad-hoc", "Combined" };
+    private static readonly string[] DayLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+    private static readonly string[] DowAbbrev = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+
+    private static readonly (string Key, string Label)[] Views =
+    {
+        ("planner", "Planner"),
+        ("punch", "Punchcard"),
+        ("qh", "Queue × Hour"),
+        ("multi", "Per-queue"),
+        ("cal", "Calendar"),
+        ("conc", "Concurrency"),
+        ("rec", "Recommendations"),
+    };
+
+    // Gate captured once so the decision is stable for the page lifetime.
+    private bool _enabled;
+    private bool _historicalAvailable;
+
+    // Toolbar state — seeded from Heatmap_Options on init (Req 22.4, 22.5).
+    private HeatmapSource _source = HeatmapSource.Projected;
+    private ProjectionWindowKind _windowKind = ProjectionWindowKind.IdealizedWeek;
+    private string _viewerTzId = string.Empty; // empty => UTC (Req 8.5)
+    private string _jobClass = "Cron";
+    private LoadMetric _loadMetric = LoadMetric.FireCount;
+    private bool _hideSubHourly;
+    private bool _logScale;
+    private string _aggregationStatistic = "Average";
+    private int _lookbackWeeks = 4;
+
+    // Capacity input + validation (Req 5.2, 5.3, 5.5).
+    private string _capacityInput = string.Empty;
+    private int? _manualCapacity;
+    private bool _capacityInvalid;
+    private CapacityResult _capacity = new(1, CapacitySource.Detected);
+    private int _detectedCapacity = 1;
+
+    // View selector state.
+    private string _view = "planner";
+    private int _selectedDay = -1;
+    private string _colorBy = "volume";
+
+    // Loaded data + freshness (Req 24.3).
+    private HeatmapResult _result;
+    private bool _loading = true;
+    private DateTime? _loadedAtUtc;
+    private bool _historicalErrorDismissed;
+
+    // Demand-aware availability (a metrics provider + demand profile provider are registered).
+    private bool _demandAvailable;
+
+    // Auxiliary data feeding the views (task 16.x, 18.6, 13.5, 11.6). Loaded alongside the matrix
+    // (specs / demand / historical cells) or lazily per active view (concurrency / recommendations).
+    private IReadOnlyList<RecurringJobSpec> _specs = Array.Empty<RecurringJobSpec>();
+    private DemandProfile _demand;
+    private IReadOnlyList<HeatmapHistoricalCell> _historicalCells = Array.Empty<HeatmapHistoricalCell>();
+    private IReadOnlyList<Recommendation> _recommendations = Array.Empty<Recommendation>();
+    private ConcurrencyResult _concurrency;
+    private int _concurrencyDay;
+    private int _concDay = -1; // -1 = auto (worst day); 0..6 = a specific window day.
+    private IReadOnlyList<int> _concurrencyBaseline;
+
+    // Queue filter chips (mirrors the v4 mockup): the queues available (cron ∪ ad-hoc) and the
+    // operator's current selection. The views, analyses, and insights are scoped to the selection.
+    private IReadOnlyList<string> _availableQueues = Array.Empty<string>();
+    private readonly HashSet<string> _selectedQueues = new(StringComparer.Ordinal);
+
+    // The queues that were available on the previous reconcile, so newly-appearing queues can be
+    // auto-selected (and a transient source/class change never silently hides queues).
+    private HashSet<string> _previousAvailableQueues = new(StringComparer.Ordinal);
+    private HeatmapMatrix _displayMatrix;
+    private DemandProfile _displayDemand;
+
+    // Collision-free queue → color map over the available queues, shared by the chips, the recurring
+    // table badges, the recommendation dots, and (pushed to heatmap.js) every renderer's dots/legends.
+    private IReadOnlyDictionary<string, string> _queueColorMap = new Dictionary<string, string>();
+    private string _pushedQueueColorsSig;
+
+    // Insight summaries shown in the top cards (mirrors the v4 mockup's insights bar).
+    private string _insightBestWindow;
+    private string _insightAdhocPeak;
+    private string _insightAdhocWhen;
+    private string _insightPeakWhen;
+    private bool _insightPeakOver;
+
+    // CSV export state (task 19.4). _exporting guards re-entrancy while the file is generated and
+    // handed to the browser; _exportError surfaces a non-blocking notice when the download fails.
+    private bool _exporting;
+    private string _exportError;
+
+    // Drill-down drawer state (task 20.2). The drawer is driven entirely from here.
+    private DotNetObjectReference<Heatmap> _selfRef;
+    private DrillDownResult _drillDown;
+    private bool _drawerVisible;
+    private bool _drillDownLoading;
+    private string _drawerCellLabel;
+    private string _drawerSaveError;
+
+    private List<TimeZoneInfo> _timeZones = new();
+
+    private bool ShowDaySelector => _view is "qh";
+    private bool ShowColorBy => _view == "cal" && _source == HeatmapSource.Historical;
+
+    /// <summary>Whether the active view renders cells that open the drill-down on click.</summary>
+    private bool CellClickAvailable => _view is "planner" or "punch" or "multi";
+    private string CurrentViewLabel => Views.FirstOrDefault(v => v.Key == _view).Label ?? "View";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _enabled = Options.Heatmap?.Enabled ?? false;
+        if (!_enabled)
+        {
+            // Behave as if the route does not exist: bounce to the dashboard home (Req 22.3).
+            Navigation.NavigateTo("", replace: true);
+            return;
+        }
+
+        _historicalAvailable = HeatmapSvc.IsHistoricalAvailable;
+        _demandAvailable = HeatmapSvc.IsDemandAvailable;
+        _timeZones = LoadTimeZones();
+        ApplyDefaults();
+
+        await LoadAsync();
+    }
+
+    /// <summary>Seeds the toolbar selections from <see cref="HeatmapOptions"/> (Req 22.4, 22.5).</summary>
+    private void ApplyDefaults()
+    {
+        var o = Options.Heatmap ?? new HeatmapOptions();
+
+        _windowKind = o.DefaultProjectionWindow;
+        _loadMetric = o.DefaultLoadMetric;
+        _aggregationStatistic = string.IsNullOrWhiteSpace(o.DefaultAggregationStatistic) ? "Average" : o.DefaultAggregationStatistic;
+        _lookbackWeeks = o.DefaultLookbackWeeks is 1 or 4 or 8 ? o.DefaultLookbackWeeks : 4;
+
+        // Job_Class default (Req 16.2, 16.6, 16.7, 16.9):
+        //   • The Ad-hoc and Combined classes are enabled together only when a metrics provider is
+        //     registered; without one we disable them and default to Cron on the Projected source
+        //     (Req 16.7, 16.9).
+        //   • When a provider IS registered, Combined is the default class (Req 16.2). The storage-
+        //     agnostic "Cron" option default (HeatmapOptions.DefaultJobClass) is therefore upgraded to
+        //     Combined here, while an explicitly configured "Ad-hoc" is honored.
+        //   • Ad-hoc demand only exists historically, so the Ad-hoc class forces the Historical source
+        //     (Req 16.6); Combined overlays projected cron on the demand profile, so it starts on the
+        //     Projected source.
+        var configuredClass = string.IsNullOrWhiteSpace(o.DefaultJobClass) ? "Cron" : o.DefaultJobClass.Trim();
+        var normalizedClass = JobClasses.FirstOrDefault(c => string.Equals(c, configuredClass, StringComparison.OrdinalIgnoreCase)) ?? "Cron";
+
+        if (!_historicalAvailable)
+        {
+            // No provider: Ad-hoc / Combined are unavailable — default to Cron on Projected (Req 16.7, 16.9).
+            _jobClass = "Cron";
+            _source = HeatmapSource.Projected;
+        }
+        else
+        {
+            // Provider registered: Combined is the default (Req 16.2). Only an explicit "Ad-hoc"
+            // configuration opts out of the Combined default.
+            _jobClass = normalizedClass == "Ad-hoc" ? "Ad-hoc" : "Combined";
+            _source = _jobClass == "Ad-hoc" ? HeatmapSource.Historical : HeatmapSource.Projected;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = BuildQuery();
+            _result = await HeatmapSvc.GetMatrixAsync(query, CancellationToken.None);
+            _capacity = HeatmapSvc.ResolveCapacity(_manualCapacity);
+            _detectedCapacity = HeatmapSvc.ResolveCapacity(null).Capacity;
+
+            // Reflect the effective worker count in the input box. While no manual override is active
+            // the box shows the detected value (so the operator sees e.g. "20", matching the badge);
+            // a manual override keeps whatever the operator typed.
+            if (_manualCapacity is null)
+            {
+                _capacityInput = _capacity.Capacity.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            _loadedAtUtc = DateTime.UtcNow;
+            _historicalErrorDismissed = false;
+
+            // Shared auxiliary data (used by several views):
+            //  • the recurring-job specs back the recurring-job table (Req 9.7);
+            //  • the ad-hoc demand profile shades the Planner (Req 18.1) for Ad-hoc/Combined classes;
+            //  • per-cell historical stats drive the failure/duration coloring under the Historical
+            //    source (Req 6.3/6.4/7.6).
+            _specs = await HeatmapSvc.GetRecurringJobSpecsAsync(query, CancellationToken.None);
+
+            _demand = (!IsCronClass && _demandAvailable)
+                ? HeatmapSvc.GetDemandProfile(query)
+                : null;
+
+            _historicalCells = _source == HeatmapSource.Historical
+                ? await HeatmapSvc.GetHistoricalCellsAsync(query, CancellationToken.None)
+                : Array.Empty<HeatmapHistoricalCell>();
+
+            // Reconcile the queue selection against the now-known available queues, then build the
+            // queue-filtered matrix/demand the views and insights render from.
+            ReconcileQueueSelection();
+            _queueColorMap = QueueColors.BuildColorMap(_availableQueues);
+            _displayMatrix = BuildDisplayMatrix();
+            _displayDemand = BuildDisplayDemand();
+
+            // Concurrency (worst day), recommendations, and the insight summaries are computed up
+            // front because the always-visible insights bar surfaces them; the views then read the
+            // already-computed values (no per-view recompute on switch).
+            await ComputeViewDataAndInsightsAsync(query);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Computes the worst-day concurrency series, the stagger recommendations, and the four insight
+    /// summaries (best window, ad-hoc demand peak, peak combined concurrency, overlap count) for the
+    /// active query. Reuses the demand-aware baselines so the Concurrency view and the insights agree.
+    /// </summary>
+    private async Task ComputeViewDataAndInsightsAsync(HeatmapQuery query)
+    {
+        if (_result is null)
+        {
+            _concurrency = null;
+            _recommendations = Array.Empty<Recommendation>();
+            _insightBestWindow = _insightAdhocPeak = _insightAdhocWhen = _insightPeakWhen = null;
+            _insightPeakOver = false;
+            return;
+        }
+
+        var tz = HeatmapTime.ResolveTimeZone(_viewerTzId);
+        var window = _result.Matrix.Window;
+        var queueFilter = QueueFilterList();
+
+        _concurrencyDay = _concDay >= 0
+            ? Math.Clamp(_concDay, 0, HeatmapTime.WindowDays - 1)
+            : await HeatmapSvc.GetWorstConcurrencyDayAsync(query, _capacity.Capacity, CancellationToken.None, queueFilter);
+        _concurrencyBaseline = BuildConcurrencyBaseline(query, window, tz, _concurrencyDay);
+        _concurrency = await HeatmapSvc.GetConcurrencyAsync(
+            query, _concurrencyDay, _capacity.Capacity, _concurrencyBaseline, CancellationToken.None, queueFilter);
+
+        var weekBaseline = BuildWeekAdHocBaseline(query, window, tz);
+        _recommendations = await HeatmapSvc.GetRecommendationsAsync(
+            query, _capacity.Capacity, weekBaseline, CancellationToken.None, queueFilter);
+
+        ComputeInsights(window, tz);
+    }
+
+    /// <summary>Derives the four insight-card summaries from the loaded matrix, demand, and concurrency.</summary>
+    private void ComputeInsights(ProjectionWindow window, TimeZoneInfo tz)
+    {
+        var matrix = _displayMatrix ?? _result.Matrix;
+        var demand = _displayDemand;
+
+        // Best window to schedule = lowest combined (ad-hoc + cron) load slot (Req 18.6).
+        var planner = PlannerHelpers.BuildPlanner(matrix, demand, window, tz, 0d);
+        _insightBestWindow = planner.BestWindow is null
+            ? null
+            : DayHourLabel(planner.BestWindow.DayIndex, planner.BestWindow.Hour);
+
+        // Ad-hoc demand peak across day-of-week × hour, summed over queues.
+        _insightAdhocPeak = null;
+        _insightAdhocWhen = null;
+        if (demand?.Slots is { Count: > 0 })
+        {
+            var byDow = new Dictionary<(int Dow, int Hour), double>();
+            foreach (var slot in demand.Slots)
+            {
+                var key = (slot.Key.DayOfWeek, slot.Key.Hour);
+                byDow.TryGetValue(key, out var existing);
+                byDow[key] = existing + slot.Value;
+            }
+
+            var peak = byDow.OrderByDescending(e => e.Value).FirstOrDefault();
+            if (peak.Value > 0)
+            {
+                var unit = _loadMetric == LoadMetric.WorkerMinutes ? " wm/h" : " fires/h";
+                _insightAdhocPeak = peak.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + unit;
+                _insightAdhocWhen = $"{DowAbbrev[Math.Clamp(peak.Key.Dow, 0, 6)]} {peak.Key.Hour:00}:00";
+            }
+        }
+
+        // Peak combined concurrency time + over-capacity flag.
+        _insightPeakWhen = _concurrency?.PeakMinuteOfDay is int minute
+            ? $"{DayLabelFor(_concurrencyDay)} {minute / 60:00}:{minute % 60:00}"
+            : null;
+        _insightPeakOver = _concurrency is not null && _concurrency.PeakConcurrency > _capacity.Capacity;
+    }
+
+    private HeatmapQuery BuildQuery() => new(
+        Source: _source,
+        WindowKind: _windowKind,
+        ViewerTimeZoneId: _viewerTzId,
+        JobClass: _jobClass,
+        LoadMetric: _loadMetric,
+        TopN: 100,
+        HideSubHourly: _hideSubHourly,
+        LogScale: _logScale,
+        LookbackWeeks: _lookbackWeeks,
+        AggregationStatistic: _aggregationStatistic,
+        ManualCapacity: _manualCapacity);
+
+    /// <summary>Manual refresh action — recomputes and re-renders the current data (Req 24.2).</summary>
+    private Task RefreshAsync() => LoadAsync();
+
+    /// <summary>
+    /// Exports the currently displayed matrix as a downloadable CSV, scoped by the active source,
+    /// projection window, viewer time zone, queue selection, and load metric (Req 12.1). The matrix is
+    /// serialized by the pure <see cref="CsvExporter"/> via <see cref="HeatmapService.ExportCsv"/>, then
+    /// the resulting text is saved client-side through the eval-free <c>dashboardFile.downloadText</c>
+    /// helper (Content/js/prefs.js) — a small Blob + transient <c>&lt;a download&gt;</c> approach, since
+    /// no existing dashboard download endpoint or helper was present and heatmap.js is locked. The file
+    /// is named <c>heatmap-{source}-{window}.csv</c>.
+    /// </summary>
+    private async Task ExportCsvAsync()
+    {
+        _exportError = null;
+
+        var matrix = _result?.Matrix;
+        if (matrix is null)
+        {
+            return;
+        }
+
+        _exporting = true;
+        StateHasChanged();
+
+        try
+        {
+            // Scope the export to the active source / window / viewer tz / queue selection / load
+            // metric (Req 12.1). The matrix already carries the window it was computed over, so the
+            // exported day labels match the rendered grid exactly.
+            var context = new CsvExportContext(
+                Source: _source,
+                Window: matrix.Window,
+                ViewerTimeZoneId: _viewerTzId,
+                Queues: matrix.Queues,
+                Metric: matrix.Metric);
+
+            var csv = HeatmapSvc.ExportCsv(matrix, context);
+            var fileName = BuildExportFileName();
+
+            var ok = await JS.InvokeAsync<bool>("dashboardFile.downloadText", fileName, csv, "text/csv");
+            if (!ok)
+            {
+                _exportError = "The CSV could not be downloaded by the browser.";
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit gone — nothing more to do; the page state is unaffected.
+        }
+        catch (Exception ex)
+        {
+            _exportError = "The CSV export failed: " + ex.Message;
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Builds a sensible export file name of the form <c>heatmap-{source}-{window}.csv</c>, e.g.
+    /// <c>heatmap-projected-idealized-week.csv</c>.
+    /// </summary>
+    private string BuildExportFileName()
+    {
+        var source = _source == HeatmapSource.Historical ? "historical" : "projected";
+        var window = _windowKind == ProjectionWindowKind.Next7Days ? "next-7-days" : "idealized-week";
+        return $"heatmap-{source}-{window}.csv";
+    }
+
+    /// <summary>Reloads after a control that changes the computed data is toggled.</summary>
+    private Task ReloadAsync() => LoadAsync();
+
+    private async Task SetJobClassAsync(string cls)
+    {
+        if (!_historicalAvailable && cls != "Cron")
+        {
+            return; // Ad-hoc / Combined require a metrics provider.
+        }
+
+        if (_jobClass == cls)
+        {
+            return;
+        }
+
+        _jobClass = cls;
+
+        // Ad-hoc demand only exists historically; force the Historical source for Ad-hoc (Req 16.6).
+        if (cls == "Ad-hoc" && _historicalAvailable)
+        {
+            _source = HeatmapSource.Historical;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task SetSourceAsync(HeatmapSource source)
+    {
+        if (_source == source)
+        {
+            return;
+        }
+
+        _source = source;
+        await LoadAsync();
+    }
+
+    private void SetView(string view) => _view = view;
+
+    /// <summary>
+    /// Recomputes only the concurrency series for the chosen day (worst day when <c>_concDay</c> is
+    /// −1), without reloading the whole matrix — invoked when the operator changes the Day selector
+    /// on the Concurrency view.
+    /// </summary>
+    private async Task RecomputeConcurrencyAsync()
+    {
+        if (_result is null)
+        {
+            return;
+        }
+
+        var query = BuildQuery();
+        var tz = HeatmapTime.ResolveTimeZone(_viewerTzId);
+        var window = _result.Matrix.Window;
+        var queueFilter = QueueFilterList();
+
+        _concurrencyDay = _concDay >= 0
+            ? Math.Clamp(_concDay, 0, HeatmapTime.WindowDays - 1)
+            : await HeatmapSvc.GetWorstConcurrencyDayAsync(query, _capacity.Capacity, CancellationToken.None, queueFilter);
+        _concurrencyBaseline = BuildConcurrencyBaseline(query, window, tz, _concurrencyDay);
+        _concurrency = await HeatmapSvc.GetConcurrencyAsync(
+            query, _concurrencyDay, _capacity.Capacity, _concurrencyBaseline, CancellationToken.None, queueFilter);
+
+        ComputeInsights(window, tz);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Builds the per-minute ad-hoc concurrency baseline for a single window day from the
+    /// Demand_Profile (Combined class only, Req 19.1). Returns <c>null</c> outside Combined or when no
+    /// demand is available, so the Concurrency view plots the cron contribution alone.
+    /// </summary>
+    private IReadOnlyList<int> BuildConcurrencyBaseline(
+        HeatmapQuery query, ProjectionWindow window, TimeZoneInfo tz, int dayIndex)
+    {
+        var workerMinutes = TryGetWorkerMinutesDemand(query);
+        if (workerMinutes is null)
+        {
+            return null;
+        }
+
+        return BaselineForDay(workerMinutes, window, tz, dayIndex);
+    }
+
+    /// <summary>
+    /// Builds a week-representative ad-hoc baseline for the demand-aware recommendations (Req 19.4):
+    /// the per-minute maximum across the window's seven days, i.e. the worst-case ad-hoc demand at
+    /// each minute-of-day. The recommendation engine takes a single per-day baseline while clusters
+    /// span weekdays, so this conservative aggregate flags a collision when <em>any</em> day carries
+    /// high demand at the cluster's peak minute. Returns <c>null</c> outside Combined or when no
+    /// demand is available (cron-only recommendations).
+    /// </summary>
+    private IReadOnlyList<int> BuildWeekAdHocBaseline(HeatmapQuery query, ProjectionWindow window, TimeZoneInfo tz)
+    {
+        var workerMinutes = TryGetWorkerMinutesDemand(query);
+        if (workerMinutes is null)
+        {
+            return null;
+        }
+
+        var week = new int[1440];
+        for (var day = 0; day < HeatmapTime.WindowDays; day++)
+        {
+            var dayBaseline = BaselineForDay(workerMinutes, window, tz, day);
+            for (var minute = 0; minute < week.Length; minute++)
+            {
+                if (dayBaseline[minute] > week[minute])
+                {
+                    week[minute] = dayBaseline[minute];
+                }
+            }
+        }
+
+        return week;
+    }
+
+    /// <summary>
+    /// Fetches the demand profile in Worker-minutes (Combined class only) so each hour's value ÷ 60
+    /// approximates the average concurrent ad-hoc jobs that hour. Returns <c>null</c> when not Combined,
+    /// no demand provider, or the profile is empty.
+    /// </summary>
+    private DemandProfile TryGetWorkerMinutesDemand(HeatmapQuery query)
+    {
+        if (!IsCombinedClass || !_demandAvailable)
+        {
+            return null;
+        }
+
+        var workerMinutes = HeatmapSvc.GetDemandProfile(query with { LoadMetric = LoadMetric.WorkerMinutes });
+        return workerMinutes?.Slots is { Count: > 0 } ? workerMinutes : null;
+    }
+
+    /// <summary>
+    /// Projects a Worker-minutes demand profile onto a single window day's 1,440 one-minute baseline:
+    /// each hour's summed worker-minutes ÷ 60 (rounded) fills that hour's 60 slots, approximating the
+    /// average ad-hoc concurrency that hour.
+    /// </summary>
+    private static int[] BaselineForDay(DemandProfile workerMinutes, ProjectionWindow window, TimeZoneInfo tz, int dayIndex)
+    {
+        var baseline = new int[1440];
+        if (workerMinutes?.Slots is null || workerMinutes.Slots.Count == 0)
+        {
+            return baseline;
+        }
+
+        var dayOfWeek = PlannerHelpers.MapDayIndexToDayOfWeek(window, tz, dayIndex);
+
+        var perHour = new double[24];
+        foreach (var slot in workerMinutes.Slots)
+        {
+            if (slot.Key.DayOfWeek == dayOfWeek && slot.Key.Hour is >= 0 and < 24)
+            {
+                perHour[slot.Key.Hour] += slot.Value;
+            }
+        }
+
+        for (var hour = 0; hour < 24; hour++)
+        {
+            var concurrent = (int)Math.Round(perHour[hour] / 60d, MidpointRounding.AwayFromZero);
+            if (concurrent < 0)
+            {
+                concurrent = 0;
+            }
+
+            for (var minute = hour * 60; minute < (hour * 60) + 60; minute++)
+            {
+                baseline[minute] = concurrent;
+            }
+        }
+
+        return baseline;
+    }
+
+    /// <summary>The human-readable label of the day the Concurrency view is analyzing.</summary>
+    private string ConcurrencyDayLabel() => DayLabelFor(_concurrencyDay);
+
+    /// <summary>
+    /// The day-name label for a window day index: a weekday name for the idealized week, or a calendar
+    /// date (in the viewer time zone) for the next-seven-days window — matching the views.
+    /// </summary>
+    private string DayLabelFor(int dayIndex)
+    {
+        var day = Math.Clamp(dayIndex, 0, 6);
+        if (_result is not null && _result.Matrix.Window.Kind == ProjectionWindowKind.Next7Days)
+        {
+            var tz = HeatmapTime.ResolveTimeZone(_viewerTzId);
+            var startLocal = HeatmapTime.ToViewerLocal(_result.Matrix.Window.StartInclusive, tz);
+            return startLocal.AddDays(day).ToString("ddd d", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return DayLabels[day];
+    }
+
+    /// <summary>A "{day} HH:00" label for a window day index and clock hour.</summary>
+    private string DayHourLabel(int dayIndex, int hour) => $"{DayLabelFor(dayIndex)} {hour:00}:00";
+
+    private bool IsCronClass => string.Equals(_jobClass, "Cron", StringComparison.OrdinalIgnoreCase);
+    private bool IsCombinedClass => string.Equals(_jobClass, "Combined", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether the Lookback control affects the current result: it drives the Historical aggregation
+    /// and the ad-hoc demand profile (Ad-hoc / Combined classes). It is irrelevant — and disabled —
+    /// for a pure Projected + Cron view, which is computed from cron expressions alone.
+    /// </summary>
+    private bool LookbackRelevant => _source == HeatmapSource.Historical || !IsCronClass;
+
+    /// <summary>
+    /// Whether the Demand statistic (Average / p95) affects the current result: only the ad-hoc demand
+    /// profile (Ad-hoc / Combined classes) uses it. Disabled for the Cron class.
+    /// </summary>
+    private bool DemandRelevant => !IsCronClass;
+
+    /// <summary>The operator's selected queues, in display order (intersection with available).</summary>
+    private IReadOnlyList<string> SelectedQueuesList() =>
+        _availableQueues.Where(_selectedQueues.Contains).ToList();
+
+    /// <summary>
+    /// The queue filter forwarded to the concurrency / recommendation analyses; <c>null</c> when every
+    /// queue is selected so the service skips filtering entirely.
+    /// </summary>
+    private IReadOnlyList<string> QueueFilterList() =>
+        _selectedQueues.Count > 0 && _selectedQueues.Count < _availableQueues.Count
+            ? SelectedQueuesList()
+            : null;
+
+    /// <summary>
+    /// Recomputes the available queues (cron matrix ∪ ad-hoc demand) and reconciles the selection:
+    /// queues that are no longer available are dropped; queues that have <em>newly</em> become
+    /// available (e.g. when switching back from a source/class that only exposed a subset) are
+    /// auto-selected so a transient narrowing never silently hides queues; and an empty selection
+    /// defaults to all (first load). Explicit deselections are preserved while the available set is
+    /// unchanged.
+    /// </summary>
+    private void ReconcileQueueSelection()
+    {
+        var avail = new SortedSet<string>(StringComparer.Ordinal);
+        if (_result?.Matrix.Queues is not null)
+        {
+            foreach (var q in _result.Matrix.Queues)
+            {
+                avail.Add(q);
+            }
+        }
+
+        if (_demand?.Queues is not null)
+        {
+            foreach (var q in _demand.Queues)
+            {
+                avail.Add(q);
+            }
+        }
+
+        _availableQueues = avail.ToList();
+
+        // Auto-select any queue that wasn't available on the previous load (first load: every queue
+        // is "new", so all start selected). This re-includes queues that reappear after a source/class
+        // switch transiently removed them, rather than leaving them silently hidden.
+        foreach (var q in avail)
+        {
+            if (!_previousAvailableQueues.Contains(q))
+            {
+                _selectedQueues.Add(q);
+            }
+        }
+
+        // Drop selections that are no longer available.
+        _selectedQueues.IntersectWith(avail);
+
+        // Never leave the selection empty.
+        if (_selectedQueues.Count == 0)
+        {
+            foreach (var q in avail)
+            {
+                _selectedQueues.Add(q);
+            }
+        }
+
+        _previousAvailableQueues = new HashSet<string>(avail, StringComparer.Ordinal);
+    }
+
+    /// <summary>Returns the cron matrix restricted to the selected queues, with the ramp domain recomputed.</summary>
+    private HeatmapMatrix BuildDisplayMatrix()
+    {
+        var m = _result?.Matrix;
+        if (m is null)
+        {
+            return null;
+        }
+
+        var cells = new Dictionary<CellKey, HeatmapCell>();
+        double min = 0, max = 0;
+        var has = false;
+        foreach (var kv in m.Cells)
+        {
+            if (!_selectedQueues.Contains(kv.Key.Queue))
+            {
+                continue;
+            }
+
+            cells[kv.Key] = kv.Value;
+            if (!has)
+            {
+                min = max = kv.Value.Value;
+                has = true;
+            }
+            else
+            {
+                if (kv.Value.Value < min) min = kv.Value.Value;
+                if (kv.Value.Value > max) max = kv.Value.Value;
+            }
+        }
+
+        var queues = m.Queues.Where(_selectedQueues.Contains).ToList();
+        return m with { Cells = cells, Queues = queues, Min = min, Max = max };
+    }
+
+    /// <summary>Returns the demand profile restricted to the selected queues.</summary>
+    private DemandProfile BuildDisplayDemand()
+    {
+        if (_demand is null)
+        {
+            return null;
+        }
+
+        var slots = new Dictionary<DemandSlotKey, double>();
+        foreach (var kv in _demand.Slots)
+        {
+            if (_selectedQueues.Contains(kv.Key.Queue))
+            {
+                slots[kv.Key] = kv.Value;
+            }
+        }
+
+        var queues = _demand.Queues.Where(_selectedQueues.Contains).ToList();
+        return _demand with { Slots = slots, Queues = queues };
+    }
+
+    /// <summary>The class tag shown on a queue chip: cron, ad-hoc, or both.</summary>
+    private string QueueClass(string queue)
+    {
+        var isCron = _result?.Matrix.Queues?.Contains(queue) == true;
+        var isAdHoc = _demand?.Queues?.Contains(queue) == true;
+        return isCron && isAdHoc ? "both" : isAdHoc ? "ad-hoc" : "cron";
+    }
+
+    /// <summary>The collision-free color for a queue, from the active map (fallback to its hashed color).</summary>
+    private string QueueColorFor(string queue) =>
+        _queueColorMap is not null && queue is not null && _queueColorMap.TryGetValue(queue, out var color)
+            ? color
+            : QueueColors.ColorFor(queue);
+
+    /// <summary>Toggles a queue in/out of the selection (never empties it) and reloads.</summary>
+    private async Task ToggleQueueAsync(string queue)
+    {
+        if (!_selectedQueues.Remove(queue))
+        {
+            _selectedQueues.Add(queue);
+        }
+
+        if (_selectedQueues.Count == 0)
+        {
+            _selectedQueues.Add(queue);
+        }
+
+        await LoadAsync();
+    }
+
+    /// <summary>Selects every available queue and reloads.</summary>
+    private async Task SelectAllQueuesAsync()
+    {
+        foreach (var q in _availableQueues)
+        {
+            _selectedQueues.Add(q);
+        }
+
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// Whether the Planner can render from the ad-hoc demand profile alone — i.e. the Ad-hoc/Combined
+    /// class has demand data even though no recurring jobs populate the cron matrix. Lets the demand
+    /// shading show instead of the "no recurring schedule" empty state in that case.
+    /// </summary>
+    private bool CanShowPlannerWithoutCron =>
+        _view == "planner" && !IsCronClass && _demand is { Slots.Count: > 0 };
+
+    private async Task OnCapacityChanged(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? string.Empty;
+        _capacityInput = raw;
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            // Cleared — revert to the detected capacity (Req 5.1) and recompute the dependent
+            // concurrency / recommendations / insights.
+            _capacityInvalid = false;
+            _manualCapacity = null;
+            await LoadAsync();
+            return;
+        }
+
+        if (CapacityResolver.TryValidateManual(raw, out var value))
+        {
+            _capacityInvalid = false;
+            // Entering the detected value is not treated as an override (it stays "detected"),
+            // so typing the same number the dashboard detected keeps the auto-detected semantics.
+            _manualCapacity = value == _detectedCapacity ? (int?)null : value;
+            await LoadAsync();
+        }
+        else
+        {
+            // Reject the value and retain the previously active capacity (Req 5.5).
+            _capacityInvalid = true;
+        }
+    }
+
+    private void DismissHistoricalError() => _historicalErrorDismissed = true;
+
+    // ── Drill-down drawer wiring (task 20.2) ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The viewer time zone used to render each drill-down job's next run (Req 10.3). The page's
+    /// "View TZ" selection is the dashboard's active display time zone; empty means UTC (Req 8.5).
+    /// </summary>
+    private TimeZoneInfo DrawerDisplayTimeZone => HeatmapTime.ResolveTimeZone(_viewerTzId);
+
+    /// <summary>The label shown beside converted next-run times (the selected tz id, or "UTC").</summary>
+    private string DrawerDisplayTimeZoneLabel => string.IsNullOrWhiteSpace(_viewerTzId) ? "UTC" : _viewerTzId;
+
+    /// <summary>
+    /// A selectable drill-down target: a single matrix cell with one or more contributing recurring
+    /// jobs. Only such cells are offered so the drawer is never opened for an empty cell (Req 10.1, 10.2).
+    /// </summary>
+    private sealed record DrillableCell(string Id, string Label, CellKey Key);
+
+    /// <summary>
+    /// The populated cells the operator can drill into, ordered by day, hour, then queue. Built from
+    /// the aggregated matrix; cells with zero contributing jobs are excluded (Req 10.1, 10.2).
+    /// </summary>
+    private IReadOnlyList<DrillableCell> DrillableCells
+    {
+        get
+        {
+            var matrix = _result?.Matrix;
+            if (matrix is null || matrix.Cells.Count == 0)
+            {
+                return Array.Empty<DrillableCell>();
+            }
+
+            return matrix.Cells.Values
+                .Where(c => c is not null && c.ContributingJobCount > 0)
+                .OrderBy(c => c.Key.DayIndex)
+                .ThenBy(c => c.Key.Hour)
+                .ThenBy(c => c.Key.Queue, StringComparer.Ordinal)
+                .Select(c => new DrillableCell(
+                    Id: $"{c.Key.Queue}|{c.Key.DayIndex}|{c.Key.Hour}",
+                    Label: CellLabel(c.Key, c.ContributingJobCount),
+                    Key: c.Key))
+                .ToList();
+        }
+    }
+
+    /// <summary>Builds a human-readable label for a cell, e.g. "Mon · 09:00 · default (3 jobs)".</summary>
+    private static string CellLabel(CellKey key, int jobCount)
+    {
+        var day = key.DayIndex >= 0 && key.DayIndex < DayLabels.Length
+            ? DayLabels[key.DayIndex]
+            : $"Day {key.DayIndex + 1}";
+        return $"{day} · {key.Hour:D2}:00 · {key.Queue} ({jobCount} {(jobCount == 1 ? "job" : "jobs")})";
+    }
+
+    /// <summary>
+    /// A [JSInvokable] hook the heatmap.js cell-click wiring calls (via the DotNetObjectReference
+    /// registered in <see cref="OnAfterRenderAsync"/>) to open the drawer for a clicked cell, driving
+    /// the <see cref="OpenCellAsync"/> path. Also used to open the drawer for a clicked recommendation.
+    /// </summary>
+    /// <param name="queue">The clicked cell's queue.</param>
+    /// <param name="dayIndex">The clicked cell's zero-based day index within the window.</param>
+    /// <param name="hour">The clicked cell's clock hour (0–23).</param>
+    [JSInvokable]
+    public async Task OpenCellDrawerAsync(string queue, int dayIndex, int hour)
+    {
+        var key = new CellKey(queue, dayIndex, hour);
+        // Prefer the populated-cell label when the cell is known; otherwise synthesize one.
+        var label = DrillableCells.FirstOrDefault(c =>
+            string.Equals(c.Key.Queue, queue, StringComparison.Ordinal)
+            && c.Key.DayIndex == dayIndex
+            && c.Key.Hour == hour)?.Label
+            ?? CellLabel(key, 0);
+
+        await OpenCellAsync(key, label);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Resolves the contributing recurring jobs for <paramref name="key"/> via
+    /// <see cref="HeatmapService.GetCellJobsAsync"/> and opens the drawer. On a load failure the
+    /// service returns a <see cref="DrillDownResult"/> with an error (never throws), which the drawer
+    /// surfaces while the page keeps its heatmap data unchanged (Req 10.7). The drawer self-guards
+    /// against opening for an empty (no-job, no-error) cell (Req 10.1, 10.2).
+    /// </summary>
+    private async Task OpenCellAsync(CellKey key, string label)
+    {
+        _drillDownLoading = true;
+        _drawerCellLabel = label;
+        StateHasChanged();
+
+        try
+        {
+            _drillDown = await HeatmapSvc.GetCellJobsAsync(key, BuildQuery(), CancellationToken.None);
+        }
+        finally
+        {
+            _drillDownLoading = false;
+            // Toggle visibility on; the drawer only actually opens when it has an error or ≥ 1 job.
+            _drawerVisible = true;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Opens the drill-down drawer for a clicked Planner cell (attributed to its dominant queue).</summary>
+    private Task OnPlannerCellInspectAsync(PlannerView.PlannerCellSelection selection) =>
+        selection is null
+            ? Task.CompletedTask
+            : OpenCellDrawerAsync(selection.Queue, selection.DayIndex, selection.Hour);
+
+    /// <summary>
+    /// Opens the drill-down drawer for a clicked recommendation, resolving its cell from the
+    /// recommendation's queue, peak hour, and the first window day that matches its weekday cluster.
+    /// </summary>
+    private async Task OpenRecommendationAsync(Recommendation rec)
+    {
+        if (rec is null)
+        {
+            return;
+        }
+
+        var hour = Math.Clamp(rec.PeakMinuteOfDay / 60, 0, 23);
+        var dayIndex = ResolveRecommendationDayIndex(rec);
+        var key = new CellKey(rec.Queue, dayIndex, hour);
+
+        var label = DrillableCells.FirstOrDefault(c =>
+            string.Equals(c.Key.Queue, rec.Queue, StringComparison.Ordinal)
+            && c.Key.DayIndex == dayIndex
+            && c.Key.Hour == hour)?.Label
+            ?? CellLabel(key, 0);
+
+        await OpenCellAsync(key, label);
+    }
+
+    /// <summary>
+    /// Maps a recommendation's weekday cluster to the first matching window day index, so its
+    /// drill-down resolves to a concrete <see cref="CellKey"/>. Falls back to day 0.
+    /// </summary>
+    private int ResolveRecommendationDayIndex(Recommendation rec)
+    {
+        if (_result is null || rec?.Weekdays is null || rec.Weekdays.Count == 0)
+        {
+            return 0;
+        }
+
+        var tz = HeatmapTime.ResolveTimeZone(_viewerTzId);
+        var window = _result.Matrix.Window;
+        var wanted = new HashSet<DayOfWeek>(rec.Weekdays);
+
+        for (var d = 0; d < HeatmapTime.WindowDays; d++)
+        {
+            // MapDayIndexToDayOfWeek returns 0..6 (0 = Sunday), matching (int)DayOfWeek.
+            if (wanted.Contains((DayOfWeek)PlannerHelpers.MapDayIndexToDayOfWeek(window, tz, d)))
+            {
+                return d;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>Dismisses the drawer, leaving the heatmap unchanged.</summary>
+    private void CloseDrawer()
+    {
+        _drawerVisible = false;
+    }
+
+    /// <summary>
+    /// Navigates to the recurring jobs page where the selected job's executions are listed (Req 10.6).
+    /// The href is relative so it is correctly prefixed by any configured AppPath.
+    /// </summary>
+    private void ViewExecutions(DrillDownJob job)
+    {
+        CloseDrawer();
+        Navigation.NavigateTo("recurring");
+    }
+
+    /// <summary>
+    /// Persists an inline schedule edit from the drawer (Req 10.4). The new cron is applied to the
+    /// existing recurring job through the gated <see cref="HangfireMonitorService"/> upsert (which
+    /// re-checks read-only / job-management), preserving the job's type, method, arguments, queue, and
+    /// time zone. On success the matrix is recomputed; on failure a dismissible notice is surfaced and
+    /// the heatmap is left unchanged.
+    /// </summary>
+    private async Task SaveScheduleAsync(DrillDownDrawer.ScheduleEditRequest request)
+    {
+        _drawerSaveError = null;
+
+        if (request is null || string.IsNullOrWhiteSpace(request.JobId))
+        {
+            return;
+        }
+
+        try
+        {
+            var existing = Monitor.GetRecurringJobs()?.FirstOrDefault(j => j.Id == request.JobId);
+            if (existing is null)
+            {
+                _drawerSaveError = $"Recurring job '{request.JobId}' could not be found; it may have been removed.";
+                return;
+            }
+
+            var parameterJson = "[]";
+            try
+            {
+                if (existing.Job?.Method is not null)
+                {
+                    parameterJson = JobArgumentConverter.ToParameterJsonFromArgs(existing.Job.Method, existing.Job.Args);
+                }
+            }
+            catch
+            {
+                // Fall back to an empty argument array rather than blocking the cron change.
+                parameterJson = "[]";
+            }
+
+            var req = new RecurringJobRequest(
+                JobId: existing.Id,
+                TypeName: existing.Job?.Type?.FullName ?? string.Empty,
+                MethodName: existing.Job?.Method?.Name ?? string.Empty,
+                ParameterJson: parameterJson,
+                Cron: request.Cron,
+                Queue: existing.Queue ?? string.Empty,
+                TimeZoneId: existing.TimeZoneId ?? string.Empty,
+                IsCustomMethod: false);
+
+            var result = await Monitor.CreateOrUpdateRecurringJobAsync(req);
+            if (!result.Success)
+            {
+                _drawerSaveError = result.Error ?? "The schedule could not be saved.";
+                return;
+            }
+
+            CloseDrawer();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _drawerSaveError = "The schedule could not be saved: " + ex.Message;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_enabled)
+        {
+            return;
+        }
+
+        // Push the collision-free queue→color map to heatmap.js whenever it changes so every renderer
+        // (dots, legends, bubbles) agrees with the server-rendered chips/badges. Runs on every render
+        // (not just the first) because the map changes when the available queues change (source/class).
+        // A change forces one extra render so the child views re-render with the new colors.
+        if (await PushQueueColorsAsync())
+        {
+            StateHasChanged();
+        }
+
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // Register a DotNetObjectReference so heatmap.js cell clicks can invoke OpenCellDrawerAsync
+        // (the working drill-down open mechanism). The call is best-effort and swallowed if the JS
+        // is unavailable so it never disrupts the page.
+        _selfRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("heatmapCharts.registerDrillDown", _selfRef);
+        }
+        catch (JSException)
+        {
+            // heatmapCharts not loaded yet — ignore.
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit gone — nothing to register against.
+        }
+        catch (InvalidOperationException)
+        {
+            // Prerendering (no JS interop available yet) — the next render will retry on the client.
+        }
+
+        // Seed the viewer time zone from the operator's last choice (localStorage), else the
+        // browser's time zone, else the server's — then persist the seeded default so subsequent
+        // loads follow it. Returns true when a reload was triggered (the tz changed).
+        var reloaded = await SeedViewerTimeZoneAsync();
+
+        // Re-render so the just-registered drill-down ref reaches first-paint cells (when the tz did
+        // not change there was no reload to do it for us).
+        if (!reloaded)
+        {
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Pushes <see cref="_queueColorMap"/> to the JS renderer when it differs from the last push.
+    /// Returns <c>true</c> when a push happened (so the caller can re-render the views with the new
+    /// colors).
+    /// </summary>
+    private async Task<bool> PushQueueColorsAsync()
+    {
+        var sig = _queueColorMap is null
+            ? string.Empty
+            : string.Join(";", _queueColorMap.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Key + "=" + kv.Value));
+
+        if (string.Equals(sig, _pushedQueueColorsSig, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("heatmapCharts.setQueueColors", _queueColorMap);
+            _pushedQueueColorsSig = sig;
+            return true;
+        }
+        catch (JSException)
+        {
+            return false;
+        }
+        catch (JSDisconnectedException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the initial "View TZ" selection: a previously persisted choice wins; otherwise the
+    /// browser's IANA time zone is used, falling back to the server's local zone, and that seeded
+    /// default is persisted so later visits follow it. Returns <c>true</c> when the selection changed
+    /// and a reload was issued.
+    /// </summary>
+    private async Task<bool> SeedViewerTimeZoneAsync()
+    {
+        string desired;
+        try
+        {
+            // A stored value of null means "never chosen"; "" means the operator explicitly picked UTC.
+            var stored = await JS.InvokeAsync<string>("dashboardPrefs.get", "heatmap:tz");
+            if (stored is not null)
+            {
+                desired = NormalizeTimeZoneId(stored);
+            }
+            else
+            {
+                var browser = await JS.InvokeAsync<string>("dashboardPrefs.getBrowserTimeZone");
+                desired = NormalizeTimeZoneId(browser);
+                if (string.IsNullOrEmpty(desired))
+                {
+                    desired = NormalizeTimeZoneId(TimeZoneInfo.Local.Id);
+                }
+
+                await JS.InvokeVoidAsync("dashboardPrefs.set", "heatmap:tz", desired);
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            return false;
+        }
+        catch (JSException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+
+        EnsureTimeZoneOption(desired);
+        if (!string.Equals(desired, _viewerTzId, StringComparison.Ordinal))
+        {
+            _viewerTzId = desired;
+            await LoadAsync();
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Persists the operator's explicit "View TZ" choice, then reloads.</summary>
+    private async Task OnViewerTzChangedAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("dashboardPrefs.set", "heatmap:tz", _viewerTzId ?? string.Empty);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit gone — the choice simply won't persist.
+        }
+        catch (JSException)
+        {
+            // localStorage unavailable — ignore.
+        }
+
+        await ReloadAsync();
+    }
+
+    /// <summary>
+    /// Normalizes an IANA/Windows time-zone id to the canonical id used by the dropdown, or an empty
+    /// string for UTC / unrecognized ids. Cross-platform resolution is handled by <see cref="HeatmapTime"/>.
+    /// </summary>
+    private static string NormalizeTimeZoneId(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return string.Empty;
+        }
+
+        if (!HeatmapTime.TryResolveTimeZone(id, out var tz) || tz.Equals(TimeZoneInfo.Utc))
+        {
+            return string.Empty;
+        }
+
+        return tz.Id;
+    }
+
+    /// <summary>
+    /// Guarantees the "View TZ" dropdown contains an option for <paramref name="id"/> so a
+    /// browser/server-detected zone (whose id format may differ from the system-zone list) is
+    /// selectable. UTC ("" id) is always present as the first option.
+    /// </summary>
+    private void EnsureTimeZoneOption(string id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return;
+        }
+
+        if (_timeZones.Any(t => string.Equals(t.Id, id, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        if (HeatmapTime.TryResolveTimeZone(id, out var tz) && !tz.Equals(TimeZoneInfo.Utc))
+        {
+            _timeZones.Insert(0, tz);
+        }
+    }
+
+    public void Dispose() => _selfRef?.Dispose();
+
+    private string JobClassTitle(string cls) => cls switch
+    {
+        "Cron" => "Recurring jobs projected from their cron expressions.",
+        "Ad-hoc" => _historicalAvailable
+            ? "On-demand background load from historical executions."
+            : "Requires a storage metrics provider (SQL Server / PostgreSQL).",
+        "Combined" => _historicalAvailable
+            ? "Overlay of projected cron jobs on the ad-hoc demand profile."
+            : "Requires a storage metrics provider (SQL Server / PostgreSQL).",
+        _ => cls
+    };
+
+    private static List<TimeZoneInfo> LoadTimeZones()
+    {
+        try
+        {
+            return TimeZoneInfo.GetSystemTimeZones()
+                .Where(tz => !string.Equals(tz.Id, TimeZoneInfo.Utc.Id, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(tz => tz.BaseUtcOffset)
+                .ThenBy(tz => tz.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return new List<TimeZoneInfo>();
+        }
+    }
+}

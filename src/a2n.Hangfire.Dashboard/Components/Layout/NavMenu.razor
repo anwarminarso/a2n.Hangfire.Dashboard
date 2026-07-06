@@ -88,6 +88,13 @@
                 <span class="hf-nav-counter">@_stats.Recurring</span>
             }
         </NavLink>
+        @if (Options.Heatmap.Enabled)
+        {
+            <NavLink class="hf-nav-item" href="heatmap">
+                <i class="bi bi-grid-3x3 hf-nav-icon"></i>
+                <span>Schedule Heatmap</span>
+            </NavLink>
+        }
         <NavLink class="hf-nav-item" href="servers">
             <i class="bi bi-hdd-stack hf-nav-icon"></i>
             <span>Servers</span>
@@ -159,7 +166,7 @@
 
 @code {
     private static readonly string[] _jobsExpandPaths = { "jobs" };
-    private static readonly string[] _managementExpandPaths = { "recurring", "servers", "queues", "retries", "tags", "search", "audit" };
+    private static readonly string[] _managementExpandPaths = { "recurring", "heatmap", "servers", "queues", "retries", "tags", "search", "audit" };
     private static readonly string[] _analyticsExpandPaths = { "analytics" };
 
     private StatisticsDto _stats;

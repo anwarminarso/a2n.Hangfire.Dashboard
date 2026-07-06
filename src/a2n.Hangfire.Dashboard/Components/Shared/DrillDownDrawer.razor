@@ -1,0 +1,125 @@
+@*
+    Drill-Down Drawer (Req 10) — a side panel listing the recurring jobs that contribute to a
+    clicked heatmap cell, with per-job actions.
+
+    The parent (Heatmap page, task 20.2) controls opening by toggling <see cref="Visible"/> and
+    supplying the computed <see cref="DrillDownResult"/>. This component additionally guards against
+    ever opening for an empty cell: it renders nothing unless it has an error to surface or at least
+    one contributing job (Req 10.1, 10.2).
+
+    For each listed job it shows the job identifier, the cron expression, the queue, the estimated
+    duration in seconds, and the next run time in the dashboard's configured display time zone, with
+    the list sorted by next run ascending (Req 10.1, 10.3). It always offers a "view executions"
+    action (Req 10.6) and — only when EnableJobManagement is on and IsReadOnly is off — an
+    "edit schedule" action that reveals the existing ScheduleBuilder inline (Req 10.4, 10.5).
+
+    When the lookup failed (DrillDownResult.Error is set) it renders an error indication instead of a
+    job list; the parent retains the previously displayed heatmap unchanged (Req 10.7).
+*@
+@namespace a2n.Hangfire.Dashboard.Components.Shared
+@inject DashboardUIOptions Options
+
+@if (IsOpen)
+{
+    <div class="offcanvas-backdrop fade show" @onclick="CloseAsync"></div>
+    <div class="offcanvas offcanvas-end show" tabindex="-1" style="visibility: visible;"
+         role="dialog" aria-modal="true" aria-label="Jobs scheduled in this cell">
+        <div class="offcanvas-header border-bottom">
+            <div>
+                <h5 class="offcanvas-title mb-0">
+                    <i class="bi bi-list-task"></i> Jobs in this cell
+                </h5>
+                @if (!string.IsNullOrWhiteSpace(CellLabel))
+                {
+                    <small class="text-body-secondary">@CellLabel</small>
+                }
+            </div>
+            <button type="button" class="btn-close" aria-label="Close" @onclick="CloseAsync"></button>
+        </div>
+
+        <div class="offcanvas-body">
+            @if (HasError)
+            {
+                @* Load failure — heatmap data is retained by the parent (Req 10.7). *@
+                <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
+                    <i class="bi bi-exclamation-octagon-fill"></i>
+                    <div>
+                        <div class="fw-semibold">Couldn't load the jobs for this cell.</div>
+                        <div class="small">@Result.Error</div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <p class="text-body-secondary small mb-3">
+                    @SortedJobs.Count @(SortedJobs.Count == 1 ? "job" : "jobs") contributing, sorted by next run.
+                </p>
+
+                @foreach (var job in SortedJobs)
+                {
+                    <div class="card mb-2">
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                <div class="text-break">
+                                    <div class="fw-semibold font-monospace" title="@job.JobId">@job.JobId</div>
+                                    <div class="mt-1">
+                                        <code class="font-monospace">@job.CronExpression</code>
+                                    </div>
+                                </div>
+                                <span class="badge bg-secondary flex-shrink-0">
+                                    <i class="bi bi-hdd-stack"></i> @job.Queue
+                                </span>
+                            </div>
+
+                            <dl class="row g-0 mb-0 mt-2 small">
+                                <dt class="col-5 text-body-secondary fw-normal">Estimated duration</dt>
+                                <dd class="col-7 mb-0 text-end">@FormatDurationSeconds(job.EstimatedDuration)</dd>
+
+                                <dt class="col-5 text-body-secondary fw-normal">Next run</dt>
+                                <dd class="col-7 mb-0 text-end">@FormatNextRun(job.NextRunUtc)</dd>
+                            </dl>
+
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                @* "View executions" is always available (Req 10.6). *@
+                                <button type="button" class="btn btn-outline-primary btn-sm"
+                                        @onclick="() => ViewExecutionsAsync(job)">
+                                    <i class="bi bi-clock-history"></i> View executions
+                                </button>
+
+                                @* Edit is gated on job management being enabled and not read-only (Req 10.4, 10.5). *@
+                                @if (CanEdit)
+                                {
+                                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                                            @onclick="() => ToggleEdit(job.JobId)">
+                                        <i class="bi bi-pencil"></i>
+                                        @(IsEditing(job.JobId) ? "Cancel edit" : "Edit schedule")
+                                    </button>
+                                }
+                            </div>
+
+                            @if (CanEdit && IsEditing(job.JobId))
+                            {
+                                <div class="mt-3">
+                                    @* Reuse the existing ScheduleBuilder to edit the cron (Req 10.4). *@
+                                    <ScheduleBuilder InitialCron="@job.CronExpression"
+                                                     OnScheduleChanged="HandleScheduleChanged" />
+                                    <div class="d-flex justify-content-end gap-2">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                @onclick="() => ToggleEdit(job.JobId)">
+                                            Cancel
+                                        </button>
+                                        <button type="button" class="btn btn-primary btn-sm"
+                                                disabled="@(!_editState.IsValid)"
+                                                @onclick="() => SaveScheduleAsync(job)">
+                                            <i class="bi bi-check-lg"></i> Save schedule
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}

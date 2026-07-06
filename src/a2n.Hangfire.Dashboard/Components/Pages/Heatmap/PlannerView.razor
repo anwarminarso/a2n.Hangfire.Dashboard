@@ -1,0 +1,207 @@
+@*
+    PlannerView (task 16.3) — the Combined "cron over ad-hoc demand" planner, the centerpiece of
+    docs/mockups/heatmap-mockup-v4.html (#view-planner).
+
+    Background shade  = ad-hoc Demand_Profile load per hour (Req 18.1, 18.5).
+    Overlay dots      = projected cron Load_Metric, size ∝ cron value (Req 18.1, 18.4).
+    Dot color         = dominant cron queue (Projected) or failure rate (Historical) (Req 18.2).
+    Green ring        = Safe_Window (low demand + zero cron) (Req 18.3).
+    Gold badge        = recommended best window to schedule (lowest combined load) (Req 18.6).
+
+    Rendering is a self-contained, keyboard-focusable server-side DOM grid (no heatmap.js renderer
+    exists for the planner and that file is locked). See PlannerView.razor.cs for the full rationale
+    and the pure PlannerHelpers / Intensity computations behind the grid.
+*@
+@namespace a2n.Hangfire.Dashboard.Components.Pages.Heatmap
+@using a2n.Hangfire.Dashboard.Heatmap
+@using a2n.Hangfire.Dashboard.Models
+
+@if (Window is null)
+{
+    <EmptyState Icon="calendar-range" Message="No schedule to display." />
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                <h5 class="card-title mb-0">Planner — cron over ad-hoc demand</h5>
+                <div class="d-flex align-items-center flex-wrap gap-3 small text-body-secondary">
+                    @if (_showShading)
+                    {
+                        <span class="d-inline-flex align-items-center gap-1">
+                            on-demand
+                            <span class="hf-pl-swatch" style="background:rgba(45,140,150,0.12);"></span>
+                            <span class="hf-pl-swatch" style="background:rgba(45,140,150,0.45);"></span>
+                            <span class="hf-pl-swatch" style="background:rgba(45,140,150,0.85);"></span>
+                            high
+                        </span>
+                        <span class="d-inline-flex align-items-center gap-1">
+                            <span class="hf-pl-swatch hf-pl-safe-swatch"></span>
+                            safe window
+                        </span>
+                    }
+                    <span class="d-inline-flex align-items-center gap-1">
+                        <span class="hf-pl-swatch hf-pl-best-swatch"></span>
+                        best window
+                    </span>
+                </div>
+            </div>
+
+            <p class="text-body-secondary small mb-2">@_caption</p>
+
+            @if (_bestWindowLabel is not null)
+            {
+                <p class="small mb-3">
+                    <span class="badge rounded-pill text-bg-warning">
+                        <i class="bi bi-star-fill me-1" aria-hidden="true"></i>Best window to schedule
+                    </span>
+                    <span class="text-body-secondary ms-1">@_bestWindowLabel (lowest combined load)</span>
+                </p>
+            }
+
+            @if (_showDots && _legendQueues.Count > 0)
+            {
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2" aria-hidden="true">
+                    <span class="small text-body-secondary">cron:</span>
+                    @foreach (var queue in _legendQueues)
+                    {
+                        <span class="d-inline-flex align-items-center gap-1 small text-body-secondary">
+                            <span class="hf-pl-qdot" style="background:@QueueColor(queue)"></span>@queue
+                        </span>
+                    }
+                </div>
+            }
+
+            <div class="hf-pl-scroll">
+                <div class="hf-pl-grid" role="grid" aria-label="Planner: cron over ad-hoc demand by day and hour">
+                    <div class="hf-pl-corner" role="presentation"></div>
+                    @for (var h = 0; h < 24; h++)
+                    {
+                        <div class="hf-pl-hour" role="columnheader">@HourLabel(h)</div>
+                    }
+
+                    @for (var day = 0; day < _grid.Length; day++)
+                    {
+                        <div class="hf-pl-daylabel" role="rowheader">@_dayLabels[day]</div>
+                        @foreach (var cell in _grid[day])
+                        {
+                            <div class="@CellClass(cell)"
+                                 role="gridcell"
+                                 tabindex="0"
+                                 style="@CellStyle(cell)"
+                                 title="@cell.Title"
+                                 aria-label="@cell.AriaLabel"
+                                 @onclick="@(() => InspectCellAsync(cell))">
+                                @if (cell.HasDot)
+                                {
+                                    <span class="hf-pl-dot" style="@cell.DotStyle"></span>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @if (!_hasData)
+            {
+                <p class="text-body-secondary small mt-3 mb-0">
+                    No load to overlay for the current selection.
+                </p>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .hf-pl-scroll {
+        overflow-x: auto;
+    }
+
+    .hf-pl-grid {
+        display: grid;
+        grid-template-columns: 44px repeat(24, minmax(20px, 1fr));
+        gap: 2px;
+        min-width: 560px;
+    }
+
+    .hf-pl-corner {
+        min-height: 1.1rem;
+    }
+
+    .hf-pl-hour {
+        font-size: 0.7rem;
+        color: var(--bs-secondary-color, #6c757d);
+        text-align: center;
+        align-self: end;
+    }
+
+    .hf-pl-daylabel {
+        font-size: 0.75rem;
+        color: var(--bs-secondary-color, #6c757d);
+        text-align: right;
+        padding-right: 6px;
+        align-self: center;
+    }
+
+    .hf-pl-cell {
+        position: relative;
+        aspect-ratio: 1 / 1;
+        min-height: 20px;
+        border: 1px solid var(--bs-border-color-translucent, rgba(0, 0, 0, 0.1));
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bs-tertiary-bg, #f8f9fa);
+    }
+
+    .hf-pl-cell:focus-visible {
+        outline: 2px solid var(--bs-primary, #0d6efd);
+        outline-offset: 1px;
+        z-index: 2;
+    }
+
+    .hf-pl-cell-safe {
+        box-shadow: inset 0 0 0 2px var(--bs-success, #198754);
+    }
+
+    .hf-pl-cell-best {
+        box-shadow: inset 0 0 0 2px var(--bs-warning, #ffc107);
+    }
+
+    .hf-pl-cell-now {
+        box-shadow: inset 0 0 0 2px var(--bs-primary, #0d6efd);
+    }
+
+    .hf-pl-dot {
+        display: inline-block;
+        border-radius: 50%;
+        box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.25);
+    }
+
+    .hf-pl-swatch {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid var(--bs-border-color, #dee2e6);
+    }
+
+    .hf-pl-safe-swatch {
+        background: transparent;
+        box-shadow: inset 0 0 0 2px var(--bs-success, #198754);
+    }
+
+    .hf-pl-best-swatch {
+        background: transparent;
+        box-shadow: inset 0 0 0 2px var(--bs-warning, #ffc107);
+    }
+
+    .hf-pl-qdot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+</style>

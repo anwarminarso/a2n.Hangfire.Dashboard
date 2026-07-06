@@ -3,6 +3,8 @@
     <Project Path="a2n.Hangfire.Console/a2n.Hangfire.Console.csproj" />
     <Project Path="a2n.Hangfire.Dashboard/a2n.Hangfire.Dashboard.csproj" />
     <Project Path="a2n.Hangfire.Dashboard.PostgreSql/a2n.Hangfire.Dashboard.PostgreSql.csproj" />
+    <Project Path="a2n.Hangfire.Dashboard.Redis/a2n.Hangfire.Dashboard.Redis.csproj" />
+    <Project Path="a2n.Hangfire.Dashboard.Rollup/a2n.Hangfire.Dashboard.Rollup.csproj" />
     <Project Path="a2n.Hangfire.Dashboard.SqlServer/a2n.Hangfire.Dashboard.SqlServer.csproj" />
     <Project Path="a2n.Hangfire.Tags/a2n.Hangfire.Tags.csproj" />
   </Folder>
@@ -10,6 +12,7 @@
     <Project Path="../tests/a2n.Hangfire.Console.Tests/a2n.Hangfire.Console.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Dashboard.Tests/a2n.Hangfire.Dashboard.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Dashboard.PostgreSql.Tests/a2n.Hangfire.Dashboard.PostgreSql.Tests.csproj" />
+    <Project Path="../tests/a2n.Hangfire.Dashboard.Rollup.Tests/a2n.Hangfire.Dashboard.Rollup.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Dashboard.SqlServer.Tests/a2n.Hangfire.Dashboard.SqlServer.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Tags.Tests/a2n.Hangfire.Tags.Tests.csproj" />
   </Folder>

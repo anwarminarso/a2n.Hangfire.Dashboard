@@ -25,6 +25,13 @@ public class DashboardStorageOptionsBuilder
     /// </summary>
     public bool HasMetricsProvider { get; set; }
 
+    /// <summary>
+    /// Indicates whether rollup-based metrics (non-SQL storages) are enabled.
+    /// When true, <c>ExecutionRollupCollector</c> is registered instead of
+    /// <see cref="Services.DemandRollupService"/> for demand rollup maintenance.
+    /// </summary>
+    public bool UsesRollupMetrics { get; set; }
+
     public DashboardStorageOptionsBuilder(IServiceCollection services)
     {
         Services = services;

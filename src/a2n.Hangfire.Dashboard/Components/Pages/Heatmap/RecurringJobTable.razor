@@ -1,0 +1,102 @@
+@*
+    RecurringJobTable (task 11.6) — the recurring-job table beneath the heatmap views, modelled on
+    docs/mockups/heatmap-mockup-v4.html (renderTable) and the existing Recurring.razor list page.
+
+    It lists every recurring job that backs the projection, following the dashboard's standard
+    card + table-responsive + table-hover/table-sm conventions:
+
+      • Id (monospace), cron expression (code), queue (badge), time zone, estimated duration, and the
+        number of heatmap cells the job contributes to the active Projection_Window.
+      • EVERY long-period job is retained as a row even when it contributes zero cells to the active
+        window — those rows are flagged so the operator can still see and act on them (Req 9.7).
+      • WHEN there are no recurring jobs at all (none configured, or they could not be read), the
+        component renders an empty-state indication instead of an empty table, without raising an
+        error (Req 9.1, 1.7).
+
+    The component is presentational: the hosting page passes the recurring-job specs it already maps
+    for the projection, the aggregated matrix (used only to count each job's contributing cells), and
+    the long-period job ids from the HeatmapResult.
+*@
+@namespace a2n.Hangfire.Dashboard.Components.Pages.Heatmap
+@using a2n.Hangfire.Dashboard.Models
+
+@if (Rows.Count == 0)
+{
+    @* Req 9.1 / 1.7 — no recurring jobs to project: show an empty state rather than an empty grid. *@
+    <EmptyState Icon="arrow-repeat" Color="secondary"
+                Message="No recurring jobs to project."
+                Subtitle="The heatmap has nothing to display until recurring jobs are configured." />
+}
+else
+{
+    <div class="card" data-hm-recurring-table>
+        <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h6 class="mb-0">
+                <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Recurring jobs
+            </h6>
+            <span class="small text-body-secondary">
+                @Rows.Count job@(Rows.Count == 1 ? string.Empty : "s")
+                @if (LongPeriodCount > 0)
+                {
+                    <span class="ms-1">· @LongPeriodCount long-period</span>
+                }
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Cron</th>
+                            <th>Queue</th>
+                            <th>Time Zone</th>
+                            <th class="text-end">Est. Duration</th>
+                            <th class="text-end">Window Cells</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Rows)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="hf-job-name font-monospace" title="@row.JobId">@row.JobId</span>
+                                    @if (row.IsLongPeriod)
+                                    {
+                                        <span class="badge text-bg-warning ms-1"
+                                              title="Recurrence period exceeds seven days; not faithfully represented in this window.">
+                                            long period
+                                        </span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(row.CronExpression))
+                                    {
+                                        <span class="text-body-secondary">—</span>
+                                    }
+                                    else
+                                    {
+                                        <code class="font-monospace">@row.CronExpression</code>
+                                    }
+                                </td>
+                                <td><QueueBadge Queue="@row.Queue" Color="@QueueColorFor(row.Queue)" /></td>
+                                <td>@row.TimeZoneLabel</td>
+                                <td class="text-end">@row.DurationLabel</td>
+                                <td class="text-end">
+                                    @if (row.ContributingCellCount > 0)
+                                    {
+                                        @row.ContributingCellCount
+                                    }
+                                    else
+                                    {
+                                        <span class="text-body-secondary" title="This job contributes no cells to the active projection window.">0</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}

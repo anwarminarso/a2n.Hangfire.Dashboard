@@ -42,6 +42,45 @@
         },
         setBool: function (key, value) {
             safeSet(key, value ? '1' : '0');
+        },
+        // Returns the browser's IANA time-zone id (e.g. "Asia/Jakarta"), or an empty
+        // string when the runtime cannot report one. Used to seed the heatmap "View TZ"
+        // selection on first load before any explicit user choice is persisted.
+        getBrowserTimeZone: function () {
+            try {
+                var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                return tz || '';
+            } catch (e) {
+                return '';
+            }
+        }
+    };
+
+    // Generic, eval-free client-side file download helper. Used by dashboard pages (e.g. the
+    // Schedule Heatmap CSV export) to save a server-generated text payload as a file without a
+    // round-trip download endpoint. Creates a Blob, points a transient <a download> at an object
+    // URL, clicks it, and revokes the URL. Returns true on success, false when the browser cannot
+    // perform the download so callers can degrade gracefully.
+    window.dashboardFile = {
+        downloadText: function (filename, text, mime) {
+            try {
+                var blob = new Blob([text == null ? '' : text], {
+                    type: (mime || 'text/plain') + ';charset=utf-8'
+                });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = filename || 'download.txt';
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                // Revoke on the next tick so the click has a chance to start the download.
+                setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+                return true;
+            } catch (e) {
+                return false;
+            }
         }
     };
 })();

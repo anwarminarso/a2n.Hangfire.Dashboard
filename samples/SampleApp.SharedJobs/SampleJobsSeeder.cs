@@ -18,6 +18,7 @@ public static class SampleJobsSeeder
         SeedLongRunning();
         SeedContinuationPipeline();
         SeedFtpTransferService();
+        SeedSecondaryQueues();
     }
 
     /// <summary>
@@ -71,5 +72,24 @@ public static class SampleJobsSeeder
             "standard-file-transfer",
             x => x.StandardFileTransferServiceAsync(null!, "primary-ftp", CancellationToken.None),
             "*/15 * * * *");
+    }
+
+    /// <summary>
+    /// Registers recurring jobs on non-default queues (<c>reports</c> and <c>maintenance</c>) so the
+    /// Schedule Heatmap's multi-queue filtering, per-queue small multiples, and Queue × Hour view can
+    /// be exercised with more than the single <c>default</c> queue. These use hourly/daily crons so
+    /// they show as their own rows without flooding the grid like the sub-hourly demo jobs.
+    /// </summary>
+    public static void SeedSecondaryQueues()
+    {
+        // "reports" queue — an hourly rollup and a daily export.
+        RecurringJob.AddOrUpdate<SampleJobs>(
+            "reports-hourly-rollup", "reports", x => x.SimpleJob(), "0 * * * *");
+        RecurringJob.AddOrUpdate<SampleJobs>(
+            "reports-nightly-export", "reports", x => x.SimpleJob(), "0 2 * * *");
+
+        // "maintenance" queue — a daily cleanup.
+        RecurringJob.AddOrUpdate<SampleJobs>(
+            "maintenance-cleanup", "maintenance", x => x.SimpleJob(), "30 3 * * *");
     }
 }

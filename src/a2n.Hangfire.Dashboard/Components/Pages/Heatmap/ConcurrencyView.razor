@@ -1,0 +1,54 @@
+@*
+    Concurrency view (task 11.5) — renders duration-aware concurrency over a single day stacked by
+    queue, with a dashed worker-capacity reference line, and flags the buckets whose concurrency
+    strictly exceeds capacity with a distinct indicator (Req 4.8, 4.9).
+
+    The concurrency itself is computed server-side by the pure ConcurrencyAnalyzer (surfaced through
+    HeatmapService.GetConcurrencyAsync) and handed to this component as a ConcurrencyResult; this view
+    only maps that result into the `window.heatmapCharts.renderConcurrency` model and manages the JS
+    chart lifecycle, following the same IJSRuntime interop pattern as the other heatmap views and the
+    existing analytics charts.
+
+    Phase 1 note: the renderer's model carries an `adhoc` baseline layer and a `cron` layer. The cron
+    layer is populated from the per-queue concurrency series (aggregated into the single cron layer).
+    In Combined mode (JobClass == "Combined", task 16.4 / Req 19.1, 19.2) the per-slot ad-hoc baseline
+    from AdHocBaselinePerSlot — derived by the caller from the Demand_Profile — is emitted as a
+    distinct `adhoc` layer; the JS renderer stacks `adhoc + cron` and compares the combined total to
+    capacity when flagging over-capacity buckets and drawing the capacity line. In Cron/Ad-hoc mode the
+    ad-hoc layer is suppressed.
+*@
+@namespace a2n.Hangfire.Dashboard.Components.Pages.Heatmap
+@using a2n.Hangfire.Dashboard.Models
+
+@if (!HasData)
+{
+    <EmptyState Icon="activity"
+                Message="No concurrency to display."
+                Subtitle="No projected fires fall on the selected day, so nothing runs concurrently." />
+}
+else
+{
+    <div class="heatmap-concurrency">
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2 small text-body-secondary">
+            <span>
+                <i class="bi bi-graph-up-arrow me-1"></i>Peak
+                <strong class="text-body">@Result.PeakConcurrency</strong> concurrent@(PeakTimeText is null ? string.Empty : $" at {PeakTimeText}")
+            </span>
+            <span>Capacity <strong class="text-body">@Capacity</strong></span>
+            @if (Result.OverCapacitySlotCount > 0)
+            {
+                <span class="text-danger">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>@Result.OverCapacitySlotCount minute(s) over capacity
+                </span>
+            }
+            @if (!string.IsNullOrEmpty(DayLabel))
+            {
+                <span>Day <strong class="text-body">@DayLabel</strong></span>
+            }
+        </div>
+        <div class="heatmap-concurrency-canvas" style="position:relative;height:340px;">
+            <canvas id="@_canvasId"
+                    aria-label="Concurrent jobs over the day stacked by queue, with a worker-capacity reference line"></canvas>
+        </div>
+    </div>
+}

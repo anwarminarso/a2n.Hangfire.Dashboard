@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.5.0-beta.2 — Recurring Schedule Heatmap (pre-release)
+
+> **Pre-release.** Second cut of the Recurring Schedule Heatmap ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)), rebased on the 2.4.3 stable line so it now also carries the #17–#20 dashboard fixes. Still on the `feature/recurring-schedule-heatmap` branch; not merged to `main`.
+
+### Fixed
+
+- **Planner showed the wrong queue for attribute-routed jobs ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14) follow-up).** A recurring job routed by a `[Queue]` attribute — e.g. a DI-dispatched interface carrying `[Queue("background")]` — appeared on the Schedule Heatmap (Planner, filters, grouping) under `default` instead of its real queue. `HeatmapService.ResolveQueue` now resolves the `[Queue]` attribute on the method (or its declaring type/interface) ahead of the stored `default` sentinel that Hangfire writes when no explicit queue is given, matching `EffectiveQueue.Resolve` (Req 13.6/13.7) used on the create/enqueue paths.
+
+### Included from 2.4.3
+
+- Merged the stable **2.4.3** dashboard fixes — Failed-table column overflow ([#17](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/17)), Create Job dropdown pill alignment ([#18](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/18)), recurring search dropped characters ([#19](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/19)), and dark-theme persistence ([#20](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/20)). See the 2.4.3 entry below.
+
+### Added
+
+- **Rollup metrics adapters for non-SQL storages.** New packages `a2n.Hangfire.Dashboard.Rollup` and `a2n.Hangfire.Dashboard.Redis` register rollup-based `IStorageMetricsProvider` plus a unified `ExecutionRollupCollector` so Analytics and heatmap Historical/ad-hoc demand work on Redis, in-memory, and other NoSQL Hangfire storages without SQL queries. Historical metrics are forward-only from first collector run (same model as the demand rollup).
+
+### Known limitations
+
+- **Rollup metrics are approximate and forward-only.** Percentiles use reservoir sampling; historical data accumulates from the first collector run. SQL Server / PostgreSQL adapters remain preferable when relational job history is available.
+
+## 2.5.0-beta.1 — Recurring Schedule Heatmap (pre-release)
+
+> **Pre-release.** First cut of the Recurring Schedule Heatmap ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) for early testing on the `feature/recurring-schedule-heatmap` branch. Not merged to `main`.
+
+### Added
+
+- **Recurring Schedule Heatmap ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)).** A new **Schedule Heatmap** page (under the Management nav group) visualizing recurring-job scheduling density by queue, day, and hour. Highlights:
+  - **Views:** Planner (projected cron over ad-hoc demand with low-load "safe windows"), Punchcard, Queue × Hour, Per-queue small multiples, Calendar (with color-by volume/failure/duration), Concurrency (per-queue stacked, duration-aware, with a worker-capacity reference line and over-capacity flagging), and Recommendations (overlapping-cluster detection with a before/after stagger impact).
+  - **Sources:** a storage-agnostic **Projected** source (computed from cron expressions) on any storage, plus a **Historical** source and ad-hoc demand overlay on SQL Server / PostgreSQL (degrades gracefully — toggles hidden — elsewhere).
+  - **Controls:** job class (Cron / Ad-hoc / Combined), projection window (idealized week / next 7 days), load metric (fire count / worker-minutes), demand statistic, lookback weeks, worker capacity (detected or overridden), per-queue filtering, hide sub-hourly, and log scale.
+  - Honors per-job time zones and a selectable viewer time zone (defaulting to the browser zone, persisted), light/dark theme, deterministic per-queue colors shared across the dashboard, click-to-drill-down into a cell's contributing jobs, and is keyboard / screen-reader accessible.
+
 ## 2.4.3 — Dashboard UI/UX Fixes
 
 > **Patch release.** Operator-feedback UI/UX fixes reported against the 2.4 line: the Failed Jobs table, the Create Job method dropdown, the Recurring Jobs search box, and dark-theme persistence ([#17](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/17), [#18](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/18), [#19](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/19), [#20](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/20)).

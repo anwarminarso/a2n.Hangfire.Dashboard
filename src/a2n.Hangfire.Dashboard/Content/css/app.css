@@ -1237,6 +1237,49 @@ a.hf-st-link:hover .hf-st-link-icon {
     .hf-job-name { max-width: 14rem; }
 }
 
+/* ===== Queue color badges (shared) ===== */
+.hf-qcolor-badge {
+    font-weight: 600;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Small round queue color dot used on heatmap chips and recommendation cards. */
+.hf-q-dot {
+    display: inline-block;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    vertical-align: middle;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+/* ===== Heatmap recommendation cards ===== */
+.hf-rec-card {
+    border: 1px solid var(--bs-border-color);
+    border-left-width: 3px;
+    background-color: var(--bs-body-bg);
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.hf-rec-card:hover,
+.hf-rec-card:focus-visible {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+    outline: none;
+}
+.hf-rec-card--med { border-left-color: var(--bs-warning); }
+.hf-rec-card--high { border-left-color: var(--bs-danger); }
+
+.hf-rec-note {
+    color: var(--bs-warning-text-emphasis);
+    background-color: rgba(var(--bs-warning-rgb), 0.12);
+    border: 1px solid rgba(var(--bs-warning-rgb), 0.3);
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+}
+
 /* ===== Failed-job exception cell (Issue #17) =====
    A long exception message (especially one long unbroken token) used to stretch the table wider
    than the viewport, pushing the "Failed" column off-screen behind a horizontal scrollbar. Force

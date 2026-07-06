@@ -36,11 +36,12 @@ msbuild.wrn
 # Visual Studio
 .vs/
 
-# Kiro
+# Kiro IDE
 .kiro/
 *.code-workspace
 
-# Cursor
+# Cursor IDE
 .cursor/
 
+# playwright MCP Testing
 .playwright-mcp/
