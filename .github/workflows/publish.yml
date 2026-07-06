@@ -36,6 +36,8 @@ jobs:
           dotnet pack src/a2n.Hangfire.Tags/a2n.Hangfire.Tags.csproj -c Release --no-build -o ./nupkgs
           dotnet pack src/a2n.Hangfire.Dashboard.SqlServer/a2n.Hangfire.Dashboard.SqlServer.csproj -c Release --no-build -o ./nupkgs
           dotnet pack src/a2n.Hangfire.Dashboard.PostgreSql/a2n.Hangfire.Dashboard.PostgreSql.csproj -c Release --no-build -o ./nupkgs
+          dotnet pack src/a2n.Hangfire.Dashboard.Rollup/a2n.Hangfire.Dashboard.Rollup.csproj -c Release --no-build -o ./nupkgs
+          dotnet pack src/a2n.Hangfire.Dashboard.Redis/a2n.Hangfire.Dashboard.Redis.csproj -c Release --no-build -o ./nupkgs
 
       - name: NuGet Login (Trusted Publishing)
         uses: NuGet/login@v1
