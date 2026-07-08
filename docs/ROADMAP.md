@@ -344,6 +344,14 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 ---
 
+## v2.5.1 — Nav group crash fix ✅
+
+**Goal**: Fix a Blazor Server circuit crash on the first dashboard visit ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)).
+
+- ✅ **Sidebar nav group tore down the circuit on a fresh session** ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)) — with no `hf-nav-group:*` key in `localStorage`, `NavMenuGroup` read the expand state via `JS.InvokeAsync<bool?>`; on some `Microsoft.JSInterop` versions, deserializing a JavaScript `null` into `Nullable<bool>` throws `InvalidCastException`, and the uncaught `JSException` terminated the circuit (sub-pages unreachable). `Content/js/nav.js` now returns a string instead of `null`, the component reads it with `JS.InvokeAsync<string>` + `bool.TryParse`, and a defensive `catch (JSException)` preserves the default state on any runtime.
+
+---
+
 ## v2.6 — Integrations (Planned)
 
 **Goal**: Plug the dashboard into the modern observability and automation stack.
@@ -413,6 +421,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.4.2 | **Recurring & Job Builder follow-up**: mixed-case job IDs + never-fire cron edit (#11), long-name ellipsis (#12), recurring jobs filter (#13), duplicate-id guard on create, Audit Log grid parity | ✅ Done |
 | v2.4.3 | **Dashboard UI/UX fixes**: Failed-table column overflow (#17), Create Job dropdown pill alignment (#18), recurring search dropped characters (#19), dark-theme persistence (#20) | ✅ Done |
 | v2.5.0 | **Recurring Schedule Heatmap** (#14) — Planner, Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, stagger Recommendations; Projected (any storage) + Historical (SQL/PG or rollup adapters) sources; storage-agnostic estimated durations via rollup metrics (#21) | ✅ Done |
+| v2.5.1 | **Nav group crash fix** (#23) — sidebar nav group no longer tears down the Blazor circuit on a fresh session with no saved `localStorage` state | ✅ Done |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |

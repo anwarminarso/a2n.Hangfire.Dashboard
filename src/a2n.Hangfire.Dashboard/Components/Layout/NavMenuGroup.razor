@@ -59,10 +59,13 @@
 
         try
         {
-            var stored = await JS.InvokeAsync<bool?>("hfNav.getGroupExpanded", GroupId);
-            if (stored.HasValue)
+            // Read as a string to avoid deserializing a JS null into Nullable<bool>,
+            // which throws InvalidCastException on some Microsoft.JSInterop versions
+            // and would tear down the Blazor Server circuit (see issue #23).
+            var stored = await JS.InvokeAsync<string>("hfNav.getGroupExpanded", GroupId);
+            if (bool.TryParse(stored, out var expanded))
             {
-                _expanded = stored.Value;
+                _expanded = expanded;
                 StateHasChanged();
             }
         }
@@ -71,6 +74,11 @@
         }
         catch (ObjectDisposedException)
         {
+        }
+        catch (JSException)
+        {
+            // Best-effort: preserve the DefaultExpanded state when JSInterop can't
+            // deserialize the localStorage read on this runtime.
         }
     }
 
