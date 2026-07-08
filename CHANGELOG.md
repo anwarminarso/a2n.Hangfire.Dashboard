@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.1-beta.1 — Nav group crash fix (pre-release)
+
+> **Pre-release.** Fixes a Blazor Server circuit crash on the first dashboard visit when the browser has no saved sidebar nav-group state ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)).
+
+### Fixed
+
+- **Sidebar nav group tore down the Blazor circuit on a fresh session ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)).** When no `hf-nav-group:*` key existed in `localStorage`, `NavMenuGroup` read the persisted expand state via `JS.InvokeAsync<bool?>`. On some `Microsoft.JSInterop` versions, deserializing a JavaScript `null` into `Nullable<bool>` routes through `Convert.ChangeType(null, typeof(bool))` and throws `InvalidCastException`; the surrounding `try/catch` only handled `JSDisconnectedException` / `ObjectDisposedException`, so the resulting `JSException` propagated out of `OnAfterRenderAsync` and terminated the circuit — making sub-pages unreachable. `Content/js/nav.js` now returns a string (`"true"` / `"false"` / `""`) instead of `null`, the component reads it with `JS.InvokeAsync<string>` + `bool.TryParse` (avoiding the value-type conversion path entirely), and a defensive `catch (JSException)` preserves the default expanded state on any runtime.
+
 ## 2.5.0 — Recurring Schedule Heatmap
 
 > **Feature release.** The Recurring Schedule Heatmap ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) is now generally available and merged to `main`. Plan controllable cron jobs around real on-demand load — projected from cron expressions and bucketed by queue, day, and hour — with new rollup-based analytics so Historical and demand views also work on non-SQL storages.
