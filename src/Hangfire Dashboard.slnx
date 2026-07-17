@@ -2,7 +2,9 @@
   <Folder Name="/src/">
     <Project Path="a2n.Hangfire.Console/a2n.Hangfire.Console.csproj" />
     <Project Path="a2n.Hangfire.Dashboard/a2n.Hangfire.Dashboard.csproj" />
+    <Project Path="a2n.Hangfire.Dashboard.OpenTelemetry/a2n.Hangfire.Dashboard.OpenTelemetry.csproj" />
     <Project Path="a2n.Hangfire.Dashboard.PostgreSql/a2n.Hangfire.Dashboard.PostgreSql.csproj" />
+    <Project Path="a2n.Hangfire.Dashboard.RestApi/a2n.Hangfire.Dashboard.RestApi.csproj" />
     <Project Path="a2n.Hangfire.Dashboard.Redis/a2n.Hangfire.Dashboard.Redis.csproj" />
     <Project Path="a2n.Hangfire.Dashboard.Rollup/a2n.Hangfire.Dashboard.Rollup.csproj" />
     <Project Path="a2n.Hangfire.Dashboard.SqlServer/a2n.Hangfire.Dashboard.SqlServer.csproj" />
@@ -11,7 +13,9 @@
   <Folder Name="/tests/">
     <Project Path="../tests/a2n.Hangfire.Console.Tests/a2n.Hangfire.Console.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Dashboard.Tests/a2n.Hangfire.Dashboard.Tests.csproj" />
+    <Project Path="../tests/a2n.Hangfire.Dashboard.OpenTelemetry.Tests/a2n.Hangfire.Dashboard.OpenTelemetry.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Dashboard.PostgreSql.Tests/a2n.Hangfire.Dashboard.PostgreSql.Tests.csproj" />
+    <Project Path="../tests/a2n.Hangfire.Dashboard.RestApi.Tests/a2n.Hangfire.Dashboard.RestApi.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Dashboard.Rollup.Tests/a2n.Hangfire.Dashboard.Rollup.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Dashboard.SqlServer.Tests/a2n.Hangfire.Dashboard.SqlServer.Tests.csproj" />
     <Project Path="../tests/a2n.Hangfire.Tags.Tests/a2n.Hangfire.Tags.Tests.csproj" />

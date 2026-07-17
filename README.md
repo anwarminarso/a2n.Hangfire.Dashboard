@@ -31,6 +31,42 @@ Navigate to `/hangfire`. Done.
 
 ---
 
+## 🚀 What's New in 2.6 — Integrations
+
+Plug the dashboard into your **observability and automation stack**. Four independently shippable, **opt-in** integrations that expose the dashboard's existing data through standard protocols — each reusing the same storage query/metrics providers (no new queries), honoring your dashboard path prefix, and enforcing authorization before returning any data. See [docs/integrations-v2-6.md](docs/integrations-v2-6.md).
+
+| | Feature | What you get |
+|---|---------|--------------|
+| 🔭 | **OpenTelemetry trace linking** | Captures the W3C `traceparent` on enqueue and restores it as a child span on execute (named `ActivitySource`), so enqueue→execute shows as one distributed trace. Renders a **"View distributed trace →"** deep link on Job Details via `TraceLinkBuilder` (Tempo/Jaeger/Honeycomb/template). Ships as the separate `a2n.Hangfire.Dashboard.OpenTelemetry` package. |
+| 📈 | **Prometheus `/metrics`** | Text exposition format 0.0.4 from a plain-string exporter — **no heavy Prometheus client dependency**. Job, queue, server, worker, recurring, and duration-histogram metrics; degrades gracefully without a metrics provider. Ships with a sample Grafana dashboard. `LocalOnly` by default. |
+| 🔌 | **Read-only REST API** | Minimal API endpoints at `{prefix}/api/v1` (jobs, job details, jobs-by-state, queues, metrics) over the existing providers, **JWT-secured**, with an auto-generated **OpenAPI** document. Ships as the separate `a2n.Hangfire.Dashboard.RestApi` package. |
+| 📤 | **CSV / JSON export** | Stream-based export of the current job search results (bounded memory) at `{prefix}/export` — RFC 4180 CSV or REST-shaped JSON, gated by dashboard authorization, works in read-only mode. |
+
+```csharp
+// Prometheus + CSV/JSON export (core, opt-in):
+builder.Services.AddHangfireDashboardUI(options =>
+{
+    options.Prometheus.Enabled = true;   // GET {prefix}/metrics  (LocalOnly by default)
+    options.Export.Enabled     = true;   // GET {prefix}/export?format=csv|json
+});
+
+// OpenTelemetry trace linking (separate package):
+GlobalConfiguration.Configuration.UseHangfireDashboardOpenTelemetry();
+// register the ActivitySource with your tracer provider:
+//   .AddSource(OpenTelemetryDashboardExtensions.ActivitySourceName)
+// and set a link builder:
+//   options.TraceLinkBuilder = TraceLinkBuilders.Tempo("https://grafana.example.com");
+
+// Read-only REST API (separate package):
+builder.Services.AddAuthentication().AddJwtBearer(/* issuer, audience, keys */);
+builder.Services.AddHangfireDashboardRestApi();
+app.MapHangfireDashboardRestApi("/hangfire");   // group at {prefix}/api/v1
+```
+
+See the [changelog](CHANGELOG.md) and [docs/integrations-v2-6.md](docs/integrations-v2-6.md) for the full list and each endpoint's default authorization.
+
+---
+
 ## 🚀 What's New in 2.5 — Recurring Schedule Heatmap
 
 Plan controllable cron jobs around **real on-demand load**. The new **Schedule Heatmap** projects your recurring jobs — and actual ad-hoc demand — onto a **queue × day × hour** grid so you can spot collisions, find the quietest window to schedule, and rebalance load. See the [showcase below](#-recurring-schedule-heatmap).
@@ -130,6 +166,10 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Health checks | 🆕 `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
 | Queue pause / maintenance | 🆕 Pause individual queues or enable global maintenance mode — see [Operations](#operations) |
 | Audit log | 🆕 Every admin action recorded (who, when, what) — filterable, paged — see [Operations](#operations) |
+| OpenTelemetry trace links | 🆕 Capture/restore the W3C `traceparent` across enqueue→execute and deep-link to Tempo/Jaeger/Honeycomb from Job Details (opt-in package) — see [Integrations](docs/integrations-v2-6.md) |
+| Prometheus `/metrics` | 🆕 Prometheus text exposition 0.0.4 (no heavy client dependency) + sample Grafana dashboard; `LocalOnly` by default — see [Integrations](docs/integrations-v2-6.md) |
+| Read-only REST API | 🆕 JWT-secured Minimal API at `{prefix}/api/v1` with auto-generated OpenAPI (opt-in package) — see [Integrations](docs/integrations-v2-6.md) |
+| CSV / JSON export | 🆕 Stream-based export of current search results at `{prefix}/export`, gated by dashboard authorization — see [Integrations](docs/integrations-v2-6.md) |
 | Realtime updates | Live metrics via SignalR |
 | Authorization | Local-only default (same as Hangfire); optional async filters and `LoginPath` redirect |
 | Theming | Dark, light, or auto; responsive layout |
@@ -192,6 +232,8 @@ Project your recurring (cron) jobs — and real ad-hoc demand — onto a **queue
 | [`a2n.Hangfire.Dashboard.PostgreSql`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.PostgreSql) | Storage-specific queries + full analytics for PostgreSQL |
 | [`a2n.Hangfire.Dashboard.Rollup`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.Rollup) | Rollup-based analytics for non-SQL storages (Redis, in-memory, other NoSQL) |
 | [`a2n.Hangfire.Dashboard.Redis`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.Redis) | Convenience entry point for Redis — registers rollup metrics (`UseRedisStorage()`) |
+| [`a2n.Hangfire.Dashboard.OpenTelemetry`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.OpenTelemetry) | 🆕 OpenTelemetry trace linking — captures/restores the W3C `traceparent` across enqueue→execute (opt-in; not referenced by core) |
+| [`a2n.Hangfire.Dashboard.RestApi`](https://www.nuget.org/packages/a2n.Hangfire.Dashboard.RestApi) | 🆕 Optional read-only REST API (Minimal API + JWT + OpenAPI) over the existing query/metrics providers |
 | [`a2n.Hangfire.Console`](https://www.nuget.org/packages/a2n.Hangfire.Console) | Console integration (Hangfire.Console-compatible API) |
 | [`a2n.Hangfire.Tags`](https://www.nuget.org/packages/a2n.Hangfire.Tags) | Tags integration (Hangfire.Tags-compatible storage) |
 

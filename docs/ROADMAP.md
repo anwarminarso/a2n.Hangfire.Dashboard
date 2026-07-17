@@ -224,7 +224,7 @@ services.AddHangfireDashboardUI(options =>
 
 > **v2.3.1 shipped ✅** — patch release restoring realtime analytics on SQL Server (the `GetQueueDepthSnapshot`/`GetQueueThroughput` queries put a subquery in the `GROUP BY` list, hitting SQL Server error 144 and silently killing the analytics broadcast). The `AnalyticsBroadcastService` loop also moved to a `PeriodicTimer` with the three metrics queries running concurrently (`Task.WhenAll`) so the SignalR push holds its ~5s cadence under load instead of drifting. NuGet packages now ship XML API documentation.
 
-> **Note:** The notifications, integrations, and customization work originally scoped under "v2.3.x" was promoted to its own themed minor releases. **v2.5 now ships the Recurring Schedule Heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)); the originally-planned **Notifications & alert rules has been deferred to the Stretch / Backlog** (not mandatory, no demand, superseded by the v2.6 Prometheus `/metrics` endpoint — see [docs/proposals/notifications-alert-rules.md](proposals/notifications-alert-rules.md)). **v2.6 (Integrations)** and **v2.7 (Customization)** keep their version numbers.
+> **Note:** The notifications, integrations, and customization work originally scoped under "v2.3.x" was promoted to its own themed minor releases. **v2.5 now ships the Recurring Schedule Heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)); the originally-planned **Notifications & alert rules has been deferred to the Stretch / Backlog** (not mandatory, no demand, superseded by the v2.6 Prometheus `/metrics` endpoint — see [docs/proposals/notifications-alert-rules.md](proposals/notifications-alert-rules.md)). **v2.6 (Integrations)** keeps its version number; **MCP** was later inserted as **v2.7** and **Customization** shifted to **v2.8**.
 
 #### Health Check ✅
 - ✅ HTTP endpoints `/{dashboard}/healthz` (liveness), `/healthz/ready` (readiness), `/healthz/full` (full report)
@@ -352,18 +352,32 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 ---
 
-## v2.6 — Integrations (Planned)
+## v2.6 — Integrations ✅
 
-**Goal**: Plug the dashboard into the modern observability and automation stack.
+**Goal**: Plug the dashboard into the modern observability and automation stack. Four **independently shippable, opt-in** integrations, each reusing the existing `IStorageQueryProvider` / optional `IStorageMetricsProvider` / core `IMonitoringApi` (no new storage-specific queries), honoring the configured path prefix, targeting net8.0/net9.0/net10.0, and enforcing an authorization check before returning any Hangfire data. See [docs/integrations-v2-6.md](integrations-v2-6.md).
 
-- [ ] **OpenTelemetry trace linking** — capture `traceparent` on enqueue, restore as child span on execute, render "View distributed trace →" link on Job Details. Shipped as `a2n.Hangfire.Dashboard.OpenTelemetry` package. `DashboardUIOptions.TraceLinkBuilder` for Tempo/Jaeger/Honeycomb URL templates.
-- [ ] **Prometheus `/metrics` endpoint** — text format 0.0.4. Exposes `hangfire_jobs_total`, `hangfire_jobs_in_state_count`, `hangfire_queue_length`, `hangfire_servers_count`, `hangfire_workers_count`, `hangfire_recurring_jobs_count`, `hangfire_job_duration_seconds` (histogram). No heavy library — plain string formatter. Sample Grafana dashboard JSON shipped in repo.
-- [ ] **REST API** (read-only first, optional package) — wraps existing `IStorageQueryProvider` services with Minimal API endpoints. JWT auth. OpenAPI spec auto-generated.
-- [ ] **CSV / JSON export** — stream-based, respects current search criteria.
+- ✅ **OpenTelemetry trace linking** — captures the W3C `traceparent` on enqueue (`IClientFilter`), restores it as a child execution span on execute (`IServerFilter` on a named `ActivitySource`), and renders a "View distributed trace →" link on Job Details. Shipped as the `a2n.Hangfire.Dashboard.OpenTelemetry` package (not referenced by core); opt-in via `UseHangfireDashboardOpenTelemetry(...)`. Core `DashboardUIOptions.TraceLinkBuilder` with `TraceLinkBuilders.Tempo` / `Jaeger` / `Honeycomb` / `Template` presets.
+- ✅ **Prometheus `/metrics` endpoint** (core, opt-in) — text exposition format 0.0.4 via a plain string formatter (no third-party Prometheus client). Exposes `hangfire_jobs_total`, `hangfire_jobs_in_state_count`, `hangfire_queue_length`, `hangfire_servers_count`, `hangfire_workers_count`, `hangfire_recurring_jobs_count`, and the `hangfire_job_duration_seconds` histogram (provider-gated). Per-family fault isolation. `LocalOnly` by default. Enabled via `options.Prometheus` / `EnablePrometheusMetrics(...)`. Sample Grafana dashboard shipped at [`docs/grafana/hangfire-dashboard.json`](grafana/hangfire-dashboard.json).
+- ✅ **REST API** (read-only, optional package `a2n.Hangfire.Dashboard.RestApi`, not referenced by core) — Minimal API endpoints at `{prefix}/api/v1` (`/jobs`, `/jobs/{id}`, `/jobs/state/{state}`, `/queues`, `/metrics/*`) over the existing providers, returning the shared `JobRecordDto` / `PagedResponse<T>` shape. JWT bearer auth bound to the host scheme (401/403; no anonymous access), invalid params → 400, and an auto-generated OpenAPI document (Microsoft.AspNetCore.OpenApi on net9/net10, Swashbuckle on net8.0).
+- ✅ **CSV / JSON export** (core, opt-in) — stream-based (bounded memory), respects the current search criteria; RFC 4180 CSV and REST-shaped JSON at `{prefix}/export`, `Content-Disposition: attachment`, gated by `Dashboard_Authorization`, available in read-only mode. Enabled via `options.Export` / `EnableJobExport(...)`.
 
 ---
 
-## v2.7 — Customization (Planned)
+## v2.7 — MCP / Model Context Protocol (Planned)
+
+**Goal**: Expose the dashboard as a set of MCP tools so AI agents / LLM assistants can query job state, investigate failures, and (guardrailed) drive operations — without a bespoke integration per assistant.
+
+Builds directly on the **read/query layer and REST contract from v2.6** — reuses the same `IStorageQueryProvider` / `IStorageMetricsProvider` services and DTOs, so there is no duplicated query logic. MCP is a second "face" over the same foundation as the REST API.
+
+- [ ] **MCP server** — shipped as `a2n.Hangfire.Dashboard.Mcp` package, mounted on the dashboard pipeline (streamable HTTP transport).
+- [ ] **Read tools** — `query_jobs`, `get_job_details`, `get_failures`, `get_queues`, `get_recurring`, `get_health`, `get_metrics` — thin wrappers over the v2.6 query services.
+- [ ] **Action tools (guardrailed)** — `requeue_job`, `delete_job`, `enqueue_job`, `trigger_recurring`, `pause_queue` — gated by `IsReadOnly` / `EnableJobManagement`, honor the same `Authorization` filters, and audit-logged (reuses the v2.3 audit log). Read-only by default.
+- [ ] **Auth** — reuses dashboard `Authorization` filters + the JWT/token scheme from the v2.6 REST API.
+- [ ] **Discovery** — tool schemas auto-generated; degrades gracefully when a metrics provider is absent (analytics tools hidden).
+
+---
+
+## v2.8 — Customization (Planned)
 
 **Goal**: Make the dashboard fit each team's branding and tenancy needs.
 
@@ -422,8 +436,9 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.4.3 | **Dashboard UI/UX fixes**: Failed-table column overflow (#17), Create Job dropdown pill alignment (#18), recurring search dropped characters (#19), dark-theme persistence (#20) | ✅ Done |
 | v2.5.0 | **Recurring Schedule Heatmap** (#14) — Planner, Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, stagger Recommendations; Projected (any storage) + Historical (SQL/PG or rollup adapters) sources; storage-agnostic estimated durations via rollup metrics (#21) | ✅ Done |
 | v2.5.1 | **Nav group crash fix** (#23) — sidebar nav group no longer tears down the Blazor circuit on a fresh session with no saved `localStorage` state | ✅ Done |
-| v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
-| v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
+| v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links (`a2n.Hangfire.Dashboard.OpenTelemetry`), read-only REST API (`a2n.Hangfire.Dashboard.RestApi`), CSV/JSON export | ✅ Done |
+| v2.7.0 | **MCP (Model Context Protocol)**: MCP server exposing read tools (+ guardrailed, audit-logged action tools) over the v2.6 query/REST layer | Planned |
+| v2.8.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |
 
 ---

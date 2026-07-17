@@ -32,6 +32,18 @@
             </div>
         }
 
+        @* Distributed-trace deep link (rendered only when a TraceLinkBuilder is configured AND
+           the job carries a parseable otel.traceparent parameter) *@
+        var traceLinkUrl = GetTraceLinkUrl();
+        if (traceLinkUrl is not null)
+        {
+            <div class="mb-3">
+                <a href="@traceLinkUrl" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-diagram-3"></i> View distributed trace →
+                </a>
+            </div>
+        }
+
         @* Tags *@
         <TagsViewer JobId="@JobId" />
 
@@ -501,6 +513,42 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
 
     private static string TruncateValue(string value) =>
         value.Length > 100 ? value[..100] + "…" : value;
+
+    /// <summary>
+    /// Builds the external distributed-trace URL for this job, or returns <c>null</c> when the link
+    /// should be omitted. The link is produced only when a <see cref="DashboardUIOptions.TraceLinkBuilder"/>
+    /// is configured (Req 3.2) AND the job carries a parseable W3C <c>otel.traceparent</c> parameter
+    /// (Req 3.1, 3.3). The whole computation is guarded so a throwing or <c>null</c>-returning builder
+    /// never breaks the Job Details render.
+    /// </summary>
+    private string GetTraceLinkUrl()
+    {
+        try
+        {
+            var builder = Options?.TraceLinkBuilder;
+            if (builder is null || _job?.Properties is null)
+                return null;
+
+            if (!_job.Properties.TryGetValue("otel.traceparent", out var raw) || string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            // Hangfire serializes job parameters as JSON, so the stored W3C traceparent string may be
+            // wrapped in double quotes (e.g. "\"00-...-01\""). Trim surrounding quotes before parsing.
+            var traceparent = raw.Trim().Trim('"');
+
+            if (!Internal.W3CTraceParent.TryParse(traceparent, out var parsed))
+                return null;
+
+            var context = new Models.TraceLinkContext(traceparent, parsed.TraceId, parsed.ParentId);
+            var url = builder(context);
+            return string.IsNullOrWhiteSpace(url) ? null : url;
+        }
+        catch
+        {
+            // A misbehaving TraceLinkBuilder must never fail the page render (Req 3.1–3.3).
+            return null;
+        }
+    }
 
     private static string FormatRelativeTime(DateTime utcTime)
     {

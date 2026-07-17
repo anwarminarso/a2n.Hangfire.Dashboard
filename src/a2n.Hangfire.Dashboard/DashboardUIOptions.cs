@@ -108,6 +108,18 @@ public class DashboardUIOptions
     public SourceLinkOptions SourceLink { get; set; }
 
     /// <summary>
+    /// Optional delegate that maps a job's captured distributed-trace context to an absolute URL for
+    /// an external trace viewer (Tempo, Jaeger, Honeycomb, or custom). When configured and the job
+    /// carries a parseable W3C <c>traceparent</c>, the Job Details page renders a
+    /// "View distributed trace →" link whose target is produced by this delegate; return <c>null</c>
+    /// to omit the link. Null by default, so no link is rendered. Use the <see cref="TraceLinkBuilders"/>
+    /// presets to avoid hand-rolling backend URLs (Req 3).
+    /// </summary>
+#nullable enable
+    public Func<Models.TraceLinkContext, string?>? TraceLinkBuilder { get; set; }
+#nullable restore
+
+    /// <summary>
     /// Authorization filters for the dashboard. Defaults to <see cref="LocalRequestsOnlyAuthorizationFilter"/>
     /// (same as Hangfire's built-in dashboard). Set to an empty array to allow all requests.
     /// </summary>
@@ -151,6 +163,22 @@ public class DashboardUIOptions
     public HeatmapOptions Heatmap { get; set; } = new HeatmapOptions();
 
     /// <summary>
+    /// Opt-in configuration for the Prometheus <c>/metrics</c> exposition endpoint. Disabled by
+    /// default (<see cref="Services.Prometheus.PrometheusOptions.Enabled"/> is <c>false</c>), so no
+    /// metrics endpoint is served unless explicitly enabled — either here or through the
+    /// <c>DashboardStorageOptionsBuilder.EnablePrometheusMetrics</c> opt-in convenience (Req 8, 15, 16).
+    /// </summary>
+    public Services.Prometheus.PrometheusOptions Prometheus { get; set; } = new Services.Prometheus.PrometheusOptions();
+
+    /// <summary>
+    /// Opt-in configuration for the CSV / JSON job export endpoint. Disabled by default
+    /// (<see cref="Services.Export.ExportOptions.Enabled"/> is <c>false</c>), so no export endpoint is
+    /// served unless explicitly enabled — either here or through the
+    /// <c>DashboardStorageOptionsBuilder.EnableJobExport</c> opt-in convenience (Req 13, 15, 16).
+    /// </summary>
+    public Services.Export.ExportOptions Export { get; set; } = new Services.Export.ExportOptions();
+
+    /// <summary>
     /// Copies every configurable option value from this instance onto <paramref name="target"/>.
     /// Used to push host-supplied options onto the DI-registered singleton that Blazor components
     /// inject. Reflection over the public read/write properties means a newly added option is
@@ -177,6 +205,8 @@ public class DashboardUIOptions
         target.AuditLog ??= new AuditLogOptions();
         target.QueueOperations ??= new QueueOperationsOptions();
         target.Heatmap ??= new HeatmapOptions();
+        target.Prometheus ??= new Services.Prometheus.PrometheusOptions();
+        target.Export ??= new Services.Export.ExportOptions();
     }
 
     /// <summary>

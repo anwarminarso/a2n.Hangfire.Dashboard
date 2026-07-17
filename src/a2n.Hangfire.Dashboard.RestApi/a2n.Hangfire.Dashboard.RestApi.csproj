@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>a2n.Hangfire.Dashboard.RestApi</RootNamespace>
+    <!-- This is a class library (no entry point); the OpenAPI document is served at runtime, so the
+         build-time document generators (Swashbuckle's Microsoft.Extensions.ApiDescription.Server and
+         the Microsoft.AspNetCore.OpenApi build target) must not try to invoke the assembly. -->
+    <OpenApiGenerateDocumentsOnBuild>false</OpenApiGenerateDocumentsOnBuild>
+    <PackageId>a2n.Hangfire.Dashboard.RestApi</PackageId>
+    <Description>Optional read-only REST API for a2n.Hangfire.Dashboard. Exposes searching, filtering, job details, jobs-by-state, and queue listing through ASP.NET Core Minimal API endpoints (mounted at {pathPrefix}/api/v1), secured with JWT bearer authentication and described by an auto-generated OpenAPI document. Reuses the existing storage query/metrics providers instead of issuing new storage-specific queries.</Description>
+    <PackageTags>hangfire;dashboard;restapi;minimal-api;jwt;openapi;jobs;monitoring;aspnetcore;dotnet</PackageTags>
+  </PropertyGroup>
+
+  <!-- ASP.NET Core Minimal API surface (IServiceCollection, IEndpointRouteBuilder, RouteGroupBuilder) -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    OpenAPI document generation (Req 11), multi-targeted (Req 16.3):
+      • net9.0 / net10.0 use the built-in Microsoft.AspNetCore.OpenApi generator
+        (services.AddOpenApi() + endpoints.MapOpenApi()); the package version is pinned per TFM so
+        the Microsoft.OpenApi model version matches the runtime.
+      • net8.0 uses Swashbuckle.AspNetCore (SwaggerGen) to produce the same JSON document.
+    The document/route selection is guarded with #if NET9_0_OR_GREATER in RestApiDashboardExtensions.cs.
+  -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.*" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.*" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.*" />
+    <!-- Pin the transitive Microsoft.OpenApi to a patched version (CVE-2026-49451 / GHSA-v5pm-xwqc-g5wc,
+         a parser DoS; fixed in 2.7.5) so the build is clean of NU1903. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+  </ItemGroup>
+
+  <!--
+    This package MAY reference the core dashboard package to reuse its providers/DTOs.
+    The one-way constraint is that the core package does NOT reference this RestApi package.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

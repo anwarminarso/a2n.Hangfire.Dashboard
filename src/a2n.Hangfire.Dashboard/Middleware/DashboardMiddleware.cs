@@ -33,6 +33,27 @@ internal class DashboardMiddleware
                 return;
         }
 
+        // Prometheus metrics endpoint is handled before the generic dashboard authorization block
+        // because it applies its OWN authorization mode (Prometheus.AuthorizationMode) — a
+        // LocalOnly scraper must not be forced through dashboard-page auth. Running inside the
+        // branch means it honors the configured Path_Prefix (Req 5.5, 8.3, 16.1).
+        if (_options.Prometheus is { Enabled: true })
+        {
+            if (await PrometheusMetricsEndpoint.TryHandleAsync(context, _options))
+                return;
+        }
+
+        // CSV / JSON job export endpoint. Unlike Prometheus (LocalOnly), the export endpoint calls
+        // Dashboard_Authorization itself before streaming any record, so it is placed near the
+        // Prometheus block (after healthz/Prometheus, before static resources). Running inside the
+        // branch means it honors the configured Path_Prefix and remains available in read-only mode
+        // (Req 14.1, 14.2, 14.3, 16.1).
+        if (_options.Export is { Enabled: true })
+        {
+            if (await ExportEndpoint.TryHandleAsync(context, _options))
+                return;
+        }
+
         // Serve embedded static resources (CSS, JS, fonts, images) — no auth required for assets
         if (path.StartsWith("/_content/", StringComparison.OrdinalIgnoreCase) ||
             path.Equals("/_content", StringComparison.OrdinalIgnoreCase))
