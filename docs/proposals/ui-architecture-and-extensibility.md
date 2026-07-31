@@ -9,7 +9,7 @@
 > |------|-------|--------|
 > | 1 | Extension surface (third-party pages & nav items) | **Recommended for the active roadmap** |
 > | 2 | `a2n.Hangfire.Dashboard.Core` package split | Design notes — not decided |
-> | 3 | REST API scope adjustments (v2.6) | Recommended roadmap amendment |
+> | 3 | REST API / integrations | Informational — v2.6 is already implemented |
 > | 4 | React SPA UI | **Deferred** — revisit conditions below |
 > | 5 | Blazor WebAssembly as a middle option | Parked — worth a spike, not a commitment |
 >
@@ -144,6 +144,13 @@ project's headline promise. Extension surfaces also compound: each extension pac
 exists makes the ecosystem more valuable and, notably, raises the cost of ever switching UI
 technology — which is itself an argument for settling Part 1 before Part 4.
 
+**Version placement is open.** Once `feature/prometheus-opentelemetry-integrations` merges,
+v2.6 is Done, v2.7 is MCP, and v2.8 is Customization. There is no free slot, so this work
+either takes a new number after v2.8 or is inserted with a shift — the same treatment MCP
+received when it displaced Customization. Deliberately left undecided here; the roadmap edit
+should be made on top of the merged branch rather than against `main`, since the two would
+otherwise conflict across the whole v2.6 section.
+
 ---
 
 ## Part 2 — `a2n.Hangfire.Dashboard.Core` split (design notes)
@@ -245,30 +252,38 @@ originally motivated the split.
 
 ---
 
-## Part 3 — REST API scope (roadmap amendment)
+## Part 3 — REST API / integrations (informational)
 
-Already planned for v2.6 as "REST API (read-only first, optional package)". Two adjustments
-are recommended.
+**Correction.** An earlier draft of this document treated the REST API as unbuilt and
+recommended raising its scope. That was wrong on both counts, and the error came from reading
+`main` in isolation: `src/a2n.Hangfire.Dashboard.RestApi/` and
+`src/a2n.Hangfire.Dashboard.OpenTelemetry/` contain only `bin/` and `obj/` on `main` and are
+absent from `src/Hangfire Dashboard.slnx`, which looks like abandoned scaffolding. They are
+not. The whole of v2.6 is implemented on `feature/prometheus-opentelemetry-integrations`
+(`2ac09f1`) — the two packages, the Prometheus exporter and CSV/JSON export in core, a Grafana
+dashboard, and `docs/integrations-v2-6.md`. The stray `bin/obj` on `main` are build artifacts
+left behind by checking that branch out and back.
 
-**Raise the scope beyond read-only.** Include commands — requeue, delete, batch operations,
-queue pause/resume, maintenance toggle, recurring CRUD, enqueue — plus a parameter-schema
-endpoint for the Job Builder. Read-only is not sufficient for any serious consumer, and the
-command surface is where the contract design decisions actually live.
+**The read-only REST surface is a deliberate split, not an oversight.** The shipped API is six
+`MapGet` endpoints under `{prefix}/api/v1` with JWT bearer auth and no anonymous access. The
+command surface this document originally argued for — requeue, delete, enqueue, trigger
+recurring, pause queue — is scoped as **v2.7 MCP action tools**, guardrailed by `IsReadOnly` /
+`EnableJobManagement`, honoring the same `Authorization` filters, and audit-logged, built over
+the same query services. Capability planned, different face. No amendment needed.
 
-**Put the REST API in `.Core`, not in a UI package.** If the API ships inside an SPA package,
-there are two data paths to test and they will drift. A concrete example already in the
-codebase: `AuditActorAccessor` is registered scoped specifically because Blazor circuit
-actions have no `HttpContext`, while a REST path always has one. Audit attribution would
-behave differently on each path unless the logic has a single home.
+**The one point that survives, restated narrowly.** The original argument was "put the REST API
+in `.Core`, not in a UI package". As a packaging claim it is wrong — v2.6 ships REST as a
+separate opt-in package that is not referenced by core, which is a better arrangement. What
+matters is the underlying constraint, and the shipped design already honors it: **there must be
+exactly one service layer, with every face a thin adapter over it.** The concrete failure mode
+to keep guarding against is `AuditActorAccessor`, which is registered scoped precisely because
+Blazor circuit actions have no `HttpContext` while an HTTP path always has one. Any second face
+that reimplements a command path rather than delegating will drift on audit attribution first.
+This applies to v2.7 MCP action tools and to any future UI.
 
-Consequences worth recording: a well-scoped REST API also unblocks several backlog items —
-`hangfire-cli`, CSV/JSON export (already v2.6), Grafana and automation integrations, and
-multi-instance federation. One piece of work, several backlog items moving.
-
-**Housekeeping.** `src/a2n.Hangfire.Dashboard.RestApi/` and
-`src/a2n.Hangfire.Dashboard.OpenTelemetry/` currently contain only `bin/` and `obj/` — no
-`.csproj`, and neither appears in `src/Hangfire Dashboard.slnx`. Leftover scaffolding from an
-abandoned start; either remove or resume.
+**Backlog items unblocked** by the v2.6 query/REST contract, worth tracking: `hangfire-cli`,
+Grafana and automation integrations, and multi-instance federation. The backlog entry for the
+CLI companion still reads "depends on the v2.3 REST API" — should be v2.6.
 
 ---
 
@@ -410,8 +425,9 @@ outright.
 1. **Extension surface** (Part 1) — cheapest relative to impact, directly serves the observed
    demand, ships as a minor with no breaking change.
 2. **Legacy registration detection** (Part 1) — small, and closes a silent-failure path.
-3. **REST API inside the current package** (Part 3) — no split yet, so the API is exercised
-   against real needs before it becomes a package boundary.
+3. **Merge v2.6** — already built on `feature/prometheus-opentelemetry-integrations`. Nothing
+   in this document needs to precede it, and it establishes the query/REST contract that both
+   v2.7 MCP and any future UI adapter build on.
 4. **Extract `.Core`** (Part 2) — mechanical, targeting zero user-visible change. Acceptance
    test: all sample apps (`SampleApp`, `SampleAppAuth`, `SampleAppRazor`, `SampleAppMvc`,
    `SampleAppBlazor`, `SampleAppSpa`, `SampleAppOrig`) run unmodified.
@@ -439,7 +455,7 @@ Claims in this document that were confirmed by reading the code, as of the v2.5.
 | `AuditActorAccessor` scoped because circuits lack `HttpContext` | Comment in `Extensions/HangfireDashboardUIExtensions.cs` |
 | `DashboardHub` carries no Blazor coupling | `Hubs/DashboardHub.cs` |
 | Blazor-runtime bugs in recent patch releases | `docs/ROADMAP.md` — v2.5.1 (#23), v2.4.3 (#20, #19), v2.1.1 |
-| `RestApi` / `OpenTelemetry` are empty leftovers | Both contain only `bin/`+`obj/`; absent from `src/Hangfire Dashboard.slnx` |
+| v2.6 integrations are built, not abandoned — and the REST surface is read-only by design | `git show --stat 2ac09f1` on `feature/prometheus-opentelemetry-integrations`; the endpoints file declares six `MapGet` and no `MapPost`/`MapPut`/`MapDelete`. On `main` the two project folders hold only `bin/`+`obj/` and are absent from the `.slnx`, which is what produced the original wrong reading |
 
 Not verified, and flagged as such in the text: feasibility of rendering legacy Hangfire
 extension pages; feasibility of serving Blazor WebAssembly assets from a branched embedded
