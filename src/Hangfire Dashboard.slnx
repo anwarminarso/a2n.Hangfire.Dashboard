@@ -23,6 +23,7 @@
     <Project Path="../samples/SampleAppRazor/SampleAppRazor.csproj" />
     <Project Path="../samples/SampleAppMvc/SampleAppMvc.csproj" />
     <Project Path="../samples/SampleAppBlazor/SampleAppBlazor.csproj" />
+    <Project Path="../samples/SampleAppSpa/SampleAppSpa.csproj" />
     <Project Path="../samples/SampleAppOrig/SampleAppOrig.csproj" />
   </Folder>
 </Solution>
