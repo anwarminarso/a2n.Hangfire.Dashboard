@@ -30,6 +30,8 @@ src/
 ├── a2n.Hangfire.Dashboard/                ← Core: Blazor UI + SignalR + interfaces
 ├── a2n.Hangfire.Dashboard.SqlServer/      ← Storage adapter: Dapper + T-SQL
 ├── a2n.Hangfire.Dashboard.PostgreSql/     ← Storage adapter: Dapper + Npgsql
+├── a2n.Hangfire.Dashboard.Rollup/         ← Rollup metrics for non-SQL storages
+├── a2n.Hangfire.Dashboard.Redis/          ← Redis entry point (UseRedisStorage)
 ├── a2n.Hangfire.Console/                  ← Drop-in replacement (namespace: Hangfire.Console)
 └── a2n.Hangfire.Tags/                     ← Drop-in replacement (namespace: Hangfire.Tags)
 
@@ -37,11 +39,20 @@ tests/
 ├── a2n.Hangfire.Dashboard.Tests/
 ├── a2n.Hangfire.Dashboard.SqlServer.Tests/
 ├── a2n.Hangfire.Dashboard.PostgreSql.Tests/
+├── a2n.Hangfire.Dashboard.Rollup.Tests/
 ├── a2n.Hangfire.Console.Tests/
-└── a2n.Hangfire.Tags.Tests/
+├── a2n.Hangfire.Tags.Tests/
+└── load/                                  ← Python load-test tooling
 
 samples/
-└── SampleApp/                             ← Integration test app (net10.0)
+├── SampleApp/                             ← Integration test app
+├── SampleApp.SharedJobs/                  ← Job types shared across samples
+├── SampleAppAuth/                         ← Cookie authentication demo
+├── SampleAppBlazor/                       ← Hosting inside a Blazor app
+├── SampleAppMvc/                          ← Hosting inside an MVC app
+├── SampleAppRazor/                        ← Hosting inside a Razor Pages app
+├── SampleAppSpa/                          ← Hosting alongside an SPA
+└── SampleAppOrig/                         ← Built-in Hangfire dashboard, for comparison
 ```
 
 ---
@@ -344,9 +355,21 @@ Replaces the old `RecurringEditor` (which built jobs with empty `Args` and resol
 
 ---
 
-## v2.5.1 — Nav group crash fix ✅
+## v2.5.1 — Redis / rollup analytics fixes ✅
 
-**Goal**: Fix a Blazor Server circuit crash on the first dashboard visit ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)).
+**Goal**: Fix the Analytics regressions reported on Hangfire Pro with Redis storage ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25), [#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26), [#27](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/27)), and ship the nav-group circuit crash fix ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)) that was previously a pre-release.
+
+The rollup adapter shipped in v2.5.0 read back several of its own aggregates incorrectly, so the panels it was built to enable stayed empty on non-SQL storages. Fixes are confined to that adapter plus one additive `IStorageMetricsProvider` method and the Recurring Health page.
+
+- ✅ **Duration stats were never read back** ([#27](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/27), [#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26)) — `MetricsRollupStore.ReadJobDurationStats` looked for job-type names among hash fields containing no `:`, but every field is written as `{jobType}:count`, `{jobType}:sum`, … so it always returned an empty list. The heatmap's p95 never arrived (estimated duration fell back to the floored 1-minute default) and Analytics ▸ Performance lost *Duration trend* and *Duration by job type*. Prefixes are now recovered from the trailing `:count` marker, which also keeps job types and queue names containing `:` intact.
+- ✅ **Durations were over-reported** — the collector used `SucceededJobDto.TotalDuration`, which Hangfire computes as `PerformanceDuration + Latency`. It now reads `PerformanceDuration` from the succeeded state's data, matching the SQL adapters, and falls back to `TotalDuration` only when the state data is unavailable.
+- ✅ **Queue latency and average state timing had no data** ([#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26)) — the collector always passed `latency: null` (it now reads `Latency` from the same state data), and `GetAverageStateTimingsAsync` returned an empty DTO (the enqueued and processing phases are now count-weighted means of the latency and duration rollups). `AvgScheduledMs` stays `0`: the pre-enqueue phase is not tracked by the rollup.
+- ✅ **Queue throughput dropped queues whose name contains `:`** — `ReadQueueThroughput` split its `{queue}:{bucket}` field on the first colon, producing an unparseable bucket key that was silently filtered out. Now split on the last colon. Found while auditing the other readers for the same defect class; the rest parse correctly.
+- ✅ **Analytics ▸ Recurring never finished loading** ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25)) — `GetRecurringJobExecutionsAsync` paged the succeeded and failed lists (2 000 jobs each) and probed the `RecurringJobId` parameter of every job it saw, once per recurring job: O(jobs × 4 000) storage round-trips. The collector now keeps a bounded ring of the 20 newest executions per recurring job and the provider answers from a single hash read.
+- ✅ **Recurring health showed no last-results strip or average duration** ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25)) — `GetRecurringJobHealthAsync` hard-coded `LastExecutionResults` to an empty array and never set `AverageDurationMs`; both come from the new ring in one hash read for all jobs, reaching parity with the SQL adapters.
+- ✅ **Batched recurring history** — new `IStorageMetricsProvider.GetRecurringJobExecutionsBatchAsync` fetches every job's history in one call (a `ROW_NUMBER` query on SQL Server / PostgreSQL, one hash read on the rollup adapter), replacing the page's per-job loop. A default interface method falling back to that loop, so third-party providers keep working unchanged. The page also cancels in-flight queries on dispose.
+- ✅ **Rollup sampling is now visible** — each poll scans at most 2 000 succeeded and 2 000 failed jobs, then advances the watermark past anything it did not reach. The collector logs a warning when it hits that cap. Closing the gap needs a resumable two-watermark scan, tracked in [#29](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/29).
+- ✅ **First metrics-provider test suite for the PostgreSQL adapter** — 20 tests covering the batched recurring-history query against a real database (asserted equal to the per-job query for every seeded recurring id) plus smoke coverage for the remaining metrics queries.
 
 - ✅ **Sidebar nav group tore down the circuit on a fresh session** ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)) — with no `hf-nav-group:*` key in `localStorage`, `NavMenuGroup` read the expand state via `JS.InvokeAsync<bool?>`; on some `Microsoft.JSInterop` versions, deserializing a JavaScript `null` into `Nullable<bool>` throws `InvalidCastException`, and the uncaught `JSException` terminated the circuit (sub-pages unreachable). `Content/js/nav.js` now returns a string instead of `null`, the component reads it with `JS.InvokeAsync<string>` + `bool.TryParse`, and a defensive `catch (JSException)` preserves the default state on any runtime.
 
