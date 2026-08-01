@@ -1,5 +1,6 @@
 @page "/analytics/recurring"
 @rendermode InteractiveServer
+@implements IDisposable
 @inject AnalyticsService Analytics
 @inject IJSRuntime JS
 @using a2n.Hangfire.Dashboard.Models
@@ -174,11 +175,14 @@ else
 @code {
     private bool _loading = true;
     private IReadOnlyList<RecurringJobHealthDto> _healthData;
-    private Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>> _executionHistories = new();
+    private IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>> _executionHistories =
+        new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>();
 
     private int _totalCount;
     private int _healthyCount;
     private int _problemsCount;
+
+    private readonly CancellationTokenSource _cts = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -191,7 +195,7 @@ else
 
         try
         {
-            _healthData = await Analytics.GetRecurringJobHealthAsync();
+            _healthData = await Analytics.GetRecurringJobHealthAsync(_cts.Token);
 
             if (_healthData is not null && _healthData.Count > 0)
             {
@@ -199,23 +203,31 @@ else
                 _healthyCount = _healthData.Count(j => j.Status == RecurringJobHealthStatus.Healthy);
                 _problemsCount = _healthData.Count(j => j.Status != RecurringJobHealthStatus.Healthy);
 
-                // Load execution history for each recurring job (last 20 executions)
-                var histories = new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>();
-                foreach (var job in _healthData)
-                {
-                    var executions = await Analytics.GetRecurringJobExecutionsAsync(job.JobId, 20);
-                    if (executions is not null && executions.Count > 0)
-                    {
-                        histories[job.JobId] = executions;
-                    }
-                }
-                _executionHistories = histories;
+                // One batched call for the last 20 executions of every recurring job. Fetching them
+                // one job at a time costs a storage round-trip per job, which does not finish on large
+                // deployments (issue #25).
+                var jobIds = _healthData
+                    .Select(j => j.JobId)
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .ToList();
+
+                _executionHistories = await Analytics.GetRecurringJobExecutionsBatchAsync(jobIds, 20, _cts.Token);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // The user navigated away while loading; nothing to render.
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    public void Dispose()
+    {
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { }
+        _cts.Dispose();
     }
 
     private static string GetStatusDotClass(RecurringJobHealthStatus status) => status switch

@@ -164,6 +164,27 @@ public class MetricsProviderSmokeTests
     }
 
     [SkippableFact]
+    public async Task GetRecurringJobExecutionsBatch_MatchesPerJobQuery()
+    {
+        RequireSqlServer();
+        var ids = new[] { "simple-job", "another-job" };
+
+        var batch = await _provider.GetRecurringJobExecutionsBatchAsync(ids, 10, CancellationToken.None);
+        Assert.NotNull(batch);
+
+        foreach (var id in ids)
+        {
+            var single = await _provider.GetRecurringJobExecutionsAsync(id, 10, CancellationToken.None);
+            var fromBatch = batch.TryGetValue(id, out var found) ? found : Array.Empty<RecurringJobExecutionDto>();
+
+            Assert.Equal(single.Count, fromBatch.Count);
+            Assert.Equal(
+                single.Select(e => e.JobId).ToArray(),
+                fromBatch.Select(e => e.JobId).ToArray());
+        }
+    }
+
+    [SkippableFact]
     public async Task GetAverageStateTimings_DoesNotThrow()
     {
         RequireSqlServer();
