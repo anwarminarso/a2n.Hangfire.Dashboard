@@ -14,7 +14,7 @@
   <ItemGroup>
     <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
     <PackageReference Include="Hangfire.SqlServer" Version="1.8.*" />
-    <PackageReference Include="Hangfire.PostgreSql" Version="1.20.*" />
+    <PackageReference Include="Hangfire.PostgreSql" Version="1.21.*" />
     <PackageReference Include="Hangfire.Redis.StackExchange" Version="1.12.*" />
   </ItemGroup>
 
