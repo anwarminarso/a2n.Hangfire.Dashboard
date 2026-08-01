@@ -562,6 +562,68 @@ ORDER BY s.CreatedAt DESC";
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>>> GetRecurringJobExecutionsBatchAsync(
+        IReadOnlyCollection<string> recurringJobIds, int count, CancellationToken ct)
+    {
+        var result = new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>(StringComparer.Ordinal);
+
+        var ids = (recurringJobIds ?? Array.Empty<string>())
+            .Where(i => !string.IsNullOrEmpty(i))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (ids.Count == 0)
+            return result;
+
+        if (count <= 0) count = 10;
+        if (count > 100) count = 100;
+
+        // One pass for every recurring job: ROW_NUMBER partitioned by the stored RecurringJobId keeps
+        // the newest @Count executions per job, mirroring EnrichRecurringJobHealthAsync.
+        var sql = $@"
+WITH Ranked AS (
+    SELECT jp.Value AS RecurringJobIdStored,
+           j.Id AS JobId,
+           s.CreatedAt AS ExecutedAt,
+           CAST(COALESCE(JSON_VALUE(s.Data, '$.PerformanceDuration'), '0') AS BIGINT) AS DurationMs,
+           s.Name AS StateName,
+           s.Reason,
+           ROW_NUMBER() OVER (PARTITION BY jp.Value ORDER BY s.CreatedAt DESC) AS rn
+    FROM {Table("Job")} j
+    INNER JOIN {Table("JobParameter")} jp ON jp.JobId = j.Id AND jp.Name = 'RecurringJobId'
+    INNER JOIN {Table("State")} s ON s.Id = j.StateId
+    WHERE jp.Value IN @RecurringJobIdValues
+      AND s.Name IN ('Succeeded', 'Failed')
+)
+SELECT RecurringJobIdStored, JobId, ExecutedAt, DurationMs, StateName, Reason
+FROM Ranked
+WHERE rn <= @Count
+ORDER BY RecurringJobIdStored, rn";
+
+        using var connection = CreateConnection();
+        var rows = await connection.QueryAsync<RecurringExecutionBatchRow>(
+            new CommandDefinition(sql,
+                new { RecurringJobIdValues = JobParameterMatching.AllValueForms(ids), Count = count },
+                cancellationToken: ct));
+
+        var plainIdLookup = JobParameterMatching.BuildStoredValueToPlainIdLookup(ids);
+        foreach (var group in rows.GroupBy(r =>
+                     JobParameterMatching.ResolvePlainRecurringJobId(r.RecurringJobIdStored, plainIdLookup)))
+        {
+            result[group.Key] = group.Select(r => new RecurringJobExecutionDto
+            {
+                JobId = r.JobId.ToString(),
+                ExecutedAt = new DateTimeOffset(r.ExecutedAt, TimeSpan.Zero),
+                DurationMs = r.DurationMs,
+                Succeeded = r.StateName == "Succeeded",
+                ErrorMessage = r.StateName == "Failed" ? r.Reason : null
+            }).ToList();
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<HistoricalScheduleBucket>> GetRecurringScheduleBucketsAsync(
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
@@ -1119,6 +1181,11 @@ ORDER BY RecurringJobIdStored, rn";
         public long DurationMs { get; set; }
         public string StateName { get; set; }
         public string Reason { get; set; }
+    }
+
+    private class RecurringExecutionBatchRow : RecurringExecutionRow
+    {
+        public string RecurringJobIdStored { get; set; }
     }
 
     private class RecurringExecutionSummaryRow

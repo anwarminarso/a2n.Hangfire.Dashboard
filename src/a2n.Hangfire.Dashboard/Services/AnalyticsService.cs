@@ -401,6 +401,31 @@ public class AnalyticsService
         }
     }
 
+    /// <summary>
+    /// Returns the last N executions for several recurring jobs in a single provider round-trip, keyed
+    /// by recurring job id. Jobs without retained history are omitted. Returns an empty map on error.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>>> GetRecurringJobExecutionsBatchAsync(
+        IReadOnlyCollection<string> recurringJobIds, int count, CancellationToken ct = default)
+    {
+        if (_metricsProvider == null || recurringJobIds == null || recurringJobIds.Count == 0)
+            return new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>(StringComparer.Ordinal);
+
+        try
+        {
+            return await _metricsProvider.GetRecurringJobExecutionsBatchAsync(recurringJobIds, count, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get recurring job execution history from metrics provider");
+            return new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>(StringComparer.Ordinal);
+        }
+    }
+
     // ─── Lifecycle & Activity ───────────────────────────────────────────────────
 
     /// <summary>

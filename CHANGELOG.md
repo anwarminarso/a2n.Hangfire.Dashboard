@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Redis / rollup analytics fixes
+
+> Fixes the Analytics regressions reported on Hangfire Pro with Redis storage ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25), [#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26), [#27](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/27)). All changes are confined to the rollup adapter used by non-SQL storages.
+
+### Fixed
+
+- **Heatmap estimated duration always showed `1m` ([#27](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/27)), and the Duration panels were empty ([#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26)).** `MetricsRollupStore.ReadJobDurationStats` recovered job-type names by selecting hash fields that contain no `:`, but every field is written as `{jobType}:count`, `{jobType}:sum`, … so the filter matched nothing and the method always returned an empty list. `EstimatedDurationResolver` therefore never received a p95 and fell back to the floored 1-minute default, while Analytics ▸ Performance lost *Duration trend* and *Duration by job type*. Prefixes are now recovered from the trailing `:count` marker, which also keeps job types and queue names that contain `:` intact.
+- **Queue latency had no data ([#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26)).** `ExecutionRollupCollector` always passed `latency: null`, so the per-queue latency rollup stayed empty. It now reads `Latency` from the succeeded state's own data.
+- **Job durations were over-reported on non-SQL storages.** The collector used `SucceededJobDto.TotalDuration`, which is the enqueued wait *plus* execution time. It now prefers `PerformanceDuration` from the state data — matching what the SQL Server / PostgreSQL adapters read — and only falls back to `TotalDuration` when the state data is unavailable.
+- **Average state timing had no data ([#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26)).** `RollupMetricsProvider.GetAverageStateTimingsAsync` returned an empty DTO. It now derives the enqueued and processing phases as count-weighted means of the latency and duration rollups.
+- **Analytics ▸ Recurring never finished loading on large deployments ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25)).** `GetRecurringJobExecutionsAsync` paged the succeeded and failed lists (up to 2 000 jobs each) and probed the `RecurringJobId` parameter of every job it saw — a separate storage round-trip per job. The health page calls it once per recurring job, so the cost was O(recurring jobs × 4 000) round-trips. The collector now maintains a bounded ring of the 20 most recent executions per recurring job, and the provider answers from a single hash read.
+- **Recurring Health fetched execution history one job at a time ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25)).** The page looped over every recurring job, so even a cheap per-job lookup cost one storage round-trip each. A new `IStorageMetricsProvider.GetRecurringJobExecutionsBatchAsync` fetches history for all jobs at once — one `ROW_NUMBER` query on SQL Server / PostgreSQL, one hash read on the rollup adapter. It is a default interface method that falls back to the per-job loop, so third-party providers keep working unchanged. The page also cancels its in-flight queries when the user navigates away.
+- **Recurring health showed no "Last 5 Results" and no average duration ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25)).** `GetRecurringJobHealthAsync` hard-coded `LastExecutionResults` to an empty array and never set `AverageDurationMs`. Both are now filled from the new recurring-execution rollup in one hash read for all jobs.
+
+### Changed
+
+- **The rollup collector now warns when it is sampling rather than aggregating everything.** Each poll scans at most 2 000 succeeded and 2 000 failed jobs; beyond that the watermark advances past the unscanned executions and they never reach the rollup. The collector logs a warning when it hits that cap so the shortfall is visible in the logs instead of showing up as quietly understated metrics. Closing the gap entirely needs a resumable two-watermark scan and is tracked separately.
+
+### Known limitations
+
+- Rollup data remains forward-only: panels populate from the first collector run after upgrading (the collector polls every 60 seconds), and the recurring history ring holds the last 20 executions per job. `AvgScheduledMs` stays `0` because the pre-enqueue phase is not tracked by the rollup.
+- Under sustained load above ~2 000 completions per minute the rollup is a sample, not a complete aggregate (see the warning above). Use the SQL Server or PostgreSQL adapter when complete history is required.
+
 ## 2.5.1-beta.1 — Nav group crash fix (pre-release)
 
 > **Pre-release.** Fixes a Blazor Server circuit crash on the first dashboard visit when the browser has no saved sidebar nav-group state ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)).

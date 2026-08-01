@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using a2n.Hangfire.Dashboard.Heatmap;
 using Hangfire;
@@ -118,14 +119,37 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
         }
 
         var accumulator = new RollupAccumulator();
-        var newSucceeded = ProcessSucceeded(monitoringApi, connection, succeededWatermark, accumulator, ct);
-        var newFailed = ProcessFailed(monitoringApi, connection, failedWatermark, accumulator, ct);
+        var succeeded = ProcessSucceeded(monitoringApi, connection, succeededWatermark, accumulator, ct);
+        var failed = ProcessFailed(monitoringApi, connection, failedWatermark, accumulator, ct);
+
+        WarnIfTruncated(succeeded.CapReached, "succeeded");
+        WarnIfTruncated(failed.CapReached, "failed");
 
         ct.ThrowIfCancellationRequested();
-        _store.Commit(connection, newSucceeded, newFailed, accumulator, Internal.RollupTime.WeekIndex(nowTicks));
+        _store.Commit(connection, succeeded.Watermark, failed.Watermark, accumulator, Internal.RollupTime.WeekIndex(nowTicks));
     }
 
-    private long ProcessSucceeded(
+    /// <summary>
+    /// Outcome of one scan pass. <see cref="CapReached"/> means the pass stopped at
+    /// <see cref="MaxJobsPerPoll"/> while still seeing jobs newer than the watermark, so executions
+    /// older than the scanned window were not aggregated: the watermark advances past them.
+    /// </summary>
+    private readonly record struct ScanResult(long Watermark, bool CapReached);
+
+    private void WarnIfTruncated(bool capReached, string state)
+    {
+        if (!capReached)
+            return;
+
+        _logger.LogWarning(
+            "Rollup collector hit its per-poll cap of {Cap} {State} jobs. More than {Cap} {State} jobs " +
+            "completed within one {Interval}s poll, so executions beyond the scanned window are not " +
+            "reflected in Analytics. Rollup metrics are a sample under this load; use the SQL Server or " +
+            "PostgreSQL adapter when complete history is required.",
+            MaxJobsPerPoll, state, MaxJobsPerPoll, state, (int)PollInterval.TotalSeconds);
+    }
+
+    private ScanResult ProcessSucceeded(
         IMonitoringApi api,
         IStorageConnection connection,
         long watermarkTicks,
@@ -134,6 +158,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
     {
         var newWatermark = watermarkTicks;
         var offset = 0;
+        var capReached = false;
 
         while (offset < MaxJobsPerPoll)
         {
@@ -166,19 +191,33 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
                 if (ticks > newWatermark)
                     newWatermark = ticks;
 
-                var exec = BuildExecution(connection, jobId, dto.Job, succeededAt, succeeded: true, dto.TotalDuration, latency: null);
+                // Prefer the Succeeded state's own measurements: PerformanceDuration is the pure
+                // execution time and Latency the enqueued→processing wait, matching what the SQL
+                // adapters read. TotalDuration is the sum of both, so it is only a fallback for
+                // storages that do not persist the state data.
+                var performanceDuration = ReadStateDataLong(dto.StateData, "PerformanceDuration")
+                                          ?? dto.TotalDuration;
+                var latency = ReadStateDataLong(dto.StateData, "Latency");
+
+                var exec = BuildExecution(connection, jobId, dto.Job, succeededAt, succeeded: true, performanceDuration, latency);
                 accumulator.Record(exec);
             }
 
             offset += page.Count;
             if (page.Count < PageSize || !sawNew)
                 break;
+
+            if (offset >= MaxJobsPerPoll)
+            {
+                capReached = true;
+                break;
+            }
         }
 
-        return newWatermark;
+        return new ScanResult(newWatermark, capReached);
     }
 
-    private long ProcessFailed(
+    private ScanResult ProcessFailed(
         IMonitoringApi api,
         IStorageConnection connection,
         long watermarkTicks,
@@ -187,6 +226,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
     {
         var newWatermark = watermarkTicks;
         var offset = 0;
+        var capReached = false;
 
         while (offset < MaxJobsPerPoll)
         {
@@ -227,9 +267,15 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
             offset += page.Count;
             if (page.Count < PageSize || !sawNew)
                 break;
+
+            if (offset >= MaxJobsPerPoll)
+            {
+                capReached = true;
+                break;
+            }
         }
 
-        return newWatermark;
+        return new ScanResult(newWatermark, capReached);
     }
 
     private ProcessedExecution BuildExecution(
@@ -269,6 +315,20 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
     {
         try { return connection.GetJobParameter(jobId, name); }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// Reads a millisecond value from a job state's serialized data, returning <c>null</c> when the
+    /// field is absent or unparseable.
+    /// </summary>
+    private static long? ReadStateDataLong(IDictionary<string, string> stateData, string field)
+    {
+        if (stateData == null || !stateData.TryGetValue(field, out var raw))
+            return null;
+
+        return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
     }
 
     private static string ResolveJobType(Job job)
