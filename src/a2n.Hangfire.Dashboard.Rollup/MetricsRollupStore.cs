@@ -379,7 +379,10 @@ public sealed class MetricsRollupStore
         var results = new List<QueueThroughputDataPoint>();
         foreach (var entry in hash)
         {
-            var sep = entry.Key.IndexOf(':');
+            // Fields are '{queue}:{bucketKey}'. The bucket key never contains a colon (it is a
+            // yyyy-MM-dd-HH stamp) but a queue name may, so split on the last separator — splitting on
+            // the first one silently dropped data points for such queues.
+            var sep = entry.Key.LastIndexOf(':');
             if (sep <= 0)
                 continue;
 

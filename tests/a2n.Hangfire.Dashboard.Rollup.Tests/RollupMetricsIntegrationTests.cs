@@ -134,6 +134,41 @@ public class RollupDurationReadbackTests
     }
 
     [Fact]
+    public async Task Queue_throughput_survives_queue_names_containing_separators()
+    {
+        var storage = new InMemoryStorage();
+        var store = new MetricsRollupStore();
+        var provider = new RollupMetricsProvider(storage);
+        var executedAt = DateTime.UtcNow.AddMinutes(-20);
+
+        using (var connection = storage.GetConnection())
+        {
+            var accumulator = new RollupAccumulator();
+            accumulator.Record(new ProcessedExecution
+            {
+                JobId = "job-1",
+                ExecutedAtUtc = executedAt,
+                Succeeded = true,
+                JobType = "Tenant.Run",
+                Queue = "tenant:alpha",
+                DurationMs = 500,
+                JobName = "Tenant.Run"
+            });
+
+            store.Commit(connection, executedAt.Ticks, executedAt.Ticks, accumulator,
+                Internal.RollupTime.WeekIndex(executedAt.Ticks));
+        }
+
+        var throughput = await provider.GetQueueThroughputAsync(
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddHours(1),
+            MetricsInterval.OneHour, CancellationToken.None);
+
+        var point = Assert.Single(throughput);
+        Assert.Equal("tenant:alpha", point.QueueName);
+        Assert.Equal(1, point.SucceededCount);
+    }
+
+    [Fact]
     public async Task Job_types_containing_separators_are_read_back_intact()
     {
         var storage = new InMemoryStorage();
