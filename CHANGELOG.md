@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The rollup collector dropped executions beyond its per-poll cap ([#29](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/29)).** `ExecutionRollupCollector` kept a single watermark per state and scanned the monitoring API newest-first, stopping at 2 000 jobs per poll. When more than that completed inside one 60-second poll, the pass recorded the newest 2 000 and then advanced the watermark to the newest tick it had seen, so everything older but still newer than the previous watermark fell below the new watermark and was never aggregated — an unbounded shortfall that made the rollup a sample rather than an aggregate. The collector now tracks the *range* it has covered (`succeededCoveredFloorTicks` / `succeededCoveredCeilingTicks`, and the failed-state equivalents) instead of a single boundary: a capped pass leaves the watermark where it is, records the range it reached, and the following polls step over that range for free — no job-parameter lookups — and drain the remainder downward until they meet the watermark, at which point both boundaries collapse back into one. A burst larger than one poll's cap is therefore aggregated in full across subsequent polls, and because the rollup counters are additive, the covered range is what keeps executions from being counted twice. The per-poll budget is also soft at the tail: a pass finishes the tick it stopped on, so storages that truncate timestamps cannot have same-tick executions split across the boundary and lost or replayed.
+- **The per-poll warning now fires only when data is genuinely unrecoverable.** Hitting the cap is normal and recoverable, so it is reported at information level along with how much history is still pending. The warning is reserved for the one case that remains lossy: so many jobs completed while an earlier backlog was still draining that the pass could not reach the previously covered range, leaving two disjoint ranges that cannot both be represented. They are merged rather than re-scanned, since re-scanning would double-count.
+
+### Changed
+
+- Rollup state written by earlier versions reads back as "no gap open", so upgrading needs no migration and no reseed.
+
 ## 2.5.1 — Redis / rollup analytics fixes
 
 > **Patch release.** Fixes the Analytics regressions reported on Hangfire Pro with Redis storage ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25), [#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26), [#27](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/27)), and carries the nav-group circuit crash fix ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)) previously shipped as `2.5.1-beta.1`. The analytics work is confined to the rollup adapter used by non-SQL storages, plus one additive interface method and the Recurring Health page.

@@ -375,6 +375,14 @@ The rollup adapter shipped in v2.5.0 read back several of its own aggregates inc
 
 ---
 
+## Unreleased — Rollup completeness
+
+**Goal**: Make the rollup a true aggregate instead of a sample under bursty load ([#29](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/29)), the gap left open by v2.5.1.
+
+- ✅ **Resumable scan** — the collector tracked one watermark per state and advanced it to the newest tick a capped pass had seen, discarding everything older that the pass never reached. It now persists the *range* it covered (`covered floor` / `covered ceiling` per state) alongside the watermark: a capped pass leaves the watermark alone, later polls step over the covered range at no per-job cost and drain downward until they meet the watermark, then collapse both boundaries. Bursts larger than one poll's cap are aggregated in full, with no double-counting of the additive counters. The cap is soft at the tail so a tick is never split across the boundary. The warning is now reserved for the single remaining lossy case — a pass that cannot reach the previously covered range because too much arrived while the backlog was still draining — and normal capped polls report the pending backlog at information level instead.
+
+---
+
 ## v2.6 — Integrations (Planned)
 
 **Goal**: Plug the dashboard into the modern observability and automation stack.
