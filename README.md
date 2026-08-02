@@ -35,6 +35,10 @@ Navigate to `/hangfire`. Done.
 
 Plan controllable cron jobs around **real on-demand load**. The new **Schedule Heatmap** projects your recurring jobs — and actual ad-hoc demand — onto a **queue × day × hour** grid so you can spot collisions, find the quietest window to schedule, and rebalance load. See the [showcase below](#-recurring-schedule-heatmap).
 
+> **2.5.2 (patch)** — the rollup collector no longer drops executions beyond its per-poll cap ([#29](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/29)). It scans at most 2 000 jobs per poll but used to advance its watermark past everything it had not reached, so on non-SQL storages a burst above ~2 000 completions per minute was sampled rather than aggregated. It now tracks the range it has covered and drains the backlog across later polls, counting each execution exactly once. See the [changelog](CHANGELOG.md).
+
+> **2.5.1 (patch)** — Redis / rollup analytics fixes: the heatmap's estimated duration was stuck at `1m` ([#27](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/27)); the Duration, Queue latency, and Average state timing panels were empty ([#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26)); Analytics ▸ Recurring never finished loading on large deployments and the last-results strip stayed blank ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25)). Also the sidebar nav group no longer tears down the Blazor circuit on a fresh session ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)). See the [changelog](CHANGELOG.md).
+
 | | Feature | What you get |
 |---|---------|--------------|
 | 🗺️ | **Seven views** | Planner (cron over ad-hoc demand with low-load "safe windows"), Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, and stagger Recommendations. |

@@ -438,7 +438,6 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v1.3 | Storage query interfaces + GenericQueryProvider fallback | ✅ Done |
 | v1.4 | SQL Server adapter (`a2n.Hangfire.Dashboard.SqlServer`) | ✅ Done |
 | v1.5 | PostgreSQL adapter (`a2n.Hangfire.Dashboard.PostgreSql`) | ✅ Done |
-| v2.6 | Rollup / Redis metrics adapters (`a2n.Hangfire.Dashboard.Rollup`, `.Redis`) | ✅ Done |
 | v1.6 | Analytics Dashboard (Overview + Performance + Failures + Queues + Recurring) | ✅ Done |
 | v2.0 | Phase 2 complete | ✅ Done |
 | v2.1 | Search & query refactor + JobDisplayName + SQL Server fixes | ✅ Done |
@@ -451,8 +450,9 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.4.1 | **Job Builder follow-up**: searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix (#10), consistent destructive-action buttons | ✅ Done |
 | v2.4.2 | **Recurring & Job Builder follow-up**: mixed-case job IDs + never-fire cron edit (#11), long-name ellipsis (#12), recurring jobs filter (#13), duplicate-id guard on create, Audit Log grid parity | ✅ Done |
 | v2.4.3 | **Dashboard UI/UX fixes**: Failed-table column overflow (#17), Create Job dropdown pill alignment (#18), recurring search dropped characters (#19), dark-theme persistence (#20) | ✅ Done |
-| v2.5.0 | **Recurring Schedule Heatmap** (#14) — Planner, Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, stagger Recommendations; Projected (any storage) + Historical (SQL/PG or rollup adapters) sources; storage-agnostic estimated durations via rollup metrics (#21) | ✅ Done |
-| v2.5.1 | **Nav group crash fix** (#23) — sidebar nav group no longer tears down the Blazor circuit on a fresh session with no saved `localStorage` state | ✅ Done |
+| v2.5.0 | **Recurring Schedule Heatmap** (#14) — Planner, Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, stagger Recommendations; Projected (any storage) + Historical (SQL/PG or rollup adapters) sources; storage-agnostic estimated durations via the rollup / Redis metrics adapters `a2n.Hangfire.Dashboard.Rollup` and `.Redis` (#21) | ✅ Done |
+| v2.5.1 | **Redis / rollup analytics fixes**: heatmap estimated duration stuck at `1m` (#27), empty Duration / Queue latency / State timing panels (#26), Analytics ▸ Recurring hanging on large deployments plus blank last-results strip (#25); also the nav group crash fix (#23) | ✅ Done |
+| v2.5.2 | **Rollup completeness**: the collector dropped executions beyond its per-poll cap, so bursts above ~2 000 completions per minute were sampled rather than aggregated on non-SQL storages (#29) | ✅ Done |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |
