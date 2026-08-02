@@ -375,7 +375,7 @@ The rollup adapter shipped in v2.5.0 read back several of its own aggregates inc
 
 ---
 
-## Unreleased — Rollup completeness
+## v2.5.2 — Rollup completeness ✅
 
 **Goal**: Make the rollup a true aggregate instead of a sample under bursty load ([#29](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/29)), the gap left open by v2.5.1.
 

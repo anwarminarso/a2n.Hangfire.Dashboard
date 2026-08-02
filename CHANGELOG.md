@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.5.2 — Rollup completeness
+
+> **Patch release.** Closes the sampling gap v2.5.1 left open on non-SQL storages ([#29](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/29)): under bursty load the rollup collector recorded only what one poll could reach and advanced past the rest. Confined to `a2n.Hangfire.Dashboard.Rollup`; no public API change and no migration.
 
 ### Fixed
 
