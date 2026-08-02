@@ -37,6 +37,14 @@ public sealed class MetricsRollupStore
     private const string SucceededWatermarkField = "succeededWatermarkTicks";
     private const string FailedWatermarkField = "failedWatermarkTicks";
 
+    // Boundaries of the range a capped pass already covered, so the executions it could not reach are
+    // drained by later polls instead of being skipped past (issue #29). Absent for state written by
+    // earlier versions, which parses back as "no gap open".
+    private const string SucceededCoveredFloorField = "succeededCoveredFloorTicks";
+    private const string SucceededCoveredCeilingField = "succeededCoveredCeilingTicks";
+    private const string FailedCoveredFloorField = "failedCoveredFloorTicks";
+    private const string FailedCoveredCeilingField = "failedCoveredCeilingTicks";
+
     private readonly ILogger<MetricsRollupStore> _logger;
 
     public MetricsRollupStore(ILogger<MetricsRollupStore> logger = null)
@@ -46,17 +54,49 @@ public sealed class MetricsRollupStore
 
     public (long Succeeded, long Failed, bool HasState) ReadWatermarks(IStorageConnection connection)
     {
+        var (succeeded, failed, hasState) = ReadCheckpoints(connection);
+        return (succeeded.WatermarkTicks, failed.WatermarkTicks, hasState);
+    }
+
+    /// <summary>
+    /// Reads the full scan position of both state lists, including the range a capped pass covered.
+    /// </summary>
+    internal (ScanCheckpoint Succeeded, ScanCheckpoint Failed, bool HasState) ReadCheckpoints(
+        IStorageConnection connection)
+    {
         var state = SafeReadHash(connection, StateHashKey);
         if (state == null || state.Count == 0)
-            return (0, 0, false);
+            return (default, default, false);
 
-        return (ParseTicks(state, SucceededWatermarkField), ParseTicks(state, FailedWatermarkField), true);
+        return (
+            new ScanCheckpoint(
+                ParseTicks(state, SucceededWatermarkField),
+                ParseTicks(state, SucceededCoveredFloorField),
+                ParseTicks(state, SucceededCoveredCeilingField)),
+            new ScanCheckpoint(
+                ParseTicks(state, FailedWatermarkField),
+                ParseTicks(state, FailedCoveredFloorField),
+                ParseTicks(state, FailedCoveredCeilingField)),
+            true);
     }
 
     public void Commit(
         IStorageConnection connection,
         long succeededWatermark,
         long failedWatermark,
+        RollupAccumulator accumulator,
+        long currentWeek)
+        => Commit(
+            connection,
+            ScanCheckpoint.Collapsed(succeededWatermark),
+            ScanCheckpoint.Collapsed(failedWatermark),
+            accumulator,
+            currentWeek);
+
+    internal void Commit(
+        IStorageConnection connection,
+        ScanCheckpoint succeeded,
+        ScanCheckpoint failed,
         RollupAccumulator accumulator,
         long currentWeek)
     {
@@ -104,18 +144,27 @@ public sealed class MetricsRollupStore
 
         transaction.SetRangeInHash(StateHashKey, new[]
         {
-            new KeyValuePair<string, string>(SucceededWatermarkField, succeededWatermark.ToString(CultureInfo.InvariantCulture)),
-            new KeyValuePair<string, string>(FailedWatermarkField, failedWatermark.ToString(CultureInfo.InvariantCulture)),
+            new KeyValuePair<string, string>(SucceededWatermarkField, Ticks(succeeded.WatermarkTicks)),
+            new KeyValuePair<string, string>(SucceededCoveredFloorField, Ticks(succeeded.CoveredFloorTicks)),
+            new KeyValuePair<string, string>(SucceededCoveredCeilingField, Ticks(succeeded.CoveredCeilingTicks)),
+            new KeyValuePair<string, string>(FailedWatermarkField, Ticks(failed.WatermarkTicks)),
+            new KeyValuePair<string, string>(FailedCoveredFloorField, Ticks(failed.CoveredFloorTicks)),
+            new KeyValuePair<string, string>(FailedCoveredCeilingField, Ticks(failed.CoveredCeilingTicks)),
         });
 
+        // The demand rollup is maintained by this collector or by DemandRollupService, never both, and
+        // that service only understands the plain watermark — mirror it so a switch between adapters
+        // resumes from a sane position.
         transaction.SetRangeInHash(DemandRollupKeys.StateHashKey, new[]
         {
-            new KeyValuePair<string, string>(DemandRollupKeys.SucceededWatermarkField, succeededWatermark.ToString(CultureInfo.InvariantCulture)),
-            new KeyValuePair<string, string>(DemandRollupKeys.FailedWatermarkField, failedWatermark.ToString(CultureInfo.InvariantCulture)),
+            new KeyValuePair<string, string>(DemandRollupKeys.SucceededWatermarkField, Ticks(succeeded.WatermarkTicks)),
+            new KeyValuePair<string, string>(DemandRollupKeys.FailedWatermarkField, Ticks(failed.WatermarkTicks)),
         });
 
         transaction.Commit();
     }
+
+    private static string Ticks(long value) => value.ToString(CultureInfo.InvariantCulture);
 
     public void SeedWatermarks(IStorageConnection connection, long nowTicks)
     {
