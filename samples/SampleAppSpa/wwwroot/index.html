@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- SPA base href. The Hangfire Dashboard uses its own <base href="/hangfire/">
+         inside its branch, so this root base never affects it. -->
+    <base href="/" />
+    <title>SPA Sample</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+    <header class="topbar">
+        <div class="brand">SPA&nbsp;Sample</div>
+        <nav>
+            <!-- Internal SPA links: intercepted by the client-side router (data-spa) -->
+            <a href="/" data-spa>Home</a>
+            <a href="/jobs" data-spa>Jobs</a>
+            <a href="/about" data-spa>About</a>
+            <!-- External full-page navigation: NOT intercepted, opens the dashboard.
+                 The SPA router ignores it because it has no data-spa attribute. -->
+            <a href="/hangfire" class="external">Hangfire Dashboard &rarr;</a>
+        </nav>
+    </header>
+
+    <main id="app">
+        <!-- Client-side router renders here -->
+    </main>
+
+    <!-- Live notifications pushed from the host's SignalR hub (/hubs/notifications) -->
+    <aside id="notifications" class="notifications">
+        <div class="notifications-head">
+            <span>Live notifications</span>
+            <span id="hub-status" class="badge">connecting…</span>
+        </div>
+        <ul id="notification-list"></ul>
+    </aside>
+
+    <footer class="footer">
+        <span>Single Page Application hosted alongside the Hangfire Dashboard.</span>
+    </footer>
+
+    <!-- Vendored SignalR JS client (host app's hub, not the dashboard's) -->
+    <script src="lib/signalr.min.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

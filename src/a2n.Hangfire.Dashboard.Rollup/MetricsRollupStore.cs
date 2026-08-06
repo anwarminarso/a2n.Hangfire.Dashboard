@@ -26,9 +26,24 @@ public sealed class MetricsRollupStore
     private const string HourlyHashKey = KeyPrefix + "hourly";
     private const string QueueTpHashKey = KeyPrefix + "qtp";
     private const string SlowestHashKey = KeyPrefix + "slowest";
+    private const string RecurringHashKey = KeyPrefix + "recurring";
+
+    /// <summary>How many recent executions are retained per recurring job.</summary>
+    private const int MaxRecurringExecutions = 20;
+
+    /// <summary>Suffix of the field that marks an entity prefix inside a duration-style hash.</summary>
+    private const string CountSuffix = ":count";
 
     private const string SucceededWatermarkField = "succeededWatermarkTicks";
     private const string FailedWatermarkField = "failedWatermarkTicks";
+
+    // Boundaries of the range a capped pass already covered, so the executions it could not reach are
+    // drained by later polls instead of being skipped past (issue #29). Absent for state written by
+    // earlier versions, which parses back as "no gap open".
+    private const string SucceededCoveredFloorField = "succeededCoveredFloorTicks";
+    private const string SucceededCoveredCeilingField = "succeededCoveredCeilingTicks";
+    private const string FailedCoveredFloorField = "failedCoveredFloorTicks";
+    private const string FailedCoveredCeilingField = "failedCoveredCeilingTicks";
 
     private readonly ILogger<MetricsRollupStore> _logger;
 
@@ -39,17 +54,49 @@ public sealed class MetricsRollupStore
 
     public (long Succeeded, long Failed, bool HasState) ReadWatermarks(IStorageConnection connection)
     {
+        var (succeeded, failed, hasState) = ReadCheckpoints(connection);
+        return (succeeded.WatermarkTicks, failed.WatermarkTicks, hasState);
+    }
+
+    /// <summary>
+    /// Reads the full scan position of both state lists, including the range a capped pass covered.
+    /// </summary>
+    internal (ScanCheckpoint Succeeded, ScanCheckpoint Failed, bool HasState) ReadCheckpoints(
+        IStorageConnection connection)
+    {
         var state = SafeReadHash(connection, StateHashKey);
         if (state == null || state.Count == 0)
-            return (0, 0, false);
+            return (default, default, false);
 
-        return (ParseTicks(state, SucceededWatermarkField), ParseTicks(state, FailedWatermarkField), true);
+        return (
+            new ScanCheckpoint(
+                ParseTicks(state, SucceededWatermarkField),
+                ParseTicks(state, SucceededCoveredFloorField),
+                ParseTicks(state, SucceededCoveredCeilingField)),
+            new ScanCheckpoint(
+                ParseTicks(state, FailedWatermarkField),
+                ParseTicks(state, FailedCoveredFloorField),
+                ParseTicks(state, FailedCoveredCeilingField)),
+            true);
     }
 
     public void Commit(
         IStorageConnection connection,
         long succeededWatermark,
         long failedWatermark,
+        RollupAccumulator accumulator,
+        long currentWeek)
+        => Commit(
+            connection,
+            ScanCheckpoint.Collapsed(succeededWatermark),
+            ScanCheckpoint.Collapsed(failedWatermark),
+            accumulator,
+            currentWeek);
+
+    internal void Commit(
+        IStorageConnection connection,
+        ScanCheckpoint succeeded,
+        ScanCheckpoint failed,
         RollupAccumulator accumulator,
         long currentWeek)
     {
@@ -97,18 +144,27 @@ public sealed class MetricsRollupStore
 
         transaction.SetRangeInHash(StateHashKey, new[]
         {
-            new KeyValuePair<string, string>(SucceededWatermarkField, succeededWatermark.ToString(CultureInfo.InvariantCulture)),
-            new KeyValuePair<string, string>(FailedWatermarkField, failedWatermark.ToString(CultureInfo.InvariantCulture)),
+            new KeyValuePair<string, string>(SucceededWatermarkField, Ticks(succeeded.WatermarkTicks)),
+            new KeyValuePair<string, string>(SucceededCoveredFloorField, Ticks(succeeded.CoveredFloorTicks)),
+            new KeyValuePair<string, string>(SucceededCoveredCeilingField, Ticks(succeeded.CoveredCeilingTicks)),
+            new KeyValuePair<string, string>(FailedWatermarkField, Ticks(failed.WatermarkTicks)),
+            new KeyValuePair<string, string>(FailedCoveredFloorField, Ticks(failed.CoveredFloorTicks)),
+            new KeyValuePair<string, string>(FailedCoveredCeilingField, Ticks(failed.CoveredCeilingTicks)),
         });
 
+        // The demand rollup is maintained by this collector or by DemandRollupService, never both, and
+        // that service only understands the plain watermark — mirror it so a switch between adapters
+        // resumes from a sane position.
         transaction.SetRangeInHash(DemandRollupKeys.StateHashKey, new[]
         {
-            new KeyValuePair<string, string>(DemandRollupKeys.SucceededWatermarkField, succeededWatermark.ToString(CultureInfo.InvariantCulture)),
-            new KeyValuePair<string, string>(DemandRollupKeys.FailedWatermarkField, failedWatermark.ToString(CultureInfo.InvariantCulture)),
+            new KeyValuePair<string, string>(DemandRollupKeys.SucceededWatermarkField, Ticks(succeeded.WatermarkTicks)),
+            new KeyValuePair<string, string>(DemandRollupKeys.FailedWatermarkField, Ticks(failed.WatermarkTicks)),
         });
 
         transaction.Commit();
     }
+
+    private static string Ticks(long value) => value.ToString(CultureInfo.InvariantCulture);
 
     public void SeedWatermarks(IStorageConnection connection, long nowTicks)
     {
@@ -214,7 +270,7 @@ public sealed class MetricsRollupStore
             return Array.Empty<JobDurationStatsDto>();
 
         var results = new List<JobDurationStatsDto>();
-        foreach (var jobType in hash.Keys.Where(k => !k.Contains(':', StringComparison.Ordinal)).OrderBy(k => k, StringComparer.Ordinal))
+        foreach (var jobType in EnumerateDurationPrefixes(hash))
         {
             var stats = ParseDurationFields(hash, jobType);
             if (stats == null)
@@ -232,10 +288,7 @@ public sealed class MetricsRollupStore
         if (all == null || all.Count == 0)
             return Array.Empty<QueueLatencyStatsDto>();
 
-        var queues = all.Keys
-            .Select(k => k.Contains(':') ? k[..k.IndexOf(':')] : k)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        var queues = EnumerateDurationPrefixes(all);
 
         var results = new List<QueueLatencyStatsDto>();
         foreach (var queue in queues)
@@ -255,6 +308,43 @@ public sealed class MetricsRollupStore
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Derives lifecycle state timings from the rollup aggregates: the enqueued phase is the
+    /// count-weighted mean of the per-queue latency rollup and the processing phase the count-weighted
+    /// mean of the per-job-type duration rollup. The scheduled phase is not tracked by the rollup
+    /// (it needs the pre-enqueue history, which non-SQL storages do not expose cheaply) and stays zero.
+    /// </summary>
+    public AverageStateTimingsDto ReadAverageStateTimings(IStorageConnection connection)
+    {
+        return new AverageStateTimingsDto
+        {
+            AvgScheduledMs = 0d,
+            AvgEnqueuedMs = WeightedMean(SafeReadHash(connection, LatencyHashKey)),
+            AvgProcessingMs = WeightedMean(SafeReadHash(connection, DurationHashKey))
+        };
+    }
+
+    /// <summary>Count-weighted mean over every entity stored in a duration-style hash.</summary>
+    private static double WeightedMean(IReadOnlyDictionary<string, string> hash)
+    {
+        if (hash == null || hash.Count == 0)
+            return 0d;
+
+        var totalCount = 0L;
+        var totalSum = 0d;
+        foreach (var prefix in EnumerateDurationPrefixes(hash))
+        {
+            var fields = ReadDurationFields(hash, prefix);
+            if (fields == null)
+                continue;
+
+            totalCount += fields.Count;
+            totalSum += fields.Sum;
+        }
+
+        return totalCount > 0 ? totalSum / totalCount : 0d;
     }
 
     public IReadOnlyList<SlowestJobDto> ReadSlowestJobs(IStorageConnection connection, int count)
@@ -338,7 +428,10 @@ public sealed class MetricsRollupStore
         var results = new List<QueueThroughputDataPoint>();
         foreach (var entry in hash)
         {
-            var sep = entry.Key.IndexOf(':');
+            // Fields are '{queue}:{bucketKey}'. The bucket key never contains a colon (it is a
+            // yyyy-MM-dd-HH stamp) but a queue name may, so split on the last separator — splitting on
+            // the first one silently dropped data points for such queues.
+            var sep = entry.Key.LastIndexOf(':');
             if (sep <= 0)
                 continue;
 
@@ -563,6 +656,7 @@ public sealed class MetricsRollupStore
         MergeHourly(connection, updates, accumulator);
         MergeQueueThroughput(connection, updates, accumulator);
         MergeSlowest(connection, updates, accumulator);
+        MergeRecurringExecutions(connection, updates, accumulator);
 
         return updates;
     }
@@ -671,6 +765,91 @@ public sealed class MetricsRollupStore
             new($"{field}:max", max.ToString("R", CultureInfo.InvariantCulture)),
             new($"{field}:samples", RollupMath.PackSamples(samples)),
         };
+    }
+
+    /// <summary>
+    /// Merges newly observed recurring-job executions into a bounded, newest-first ring per recurring
+    /// job id. Keeping the history here is what lets the provider answer per-job history with a single
+    /// hash read instead of paging the succeeded/failed lists and probing a job parameter per entry.
+    /// </summary>
+    private static void MergeRecurringExecutions(
+        IStorageConnection connection,
+        Dictionary<string, List<KeyValuePair<string, string>>> updates,
+        RollupAccumulator acc)
+    {
+        if (acc.RecurringExecutions.Count == 0)
+            return;
+
+        var existing = SafeReadHashStatic(connection, RecurringHashKey) ?? new Dictionary<string, string>();
+        var fields = new List<KeyValuePair<string, string>>();
+
+        foreach (var entry in acc.RecurringExecutions)
+        {
+            var merged = RecurringExecutionCodec
+                .Parse(existing.GetValueOrDefault(entry.Key))
+                .Concat(entry.Value)
+                .GroupBy(e => e.JobId ?? string.Empty, StringComparer.Ordinal)
+                .Select(g => g.First())
+                .OrderByDescending(e => e.ExecutedAtUtc)
+                .Take(MaxRecurringExecutions)
+                .ToList();
+
+            fields.Add(new KeyValuePair<string, string>(entry.Key, RecurringExecutionCodec.Pack(merged)));
+        }
+
+        updates[RecurringHashKey] = fields;
+    }
+
+    /// <summary>
+    /// Reads the retained execution history for one recurring job, newest first. A single hash read;
+    /// no scanning of the succeeded/failed lists.
+    /// </summary>
+    public IReadOnlyList<RecurringJobExecutionDto> ReadRecurringExecutions(
+        IStorageConnection connection, string recurringJobId, int count)
+    {
+        if (string.IsNullOrEmpty(recurringJobId))
+            return Array.Empty<RecurringJobExecutionDto>();
+
+        var hash = SafeReadHash(connection, RecurringHashKey);
+        if (hash == null || !hash.TryGetValue(recurringJobId, out var packed))
+            return Array.Empty<RecurringJobExecutionDto>();
+
+        return RecurringExecutionCodec.Parse(packed)
+            .OrderByDescending(e => e.ExecutedAtUtc)
+            .Take(count)
+            .Select(e => new RecurringJobExecutionDto
+            {
+                JobId = e.JobId,
+                ExecutedAt = new DateTimeOffset(DateTime.SpecifyKind(e.ExecutedAtUtc, DateTimeKind.Utc)),
+                DurationMs = e.DurationMs,
+                Succeeded = e.Succeeded
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Reads the retained execution history for every recurring job in one hash read, newest first per
+    /// job. Used to fill the health view's last-results strip and average duration.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<RollupAccumulator.RecurringExecutionEntry>> ReadAllRecurringExecutions(
+        IStorageConnection connection)
+    {
+        var result = new Dictionary<string, IReadOnlyList<RollupAccumulator.RecurringExecutionEntry>>(StringComparer.Ordinal);
+        var hash = SafeReadHash(connection, RecurringHashKey);
+        if (hash == null || hash.Count == 0)
+            return result;
+
+        foreach (var entry in hash)
+        {
+            var parsed = RecurringExecutionCodec.Parse(entry.Value)
+                .OrderByDescending(e => e.ExecutedAtUtc)
+                .ToList();
+
+            if (parsed.Count > 0)
+                result[entry.Key] = parsed;
+        }
+
+        return result;
     }
 
     private static void MergeCounterHash(
@@ -797,6 +976,21 @@ public sealed class MetricsRollupStore
             JobName = parts.Length > 2 ? parts[2] : "Unknown"
         };
     }
+
+    /// <summary>
+    /// Recovers the distinct entity prefixes (job type or queue name) stored in a duration-style hash.
+    /// Fields are persisted by <see cref="WriteDurationFields"/> as <c>{prefix}:count</c>,
+    /// <c>{prefix}:sum</c>, … so the prefix is the part before the trailing <c>:count</c> marker.
+    /// Splitting on the first colon is not safe: prefixes such as <c>MyJob.Run</c> are free to contain
+    /// separators of their own.
+    /// </summary>
+    private static List<string> EnumerateDurationPrefixes(IReadOnlyDictionary<string, string> hash)
+        => hash.Keys
+            .Where(k => k != null && k.EndsWith(CountSuffix, StringComparison.Ordinal) && k.Length > CountSuffix.Length)
+            .Select(k => k[..^CountSuffix.Length])
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToList();
 
     private static JobDurationStatsDto ParseDurationFields(
         IReadOnlyDictionary<string, string> hash, string prefix, bool isQueue = false)

@@ -137,6 +137,39 @@ public interface IStorageMetricsProvider
         string recurringJobId, int count, CancellationToken ct);
 
     /// <summary>
+    /// Returns the last N executions for several recurring jobs at once, keyed by recurring job id and
+    /// ordered by execution time descending within each job. Recurring jobs without retained history
+    /// are omitted from the result.
+    /// </summary>
+    /// <remarks>
+    /// The Recurring Health view needs history for every recurring job at once. Calling
+    /// <see cref="GetRecurringJobExecutionsAsync"/> in a loop costs one storage round-trip per job,
+    /// which does not scale past a few dozen recurring jobs. This is a default interface method that
+    /// falls back to exactly that loop, so third-party providers keep working unchanged; the bundled
+    /// adapters override it with a single query or hash read.
+    /// </remarks>
+    /// <param name="recurringJobIds">The recurring job identifiers to fetch history for</param>
+    /// <param name="count">Number of results per job (1–100)</param>
+    /// <param name="ct">Cancellation token</param>
+    async Task<IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>>> GetRecurringJobExecutionsBatchAsync(
+        IReadOnlyCollection<string> recurringJobIds, int count, CancellationToken ct)
+    {
+        var result = new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>(StringComparer.Ordinal);
+        if (recurringJobIds == null || recurringJobIds.Count == 0)
+            return result;
+
+        foreach (var id in recurringJobIds.Where(i => !string.IsNullOrEmpty(i)).Distinct(StringComparer.Ordinal))
+        {
+            ct.ThrowIfCancellationRequested();
+            var executions = await GetRecurringJobExecutionsAsync(id, count, ct).ConfigureAwait(false);
+            if (executions is { Count: > 0 })
+                result[id] = executions;
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Returns average time spent in each state (Scheduled, Enqueued, Processing) for lifecycle analysis.
     /// </summary>
     /// <param name="from">Start of time range</param>

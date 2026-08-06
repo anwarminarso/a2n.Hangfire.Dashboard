@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="../Directory.Build.props" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="a2n.Hangfire.Console/a2n.Hangfire.Console.csproj" />
     <Project Path="a2n.Hangfire.Dashboard/a2n.Hangfire.Dashboard.csproj" />
@@ -23,6 +26,7 @@
     <Project Path="../samples/SampleAppRazor/SampleAppRazor.csproj" />
     <Project Path="../samples/SampleAppMvc/SampleAppMvc.csproj" />
     <Project Path="../samples/SampleAppBlazor/SampleAppBlazor.csproj" />
+    <Project Path="../samples/SampleAppSpa/SampleAppSpa.csproj" />
     <Project Path="../samples/SampleAppOrig/SampleAppOrig.csproj" />
   </Folder>
 </Solution>

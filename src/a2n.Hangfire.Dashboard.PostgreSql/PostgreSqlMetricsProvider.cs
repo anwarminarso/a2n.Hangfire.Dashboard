@@ -565,6 +565,71 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>>> GetRecurringJobExecutionsBatchAsync(
+        IReadOnlyCollection<string> recurringJobIds, int count, CancellationToken ct)
+    {
+        var result = new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>(StringComparer.Ordinal);
+
+        var ids = (recurringJobIds ?? Array.Empty<string>())
+            .Where(i => !string.IsNullOrEmpty(i))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (ids.Count == 0)
+            return result;
+
+        if (count <= 0) count = 10;
+        if (count > 100) count = 100;
+
+        // One pass for every recurring job: ROW_NUMBER partitioned by the stored RecurringJobId keeps
+        // the newest @Count executions per job, mirroring EnrichRecurringJobHealthAsync.
+        var sql = $@"
+            WITH ranked AS (
+                SELECT jp.value AS ""RecurringJobIdStored"",
+                       j.id::text AS ""JobId"",
+                       s.createdat AS ""ExecutedAt"",
+                       COALESCE((s.data::json ->> 'PerformanceDuration')::numeric, 0) AS ""DurationMs"",
+                       CASE WHEN s.name = 'Succeeded' THEN true ELSE false END AS ""Succeeded"",
+                       CASE WHEN s.name = 'Failed' THEN s.reason ELSE NULL END AS ""ErrorMessage"",
+                       ROW_NUMBER() OVER (PARTITION BY jp.value ORDER BY s.createdat DESC) AS rn
+                FROM {JobTable} j
+                INNER JOIN {JobParameterTable} jp
+                    ON jp.jobid = j.id AND jp.name = 'RecurringJobId'
+                INNER JOIN {StateTable} s ON s.id = j.stateid
+                WHERE jp.value = ANY(@RecurringJobIdValues)
+                  AND s.name IN ('Succeeded', 'Failed')
+            )
+            SELECT ""RecurringJobIdStored"", ""JobId"", ""ExecutedAt"", ""DurationMs"", ""Succeeded"", ""ErrorMessage""
+            FROM ranked
+            WHERE rn <= @Count
+            ORDER BY ""RecurringJobIdStored"", rn";
+
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        var rows = await connection.QueryAsync<RecurringExecutionBatchRow>(
+            new CommandDefinition(sql,
+                new { RecurringJobIdValues = JobParameterMatching.AllValueForms(ids), Count = count },
+                cancellationToken: ct));
+
+        var plainIdLookup = JobParameterMatching.BuildStoredValueToPlainIdLookup(ids);
+        foreach (var group in rows.GroupBy(r =>
+                     JobParameterMatching.ResolvePlainRecurringJobId(r.RecurringJobIdStored, plainIdLookup)))
+        {
+            result[group.Key] = group.Select(r => new RecurringJobExecutionDto
+            {
+                JobId = r.JobId,
+                ExecutedAt = r.ExecutedAt,
+                DurationMs = r.DurationMs,
+                Succeeded = r.Succeeded,
+                ErrorMessage = r.ErrorMessage
+            }).ToList();
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<HistoricalScheduleBucket>> GetRecurringScheduleBucketsAsync(
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {
@@ -896,6 +961,16 @@ public class PostgreSqlMetricsProvider : IStorageMetricsProvider
         public string RecurringJobIdStored { get; set; }
         public string StateName { get; set; }
         public decimal DurationMs { get; set; }
+    }
+
+    private class RecurringExecutionBatchRow
+    {
+        public string RecurringJobIdStored { get; set; }
+        public string JobId { get; set; }
+        public DateTimeOffset ExecutedAt { get; set; }
+        public double DurationMs { get; set; }
+        public bool Succeeded { get; set; }
+        public string ErrorMessage { get; set; }
     }
 
     #endregion

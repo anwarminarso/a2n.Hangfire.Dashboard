@@ -137,6 +137,10 @@ public sealed class RollupMetricsProvider : IStorageMetricsProvider
             if (recurring == null || recurring.Count == 0)
                 return (IReadOnlyList<RecurringJobHealthDto>)Array.Empty<RecurringJobHealthDto>();
 
+            // One hash read covers every job's recent executions, so the last-results strip and the
+            // average duration cost nothing extra per recurring job.
+            var histories = _store.ReadAllRecurringExecutions(connection);
+
             return (IReadOnlyList<RecurringJobHealthDto>)recurring
                 .Where(r => r != null)
                 .Select(r =>
@@ -147,6 +151,12 @@ public sealed class RollupMetricsProvider : IStorageMetricsProvider
                     else if (r.NextExecution.HasValue && r.NextExecution.Value < DateTime.UtcNow)
                         status = RecurringJobHealthStatus.Warning;
 
+                    var executions = r.Id != null && histories.TryGetValue(r.Id, out var found)
+                        ? found
+                        : Array.Empty<RollupAccumulator.RecurringExecutionEntry>();
+
+                    var durations = executions.Where(e => e.DurationMs > 0).Select(e => e.DurationMs).ToList();
+
                     return new RecurringJobHealthDto
                     {
                         JobId = r.Id,
@@ -154,97 +164,80 @@ public sealed class RollupMetricsProvider : IStorageMetricsProvider
                         LastRunTime = r.LastExecution.HasValue
                             ? new DateTimeOffset(DateTime.SpecifyKind(r.LastExecution.Value, DateTimeKind.Utc))
                             : null,
+                        AverageDurationMs = durations.Count > 0 ? durations.Average() : 0d,
                         ErrorMessage = r.Error,
-                        LastExecutionResults = Array.Empty<bool>()
+                        LastExecutionResults = executions.Select(e => e.Succeeded).ToList()
                     };
                 })
                 .ToList();
         }, ct);
     }
 
+    /// <summary>
+    /// Serves a recurring job's execution history from the rollup ring maintained by
+    /// <see cref="ExecutionRollupCollector"/>: a single hash read.
+    /// </summary>
+    /// <remarks>
+    /// The previous implementation paged the succeeded and failed lists (up to 2000 jobs each) and
+    /// probed the <c>RecurringJobId</c> parameter of every job it saw. With one call per recurring job
+    /// that is O(jobs × 4000) storage round-trips, which never completes on a large Redis deployment.
+    /// </remarks>
     public Task<IReadOnlyList<RecurringJobExecutionDto>> GetRecurringJobExecutionsAsync(
         string recurringJobId, int count, CancellationToken ct)
     {
         if (count <= 0) count = 10;
         if (count > 100) count = 100;
 
-        return Task.Run(() =>
+        return WithConnection(connection => _store.ReadRecurringExecutions(connection, recurringJobId, count), ct);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>>> GetRecurringJobExecutionsBatchAsync(
+        IReadOnlyCollection<string> recurringJobIds, int count, CancellationToken ct)
+    {
+        if (count <= 0) count = 10;
+        if (count > 100) count = 100;
+
+        if (recurringJobIds == null || recurringJobIds.Count == 0)
         {
-            ct.ThrowIfCancellationRequested();
-            var api = _storage.GetMonitoringApi();
-            using var connection = _storage.GetConnection();
-            var results = new List<RecurringJobExecutionDto>();
+            return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>>>(
+                new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>(StringComparer.Ordinal));
+        }
 
-            void ScanSucceeded(int offset)
+        var wanted = new HashSet<string>(recurringJobIds.Where(i => !string.IsNullOrEmpty(i)), StringComparer.Ordinal);
+
+        return WithConnection(connection =>
+        {
+            var histories = _store.ReadAllRecurringExecutions(connection);
+            var result = new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>(StringComparer.Ordinal);
+
+            foreach (var entry in histories)
             {
-                var page = api.SucceededJobs(offset, PageSize);
-                if (page == null || page.Count == 0)
-                    return;
+                if (!wanted.Contains(entry.Key))
+                    continue;
 
-                foreach (var entry in page)
-                {
-                    var param = SafeGetParameter(connection, entry.Key, "RecurringJobId");
-                    if (!string.Equals(param, recurringJobId, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    var dto = entry.Value;
-                    if (dto?.SucceededAt == null)
-                        continue;
-
-                    results.Add(new RecurringJobExecutionDto
+                var executions = entry.Value
+                    .Take(count)
+                    .Select(e => new RecurringJobExecutionDto
                     {
-                        JobId = entry.Key,
-                        ExecutedAt = new DateTimeOffset(
-                            DateTime.SpecifyKind(dto.SucceededAt.Value, DateTimeKind.Utc)),
-                        DurationMs = dto.TotalDuration ?? 0,
-                        Succeeded = true
-                    });
-                }
+                        JobId = e.JobId,
+                        ExecutedAt = new DateTimeOffset(DateTime.SpecifyKind(e.ExecutedAtUtc, DateTimeKind.Utc)),
+                        DurationMs = e.DurationMs,
+                        Succeeded = e.Succeeded
+                    })
+                    .ToList();
+
+                if (executions.Count > 0)
+                    result[entry.Key] = executions;
             }
 
-            void ScanFailed(int offset)
-            {
-                var page = api.FailedJobs(offset, PageSize);
-                if (page == null || page.Count == 0)
-                    return;
-
-                foreach (var entry in page)
-                {
-                    var param = SafeGetParameter(connection, entry.Key, "RecurringJobId");
-                    if (!string.Equals(param, recurringJobId, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    var dto = entry.Value;
-                    if (dto?.FailedAt == null)
-                        continue;
-
-                    results.Add(new RecurringJobExecutionDto
-                    {
-                        JobId = entry.Key,
-                        ExecutedAt = new DateTimeOffset(
-                            DateTime.SpecifyKind(dto.FailedAt.Value, DateTimeKind.Utc)),
-                        DurationMs = 0,
-                        Succeeded = false,
-                        ErrorMessage = dto.ExceptionMessage
-                    });
-                }
-            }
-
-            for (var offset = 0; offset < 2000 && results.Count < count; offset += PageSize)
-                ScanSucceeded(offset);
-            for (var offset = 0; offset < 2000 && results.Count < count; offset += PageSize)
-                ScanFailed(offset);
-
-            return (IReadOnlyList<RecurringJobExecutionDto>)results
-                .OrderByDescending(r => r.ExecutedAt)
-                .Take(count)
-                .ToList();
+            return (IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>>)result;
         }, ct);
     }
 
     public Task<AverageStateTimingsDto> GetAverageStateTimingsAsync(
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
-        => Task.FromResult(new AverageStateTimingsDto());
+        => WithConnection(connection => _store.ReadAverageStateTimings(connection), ct);
 
     public Task<IReadOnlyList<HourlyActivityDto>> GetHourlyActivityPatternAsync(
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
@@ -262,8 +255,6 @@ public sealed class RollupMetricsProvider : IStorageMetricsProvider
         DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
         => WithConnection(connection => _store.ReadRecurringScheduleBuckets(connection, from, to), ct);
 
-    private const int PageSize = 200;
-
     private Task<T> WithConnection<T>(Func<IStorageConnection, T> factory, CancellationToken ct)
     {
         return Task.Run(() =>
@@ -272,11 +263,5 @@ public sealed class RollupMetricsProvider : IStorageMetricsProvider
             using var connection = _storage.GetConnection();
             return factory(connection);
         }, ct);
-    }
-
-    private static string SafeGetParameter(IStorageConnection connection, string jobId, string name)
-    {
-        try { return connection.GetJobParameter(jobId, name); }
-        catch { return null; }
     }
 }

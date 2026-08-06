@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using a2n.Hangfire.Dashboard.Heatmap;
 using Hangfire;
@@ -17,7 +18,28 @@ namespace a2n.Hangfire.Dashboard.Rollup;
 public sealed class ExecutionRollupCollector : IHostedService, IDisposable
 {
     private const int PageSize = 200;
+
+    /// <summary>
+    /// Upper bound on executions <em>aggregated</em> per state per poll. Each one costs two
+    /// <see cref="IStorageConnection.GetJobParameter"/> round-trips, so this is what keeps a poll's cost
+    /// bounded. Entries an earlier pass already covered are stepped over without spending budget.
+    /// </summary>
     private const int MaxJobsPerPoll = 2000;
+
+    /// <summary>
+    /// Upper bound on pages read per state per poll while a backlog is being drained. A resuming pass
+    /// has to page over the range it already covered before it reaches the pending gap, which costs one
+    /// read per <see cref="PageSize"/> entries and no job-parameter lookups, so the budget is far larger
+    /// than <see cref="MaxJobsPerPoll"/> allows for.
+    /// </summary>
+    private const int MaxPagesWhileResuming = 1000;
+
+    /// <summary>
+    /// Upper bound on pages read per state per poll with no backlog open. Every entry above the
+    /// watermark is aggregated, so the record budget is spent within this many pages.
+    /// </summary>
+    private const int MaxPagesPerPoll = (MaxJobsPerPoll / PageSize) + 2;
+
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(10);
 
@@ -91,7 +113,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
         catch (OperationCanceledException) { return false; }
     }
 
-    private void PollOnce(CancellationToken ct)
+    internal void PollOnce(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -108,7 +130,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
             return;
 
         var nowTicks = DateTime.UtcNow.Ticks;
-        var (succeededWatermark, failedWatermark, hasState) = _store.ReadWatermarks(connection);
+        var (succeededCheckpoint, failedCheckpoint, hasState) = _store.ReadCheckpoints(connection);
 
         if (!hasState)
         {
@@ -118,118 +140,151 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
         }
 
         var accumulator = new RollupAccumulator();
-        var newSucceeded = ProcessSucceeded(monitoringApi, connection, succeededWatermark, accumulator, ct);
-        var newFailed = ProcessFailed(monitoringApi, connection, failedWatermark, accumulator, ct);
 
-        ct.ThrowIfCancellationRequested();
-        _store.Commit(connection, newSucceeded, newFailed, accumulator, Internal.RollupTime.WeekIndex(nowTicks));
-    }
-
-    private long ProcessSucceeded(
-        IMonitoringApi api,
-        IStorageConnection connection,
-        long watermarkTicks,
-        RollupAccumulator accumulator,
-        CancellationToken ct)
-    {
-        var newWatermark = watermarkTicks;
-        var offset = 0;
-
-        while (offset < MaxJobsPerPoll)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            JobList<SucceededJobDto> page;
-            try { page = api.SucceededJobs(offset, PageSize); }
-            catch (Exception ex)
+        var succeeded = Scan(
+            "succeeded",
+            succeededCheckpoint,
+            (from, count) => monitoringApi.SucceededJobs(from, count),
+            dto => dto.SucceededAt,
+            (jobId, dto, succeededAt) =>
             {
-                _logger.LogError(ex, "Failed to read succeeded jobs for rollup collection.");
-                break;
-            }
+                // Prefer the Succeeded state's own measurements: PerformanceDuration is the pure
+                // execution time and Latency the enqueued→processing wait, matching what the SQL
+                // adapters read. TotalDuration is the sum of both, so it is only a fallback for
+                // storages that do not persist the state data.
+                var performanceDuration = ReadStateDataLong(dto.StateData, "PerformanceDuration")
+                                          ?? dto.TotalDuration;
+                var latency = ReadStateDataLong(dto.StateData, "Latency");
 
-            if (page == null || page.Count == 0)
-                break;
+                accumulator.Record(BuildExecution(
+                    connection, jobId, dto.Job, succeededAt, succeeded: true, performanceDuration, latency));
+            },
+            ct);
 
-            var sawNew = false;
-            foreach (var entry in page)
+        var failed = Scan(
+            "failed",
+            failedCheckpoint,
+            (from, count) => monitoringApi.FailedJobs(from, count),
+            dto => dto.FailedAt,
+            (jobId, dto, failedAt) =>
             {
-                var jobId = entry.Key;
-                var dto = entry.Value;
-                if (dto?.SucceededAt is not DateTime succeededAt)
-                    continue;
-
-                var ticks = Internal.RollupTime.AsUtcTicks(succeededAt);
-                if (ticks <= watermarkTicks)
-                    continue;
-
-                sawNew = true;
-                if (ticks > newWatermark)
-                    newWatermark = ticks;
-
-                var exec = BuildExecution(connection, jobId, dto.Job, succeededAt, succeeded: true, dto.TotalDuration, latency: null);
-                accumulator.Record(exec);
-            }
-
-            offset += page.Count;
-            if (page.Count < PageSize || !sawNew)
-                break;
-        }
-
-        return newWatermark;
-    }
-
-    private long ProcessFailed(
-        IMonitoringApi api,
-        IStorageConnection connection,
-        long watermarkTicks,
-        RollupAccumulator accumulator,
-        CancellationToken ct)
-    {
-        var newWatermark = watermarkTicks;
-        var offset = 0;
-
-        while (offset < MaxJobsPerPoll)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            JobList<FailedJobDto> page;
-            try { page = api.FailedJobs(offset, PageSize); }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to read failed jobs for rollup collection.");
-                break;
-            }
-
-            if (page == null || page.Count == 0)
-                break;
-
-            var sawNew = false;
-            foreach (var entry in page)
-            {
-                var jobId = entry.Key;
-                var dto = entry.Value;
-                if (dto?.FailedAt is not DateTime failedAt)
-                    continue;
-
-                var ticks = Internal.RollupTime.AsUtcTicks(failedAt);
-                if (ticks <= watermarkTicks)
-                    continue;
-
-                sawNew = true;
-                if (ticks > newWatermark)
-                    newWatermark = ticks;
-
-                var exec = BuildExecution(connection, jobId, dto.Job, failedAt, succeeded: false, totalDuration: null, latency: null);
+                var exec = BuildExecution(
+                    connection, jobId, dto.Job, failedAt, succeeded: false, totalDuration: null, latency: null);
                 exec.ExceptionType = dto.ExceptionType;
                 accumulator.Record(exec);
+            },
+            ct);
+
+        ReportScan(succeeded, "succeeded");
+        ReportScan(failed, "failed");
+
+        ct.ThrowIfCancellationRequested();
+        _store.Commit(connection, succeeded.Checkpoint, failed.Checkpoint, accumulator,
+            Internal.RollupTime.WeekIndex(nowTicks));
+    }
+
+    /// <summary>
+    /// Pages one state list newest-first and aggregates everything the checkpoint has not covered yet.
+    /// </summary>
+    /// <remarks>
+    /// The pass stops once it reaches the watermark (the checkpoint then collapses to a single
+    /// watermark), when the list runs out, or when its budget is spent. In the last case the checkpoint
+    /// records the range that was covered so the following polls can drain the remainder from the top
+    /// down, instead of advancing the watermark past executions no pass ever looked at.
+    /// </remarks>
+    private Internal.ScanResult Scan<TDto>(
+        string stateName,
+        Internal.ScanCheckpoint checkpoint,
+        Func<int, int, JobList<TDto>> readPage,
+        Func<TDto, DateTime?> completedAt,
+        Action<string, TDto, DateTime> record,
+        CancellationToken ct)
+        where TDto : class
+    {
+        var window = new Internal.ScanWindow(checkpoint, MaxJobsPerPoll);
+        var pageBudget = checkpoint.HasGap ? MaxPagesWhileResuming : MaxPagesPerPoll;
+        var offset = 0;
+        var pagesRead = 0;
+        var drained = false;
+        var stop = false;
+
+        while (!stop && pagesRead < pageBudget)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            JobList<TDto> page;
+            try { page = readPage(offset, PageSize); }
+            catch (Exception ex)
+            {
+                // Not drained: the checkpoint keeps whatever this pass covered and nothing is written off.
+                _logger.LogError(ex, "Failed to read {State} jobs for rollup collection.", stateName);
+                break;
             }
 
-            offset += page.Count;
-            if (page.Count < PageSize || !sawNew)
+            if (page == null || page.Count == 0)
+            {
+                drained = true;
                 break;
+            }
+
+            pagesRead++;
+
+            foreach (var entry in page)
+            {
+                if (entry.Value == null || completedAt(entry.Value) is not DateTime executedAt)
+                    continue;
+
+                var action = window.Classify(Internal.RollupTime.AsUtcTicks(executedAt));
+                if (action == Internal.ScanAction.Skip)
+                    continue;
+
+                if (action != Internal.ScanAction.Record)
+                {
+                    drained = action == Internal.ScanAction.StopDrained;
+                    stop = true;
+                    break;
+                }
+
+                record(entry.Key, entry.Value, executedAt);
+                window.OnRecorded(Internal.RollupTime.AsUtcTicks(executedAt));
+            }
+
+            if (stop)
+                break;
+
+            offset += page.Count;
+            if (page.Count < PageSize)
+            {
+                drained = true;
+                break;
+            }
         }
 
-        return newWatermark;
+        return window.Complete(drained);
+    }
+
+    private void ReportScan(Internal.ScanResult result, string state)
+    {
+        if (result.DataDropped)
+        {
+            _logger.LogWarning(
+                "Rollup collector cannot keep up with {State} job volume: more than {Cap} {State} jobs " +
+                "completed while an earlier backlog was still being drained, so the executions between " +
+                "the two scanned ranges are missing from Analytics. Sustained load above {Cap} {State} " +
+                "jobs per {Interval}s poll exceeds what this collector can aggregate; use the SQL Server " +
+                "or PostgreSQL adapter when complete history is required.",
+                state, MaxJobsPerPoll, state, MaxJobsPerPoll, state, (int)PollInterval.TotalSeconds);
+            return;
+        }
+
+        if (result.Checkpoint.HasGap)
+        {
+            _logger.LogInformation(
+                "Rollup collector aggregated {Count} {State} jobs and reached its per-poll cap; a further " +
+                "{Pending} of {State} executions is still pending and will be aggregated by the following " +
+                "polls.",
+                result.Recorded, state, result.Checkpoint.PendingSpan, state);
+        }
     }
 
     private ProcessedExecution BuildExecution(
@@ -269,6 +324,20 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
     {
         try { return connection.GetJobParameter(jobId, name); }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// Reads a millisecond value from a job state's serialized data, returning <c>null</c> when the
+    /// field is absent or unparseable.
+    /// </summary>
+    private static long? ReadStateDataLong(IDictionary<string, string> stateData, string field)
+    {
+        if (stateData == null || !stateData.TryGetValue(field, out var raw))
+            return null;
+
+        return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
     }
 
     private static string ResolveJobType(Job job)

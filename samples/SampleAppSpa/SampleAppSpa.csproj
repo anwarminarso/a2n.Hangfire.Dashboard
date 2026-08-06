@@ -1,28 +1,24 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    
+
     <!-- Required: tells MSBuild to include Blazor framework assets (blazor.web.js)
-         even though this project has no .razor files of its own.
-         When consuming via NuGet, this is handled automatically by the package's buildTransitive props. -->
+         even though this project has no .razor files of its own. The Hangfire Dashboard
+         (a Blazor Server RCL) needs _framework/blazor.web.js to boot its circuit.
+         When consuming via NuGet, this is handled automatically by the package's
+         buildTransitive props. -->
     <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
-    <PackageReference Include="Hangfire.SqlServer" Version="1.8.*" />
-    <PackageReference Include="Hangfire.PostgreSql" Version="1.21.*" />
-    <PackageReference Include="Hangfire.Redis.StackExchange" Version="1.12.*" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
-    <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard.SqlServer\a2n.Hangfire.Dashboard.SqlServer.csproj" />
-    <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard.PostgreSql\a2n.Hangfire.Dashboard.PostgreSql.csproj" />
-    <ProjectReference Include="..\..\src\a2n.Hangfire.Dashboard.Redis\a2n.Hangfire.Dashboard.Redis.csproj" />
     <ProjectReference Include="..\..\src\a2n.Hangfire.Console\a2n.Hangfire.Console.csproj" />
     <ProjectReference Include="..\..\src\a2n.Hangfire.Tags\a2n.Hangfire.Tags.csproj" />
     <ProjectReference Include="..\SampleApp.SharedJobs\SampleApp.SharedJobs.csproj" />

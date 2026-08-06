@@ -31,6 +31,13 @@ public sealed class RollupAccumulator
     public Dictionary<int, long> RetryBuckets { get; } = new();
     public Dictionary<string, long> VolumeByJobType { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, long> FailedVolumeByJobType { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Recent executions per recurring job id, used to serve execution history and the
+    /// last-N result strip without scanning the succeeded/failed lists.
+    /// </summary>
+    public Dictionary<string, List<RecurringExecutionEntry>> RecurringExecutions { get; } = new(StringComparer.Ordinal);
+
     public Dictionary<int, long> HourlyActivity { get; } = new();
     public Dictionary<string, Dictionary<string, long>> QueueThroughput { get; } = new(StringComparer.Ordinal);
     public List<SlowestJobEntry> SlowestJobs { get; } = new();
@@ -82,6 +89,15 @@ public sealed class RollupAccumulator
         public string JobName { get; init; }
         public double DurationMs { get; init; }
         public DateTime CompletedAt { get; init; }
+    }
+
+    /// <summary>One recorded execution of a recurring job, kept in a bounded per-job ring.</summary>
+    public sealed class RecurringExecutionEntry
+    {
+        public string JobId { get; init; }
+        public DateTime ExecutedAtUtc { get; init; }
+        public bool Succeeded { get; init; }
+        public double DurationMs { get; init; }
     }
 
     public void Record(ProcessedExecution exec)
@@ -167,6 +183,17 @@ public sealed class RollupAccumulator
 
         if (exec.IsRecurring)
         {
+            if (!RecurringExecutions.TryGetValue(exec.RecurringJobId, out var executions))
+                RecurringExecutions[exec.RecurringJobId] = executions = new List<RecurringExecutionEntry>();
+
+            executions.Add(new RecurringExecutionEntry
+            {
+                JobId = exec.JobId,
+                ExecutedAtUtc = utc,
+                Succeeded = exec.Succeeded,
+                DurationMs = exec.Succeeded ? exec.DurationMs : 0d
+            });
+
             var dayIndex = Internal.RollupTime.DayIndexMondayZero(utc);
             var schedKey = (week, queue, dayIndex, hour);
             if (!ScheduleBuckets.TryGetValue(schedKey, out var sched))
