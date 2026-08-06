@@ -100,6 +100,44 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Demo data for the Throttling pages. The dashboard reads Hangfire.Throttling's storage format
+// directly, so the sample seeds equivalent entries without referencing that (commercial) package:
+// semaphores with holders, a held mutex, and a fixed rate-limit window. Disable by setting
+// SeedThrottling=false.
+if (builder.Configuration["SeedThrottling"] != "false")
+using (var seedScope = app.Services.CreateScope())
+{
+    var storage = seedScope.ServiceProvider.GetRequiredService<JobStorage>();
+
+    // A job stuck in Processing on a server that no longer exists: demonstrates the
+    // orphaned-holder detection and the detach recovery flow on the semaphore details page.
+    var orphanJobId = new Hangfire.BackgroundJobClient(storage).Create(
+        Hangfire.Common.Job.FromExpression(() => Console.WriteLine("orphan demo")),
+        new FakeProcessingState("dead-server-01"));
+
+    using var seedConn = storage.GetConnection();
+    using var seedTx = seedConn.CreateWriteTransaction();
+    foreach (var (id, max, desc) in new[] { ("globallimiter", "100", ""), ("recalculateinventory", "10", "Inventory module concurrency budget"), ("submitscrapdealertransaction", "1", ""), ("rebuildinventory", "10", "") })
+    {
+        seedTx.AddToSet("sync:set:sm", id);
+        seedTx.SetRangeInHash($"sync:sm:{id}", new Dictionary<string, string> { ["max"] = max, ["d"] = desc });
+    }
+    seedTx.AddToSet("sync:j:sm:globallimiter", "13538");
+    seedTx.AddToSet("sync:j:sm:globallimiter", "13558");
+    seedTx.AddToSet("sync:j:sm:recalculateinventory", orphanJobId);
+    seedTx.AddToSet("sync:j:sm:recalculateinventory", "13538");
+    seedTx.AddToSet("sync:j:sm:submitscrapdealertransaction", "13600");
+    seedTx.AddToSet("sync:set:mx", $"recalculateinventory_3ec979f5-56f7-4437-98e8-5a24d3f402a0/{orphanJobId}");
+    seedTx.AddToSet($"sync:mx:recalculateinventory_3ec979f5-56f7-4437-98e8-5a24d3f402a0", orphanJobId);
+    seedTx.AddToSet("sync:set:fw", "government-report-uploads");
+    seedTx.SetRangeInHash("sync:fw:government-report-uploads", new Dictionary<string, string>
+    {
+        ["obj"] = "{\"Limit\":10,\"IntervalInSeconds\":3600,\"ActiveWindow\":123,\"Counter\":4}",
+        ["d"] = "Hourly FTP upload cap",
+    });
+    seedTx.Commit();
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
@@ -160,3 +198,19 @@ app.Lifetime.ApplicationStarted.Register(SampleJobsSeeder.SeedAll);
 app.MapHealthChecks("/health");
 
 app.Run();
+
+/// <summary>
+/// Demo-only state that mimics Processing on a given server (ProcessingState's constructor is
+/// internal). Used to simulate a job that aborted on a dead server while holding throttling
+/// primitives, so the Throttling pages can demonstrate orphan detection and detach.
+/// </summary>
+internal sealed class FakeProcessingState : Hangfire.States.IState
+{
+    private readonly string _serverId;
+    public FakeProcessingState(string serverId) => _serverId = serverId;
+    public string Name => Hangfire.States.ProcessingState.StateName;
+    public string Reason => null;
+    public bool IsFinal => false;
+    public bool IgnoreJobLoadException => false;
+    public Dictionary<string, string> SerializeData() => new() { ["ServerId"] = _serverId, ["WorkerId"] = "1" };
+}

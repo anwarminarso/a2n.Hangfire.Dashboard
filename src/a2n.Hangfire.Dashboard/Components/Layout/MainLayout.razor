@@ -163,6 +163,7 @@
             "/servers" => "Servers",
             "/queues" => "Queues",
             "/retries" => "Retries",
+            "/throttling" => "Throttling",
             "/tags" => "Tags",
             "/search" => "Search",
             "/audit" => "Audit Log",
@@ -170,6 +171,7 @@
             _ when path.StartsWith("/analytics/") => "Analytics Dashboard",
             _ when path.StartsWith("/jobs/details/") => $"Job #{path.Split('/').Last()}",
             _ when path.StartsWith("/tags/") => "Tags",
+            _ when path.StartsWith("/throttling/semaphores/") => "Semaphore Details",
             _ when path.StartsWith("/recurring/") => "Recurring Job Editor",
             _ => "Dashboard"
         };

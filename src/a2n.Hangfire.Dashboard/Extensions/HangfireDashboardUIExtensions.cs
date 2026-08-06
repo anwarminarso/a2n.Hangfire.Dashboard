@@ -135,6 +135,19 @@ public static class HangfireDashboardUIExtensions
             return new TagsDataReader(storage);
         });
 
+        services.AddScoped<ThrottlingDataReader>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            return new ThrottlingDataReader(storage);
+        });
+
+        services.AddScoped<ThrottlingOperationsService>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            var audit = sp.GetRequiredService<AuditLogService>();
+            return new ThrottlingOperationsService(storage, audit);
+        });
+
         services.AddScoped<JobGraphService>();
 
         services.AddScoped<SearchService>(sp =>

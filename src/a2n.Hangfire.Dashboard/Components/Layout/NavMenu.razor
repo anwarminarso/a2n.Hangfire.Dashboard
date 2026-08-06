@@ -4,6 +4,7 @@
 @using Microsoft.Extensions.DependencyInjection
 @inject HangfireMonitorService Monitor
 @inject TagsDataReader TagsReader
+@inject ThrottlingDataReader ThrottlingReader
 @inject QueueOperationsStateCache StateCache
 @inject IServiceProvider ServiceProvider
 @inject NavigationManager Navigation
@@ -115,6 +116,13 @@
             <i class="bi bi-arrow-counterclockwise hf-nav-icon"></i>
             <span>Retries</span>
         </NavLink>
+        @if (_hasThrottling)
+        {
+            <NavLink class="hf-nav-item" href="throttling">
+                <i class="bi bi-sliders hf-nav-icon"></i>
+                <span>Throttling</span>
+            </NavLink>
+        }
         <NavLink class="hf-nav-item" href="tags">
             <i class="bi bi-tag hf-nav-icon"></i>
             <span>Tags</span>
@@ -171,6 +179,7 @@
 
     private StatisticsDto _stats;
     private long _tagsCount;
+    private bool _hasThrottling;
     private int _pausedQueueCount;
     private bool _analyticsAvailable;
     private HubConnection _hubConnection;
@@ -263,9 +272,13 @@
     {
         var stats = await Task.Run(() => Monitor.GetStatistics());
         var tagsCount = await Task.Run(() => TagsReader.GetTagsCount());
+        // Only computed when not yet detected: the nav item appears once the host application
+        // starts writing Hangfire.Throttling data and stays visible for the circuit's lifetime.
+        var hasThrottling = _hasThrottling || await Task.Run(() => ThrottlingReader.HasThrottlingData());
         var ops = await StateCache.GetAsync();
         _stats = stats;
         _tagsCount = tagsCount;
+        _hasThrottling = hasThrottling;
         _pausedQueueCount = ops.MaintenanceMode ? 0 : ops.PausedQueues.Count;
     }
 

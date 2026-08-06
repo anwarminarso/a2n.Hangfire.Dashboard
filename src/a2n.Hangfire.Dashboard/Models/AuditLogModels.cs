@@ -25,6 +25,10 @@ public static class AuditAction
     public const string QueueResumed = "queue.resumed";
     public const string MaintenanceEnabled = "maintenance.enabled";
     public const string MaintenanceDisabled = "maintenance.disabled";
+
+    // Throttling actions (Hangfire.Throttling primitives)
+    public const string ThrottlingSemaphoreDetached = "throttling.semaphore-detached";
+    public const string ThrottlingMutexDetached = "throttling.mutex-detached";
 }
 
 /// <summary>

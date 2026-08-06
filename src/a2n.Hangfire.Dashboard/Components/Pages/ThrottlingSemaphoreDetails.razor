@@ -1,0 +1,214 @@
+@page "/throttling/semaphores/{SemaphoreId}"
+@using a2n.Hangfire.Dashboard.Models
+@inject ThrottlingDataReader ThrottlingReader
+@inject ThrottlingOperationsService ThrottlingOps
+@inject DashboardUIOptions Options
+
+<PageTitle>@(_notFound ? "Semaphore Not Found" : $"Semaphore {SemaphoreId}")</PageTitle>
+
+<div class="d-flex gap-2 mb-3 align-items-center">
+    <a class="btn btn-sm btn-outline-secondary" href="throttling">
+        <i class="bi bi-arrow-left"></i> All Throttling
+    </a>
+</div>
+
+@if (_loading)
+{
+    <p class="text-body-secondary">Loading...</p>
+}
+else if (_notFound)
+{
+    <EmptyState Icon="question-circle" Color="warning"
+                Message="@($"Semaphore \"{SemaphoreId}\" was not found.")"
+                Subtitle="It may have been removed, or the id may be misspelled." />
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h4 class="font-monospace mb-1">@_semaphore.Id</h4>
+                    <p class="text-body-secondary mb-0">
+                        @(_semaphore.Description ?? "No description.")
+                    </p>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="LoadDataAsync">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                </button>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-3" style="max-width: 420px;">
+                <div class="progress flex-grow-1" style="height: 8px;">
+                    <div class="progress-bar @GetUsageBarClass()" style="width: @GetUsagePercent()%"></div>
+                </div>
+                <span class="text-body-secondary text-nowrap">
+                    @_holders.Count / @_semaphore.MaxCount slots in use
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <h6 class="text-body-secondary mb-2">Holders</h6>
+
+    @if (_holders.Count == 0)
+    {
+        <p class="text-body-secondary"><small>No jobs currently hold this semaphore.</small></p>
+    }
+    else
+    {
+        @if (_holders.Any(x => x.IsOrphaned))
+        {
+            <div class="alert alert-warning py-2">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                Some holders are recorded as Processing on servers without a recent heartbeat.
+                Those jobs aborted without releasing their slot and will never release it on their
+                own — detaching them is the intended recovery.
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 18%;">Job</th>
+                                <th style="width: 14%;">State</th>
+                                <th>Server</th>
+                                @if (!Options.IsReadOnly)
+                                {
+                                    <th style="width: 110px;"></th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var holder in _holders)
+                            {
+                                <tr>
+                                    <td>
+                                        <a href="jobs/details/@holder.JobId" class="font-monospace">@ShortenId(holder.JobId)</a>
+                                    </td>
+                                    <td>
+                                        @if (holder.StateName is null)
+                                        {
+                                            <span class="text-body-secondary" title="The job no longer exists in storage.">unknown</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge @GetStateBadgeClass(holder.StateName)">@holder.StateName</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (holder.ServerId is null)
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            <ServerLabel FullId="@holder.ServerId" />
+                                            @if (holder.IsOrphaned)
+                                            {
+                                                <span class="badge bg-danger ms-2" title="The processing server has no recent heartbeat.">server offline</span>
+                                            }
+                                        }
+                                    </td>
+                                    @if (!Options.IsReadOnly)
+                                    {
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => AskDetach(holder)">
+                                                <i class="bi bi-scissors me-1"></i>Detach
+                                            </button>
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    <ConfirmModal Visible="@(_pendingDetach is not null)"
+                  Title="Detach job from semaphore"
+                  Message="@($"Detach job #{_pendingDetach?.JobId} from semaphore \"{_semaphore.Id}\"? The slot is freed immediately; only do this when the holding job will never release it on its own.")"
+                  ConfirmText="Detach"
+                  OnConfirm="ConfirmDetach"
+                  OnCancel="() => _pendingDetach = null" />
+}
+
+@code {
+    [Parameter] public string SemaphoreId { get; set; }
+
+    private bool _loading = true;
+    private bool _notFound;
+    private SemaphoreDto _semaphore;
+    private IReadOnlyList<ThrottleHolderDto> _holders = [];
+    private ThrottleHolderDto _pendingDetach;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+
+        await Task.Run(() =>
+        {
+            _semaphore = ThrottlingReader.GetSemaphore(SemaphoreId);
+            _notFound = _semaphore is null;
+            _holders = _notFound ? [] : ThrottlingReader.GetHolderDetails(_semaphore.HolderJobIds);
+        });
+
+        _loading = false;
+    }
+
+    private void AskDetach(ThrottleHolderDto holder) => _pendingDetach = holder;
+
+    private async Task ConfirmDetach()
+    {
+        var pending = _pendingDetach;
+        _pendingDetach = null;
+
+        if (pending is null) return;
+
+        await Task.Run(() => ThrottlingOps.DetachFromSemaphore(_semaphore.Id, pending.JobId));
+        await LoadDataAsync();
+    }
+
+    private int GetUsagePercent()
+    {
+        if (_semaphore.MaxCount <= 0) return 0;
+        var percent = (int)Math.Round(100.0 * _holders.Count / _semaphore.MaxCount);
+        return Math.Min(percent, 100);
+    }
+
+    private string GetUsageBarClass()
+    {
+        var percent = GetUsagePercent();
+        return percent switch
+        {
+            >= 100 => "bg-danger",
+            >= 75 => "bg-warning",
+            _ => "bg-success",
+        };
+    }
+
+    private static string GetStateBadgeClass(string state)
+    {
+        return state?.ToLowerInvariant() switch
+        {
+            "succeeded" => "bg-success",
+            "failed" => "bg-danger",
+            "processing" => "bg-warning text-dark",
+            "enqueued" => "bg-info text-dark",
+            "scheduled" => "bg-info text-dark",
+            "deleted" => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
+    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+}
