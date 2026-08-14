@@ -1,6 +1,17 @@
 namespace a2n.Hangfire.Dashboard.Models;
 
 /// <summary>
+/// The three rate-limit window kinds Hangfire.Throttling supports. Each serializes its state with a
+/// different shape, so the window type selects how <c>ThrottlingDataReader</c> parses it.
+/// </summary>
+public static class ThrottleWindowTypes
+{
+    public const string Fixed = "Fixed";
+    public const string Sliding = "Sliding";
+    public const string Dynamic = "Dynamic";
+}
+
+/// <summary>
 /// A semaphore registered by Hangfire.Throttling, with its current holders.
 /// </summary>
 public class SemaphoreDto
@@ -43,11 +54,18 @@ public class ThrottleHolderDto
     public string ServerId { get; set; }
 
     /// <summary>
-    /// True when the job is recorded as Processing on a server that has not sent a heartbeat
-    /// recently — the job aborted without releasing its slot and will never do so on its own.
-    /// Such holders are the safe candidates for detaching.
+    /// True when the job can no longer release its own slot: its record has expired out of
+    /// storage, it settled into a final state without releasing, or it is recorded as Processing
+    /// on a server that has stopped sending heartbeats. Such holders are the safe candidates for
+    /// detaching; anything else may still be running.
     /// </summary>
     public bool IsOrphaned { get; set; }
+
+    /// <summary>
+    /// Why the holder was flagged as orphaned, shown to the operator before they detach it.
+    /// Null when <see cref="IsOrphaned"/> is false.
+    /// </summary>
+    public string OrphanReason { get; set; }
 }
 
 /// <summary>

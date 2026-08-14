@@ -129,6 +129,25 @@ else
     }
 
     <h6 class="text-body-secondary mt-3 mb-2">Held Mutexes</h6>
+
+    @if (_detachResult is not null)
+    {
+        <div class="alert @(_detachResult.Value.Detached ? "alert-success" : "alert-secondary") py-2 d-flex align-items-center">
+            <i class="bi @(_detachResult.Value.Detached ? "bi-check-circle" : "bi-info-circle") me-2"></i>
+            <span class="flex-grow-1">
+                @if (_detachResult.Value.Detached)
+                {
+                    @($"Job #{_detachResult.Value.JobId} was detached and the mutex released.")
+                }
+                else
+                {
+                    @($"Job #{_detachResult.Value.JobId} no longer held the mutex — nothing was changed.")
+                }
+            </span>
+            <button type="button" class="btn-close" @onclick="() => _detachResult = null"></button>
+        </div>
+    }
+
     @if (_mutexRows.Count > 0)
     {
         <div class="card">
@@ -171,6 +190,12 @@ else
                                         {
                                             <span class="badge @GetStateBadgeClass(row.Holder.StateName)">@row.Holder.StateName</span>
                                         }
+                                        @* Orphaned holders may have no server at all — an expired job, or one that
+                                           reached a final state without releasing — so the badge lives here. *@
+                                        @if (row.Holder?.IsOrphaned == true)
+                                        {
+                                            <span class="badge bg-danger ms-2" title="@row.Holder.OrphanReason">orphaned</span>
+                                        }
                                     </td>
                                     <td>
                                         @if (row.Holder?.ServerId is null)
@@ -180,10 +205,6 @@ else
                                         else
                                         {
                                             <ServerLabel FullId="@row.Holder.ServerId" />
-                                            @if (row.Holder.IsOrphaned)
-                                            {
-                                                <span class="badge bg-danger ms-2" title="The processing server has no recent heartbeat — this job aborted without releasing the mutex.">server offline</span>
-                                            }
                                         }
                                     </td>
                                     @if (!Options.IsReadOnly)
@@ -269,6 +290,10 @@ else
     private IReadOnlyList<ThrottleWindowDto> _windows = [];
     private MutexRow _pendingDetach;
 
+    // Detaching is idempotent, so a click can legitimately change nothing — say which happened
+    // rather than silently reloading and leaving the operator to infer it from the table.
+    private (string JobId, bool Detached)? _detachResult;
+
     private sealed class MutexRow
     {
         public string MutexId { get; set; }
@@ -324,7 +349,8 @@ else
 
         if (pending?.Holder is null) return;
 
-        await Task.Run(() => ThrottlingOps.DetachFromMutex(pending.MutexId, pending.Holder.JobId));
+        var detached = await Task.Run(() => ThrottlingOps.DetachFromMutex(pending.MutexId, pending.Holder.JobId));
+        _detachResult = (pending.Holder.JobId, detached);
         await LoadDataAsync();
     }
 

@@ -22,9 +22,9 @@ public class ThrottlingOperationsServiceTests
     private AuditLogService CreateAudit() => new(_storage, _options, null, null, null);
 
     private ThrottlingOperationsService CreateService(AuditLogService audit = null)
-        => new(_storage, audit ?? CreateAudit());
+        => new(_storage, audit ?? CreateAudit(), _options);
 
-    private ThrottlingDataReader CreateReader() => new(_storage);
+    private ThrottlingDataReader CreateReader() => new(_storage, _options);
 
     private void Seed(Action<IWriteOnlyTransaction> write)
     {
@@ -34,52 +34,109 @@ public class ThrottlingOperationsServiceTests
         transaction.Commit();
     }
 
+    private void SeedSemaphore(params string[] holders)
+        => Seed(tx =>
+        {
+            tx.AddToSet("sync:set:sm", "email-dispatch");
+            tx.SetRangeInHash("sync:sm:email-dispatch", new Dictionary<string, string> { ["max"] = "100", ["d"] = "" });
+            foreach (var holder in holders)
+            {
+                tx.AddToSet("sync:j:sm:email-dispatch", holder);
+            }
+        });
+
+    private void SeedMutex(string id, string holder)
+        => Seed(tx =>
+        {
+            tx.AddToSet("sync:set:mx", $"{id}/{holder}");
+            tx.AddToSet($"sync:mx:{id}", holder);
+        });
+
     [Fact]
     public void DetachFromSemaphore_RemovesOnlyTheGivenHolder()
     {
-        Seed(tx =>
-        {
-            tx.AddToSet("sync:set:sm", "globallimiter");
-            tx.SetRangeInHash("sync:sm:globallimiter", new Dictionary<string, string> { ["max"] = "100", ["d"] = "" });
-            tx.AddToSet("sync:j:sm:globallimiter", "13538");
-            tx.AddToSet("sync:j:sm:globallimiter", "13558");
-        });
+        SeedSemaphore("41201", "41202");
 
-        CreateService().DetachFromSemaphore("globallimiter", "13538");
+        Assert.True(CreateService().DetachFromSemaphore("email-dispatch", "41201"));
 
         var semaphore = Assert.Single(CreateReader().GetSemaphores());
-        Assert.Equal(new[] { "13558" }, semaphore.HolderJobIds);
+        Assert.Equal(new[] { "41202" }, semaphore.HolderJobIds);
     }
 
     [Fact]
     public void DetachFromSemaphore_WritesAuditEntry()
     {
+        SeedSemaphore("41201");
         var audit = CreateAudit();
 
-        CreateService(audit).DetachFromSemaphore("globallimiter", "13538");
+        CreateService(audit).DetachFromSemaphore("email-dispatch", "41201");
 
         var entry = Assert.Single(audit.Query(new AuditLogFilter(), 0, 10));
         Assert.Equal(AuditAction.ThrottlingSemaphoreDetached, entry.Action);
-        Assert.Equal("globallimiter", entry.Target);
-        Assert.Contains("13538", entry.Reason);
+        Assert.Equal("email-dispatch", entry.Target);
+        Assert.Contains("41201", entry.Reason);
     }
 
     [Fact]
     public void DetachFromSemaphore_IsIdempotent_WhenJobIsNotAHolder()
     {
-        CreateService().DetachFromSemaphore("globallimiter", "999");
+        SeedSemaphore("41201");
+
+        Assert.False(CreateService().DetachFromSemaphore("email-dispatch", "999"));
+
+        var semaphore = Assert.Single(CreateReader().GetSemaphores());
+        Assert.Equal(new[] { "41201" }, semaphore.HolderJobIds);
+    }
+
+    [Fact]
+    public void DetachFromSemaphore_WritesNoAuditEntry_WhenNothingChanged()
+    {
+        // RemoveFromSet succeeds whether or not the entry was there, so without a check the audit
+        // log would record a detach that freed nothing — and the operator would be told a slot was
+        // recovered when it was already free.
+        SeedSemaphore("41201");
+        var audit = CreateAudit();
+
+        CreateService(audit).DetachFromSemaphore("email-dispatch", "999");
+
+        Assert.Empty(audit.Query(new AuditLogFilter(), 0, 10));
+    }
+
+    [Fact]
+    public void DetachFromSemaphore_MatchesHolder_WhenIdCasingDiffers()
+    {
+        // Hangfire.Throttling lowercases ids on write, so an id arriving from a route or link with
+        // different casing must still resolve to the stored key.
+        SeedSemaphore("41201");
+
+        Assert.True(CreateService().DetachFromSemaphore("Email-Dispatch", "41201"));
+        Assert.Empty(Assert.Single(CreateReader().GetSemaphores()).HolderJobIds);
+    }
+
+    [Fact]
+    public void Detach_DoesNothing_WhenDashboardIsReadOnly()
+    {
+        SeedSemaphore("41201");
+        SeedMutex("resource_a", "1");
+        _options.IsReadOnly = true;
+
+        var audit = CreateAudit();
+        var service = CreateService(audit);
+
+        Assert.False(service.DetachFromSemaphore("email-dispatch", "41201"));
+        Assert.False(service.DetachFromMutex("resource_a", "1"));
+
+        Assert.Equal(new[] { "41201" }, Assert.Single(CreateReader().GetSemaphores()).HolderJobIds);
+        Assert.Single(CreateReader().GetMutexes());
+        Assert.Empty(audit.Query(new AuditLogFilter(), 0, 10));
     }
 
     [Fact]
     public void DetachFromMutex_RemovesRegistryPairAndHolder()
     {
-        Seed(tx =>
-        {
-            tx.AddToSet("sync:set:mx", "resource_a/13538");
-            tx.AddToSet("sync:mx:resource_a", "13538");
-        });
+        SeedMutex("resource_a", "41201");
 
-        CreateService().DetachFromMutex("resource_a", "13538");
+        Assert.True(CreateService().DetachFromMutex("resource_a", "41201"));
 
         Assert.Empty(CreateReader().GetMutexes());
 
@@ -92,13 +149,8 @@ public class ThrottlingOperationsServiceTests
     [Fact]
     public void DetachFromMutex_LeavesOtherMutexesIntact()
     {
-        Seed(tx =>
-        {
-            tx.AddToSet("sync:set:mx", "resource_a/1");
-            tx.AddToSet("sync:mx:resource_a", "1");
-            tx.AddToSet("sync:set:mx", "resource_b/2");
-            tx.AddToSet("sync:mx:resource_b", "2");
-        });
+        SeedMutex("resource_a", "1");
+        SeedMutex("resource_b", "2");
 
         CreateService().DetachFromMutex("resource_a", "1");
 
@@ -109,13 +161,39 @@ public class ThrottlingOperationsServiceTests
     [Fact]
     public void DetachFromMutex_WritesAuditEntry()
     {
+        SeedMutex("resource_a", "41201");
         var audit = CreateAudit();
 
-        CreateService(audit).DetachFromMutex("resource_a", "13538");
+        CreateService(audit).DetachFromMutex("resource_a", "41201");
 
         var entry = Assert.Single(audit.Query(new AuditLogFilter(), 0, 10));
         Assert.Equal(AuditAction.ThrottlingMutexDetached, entry.Action);
         Assert.Equal("resource_a", entry.Target);
+    }
+
+    [Fact]
+    public void DetachFromMutex_WritesNoAuditEntry_WhenNothingChanged()
+    {
+        SeedMutex("resource_a", "1");
+        var audit = CreateAudit();
+
+        Assert.False(CreateService(audit).DetachFromMutex("resource_a", "999"));
+
+        Assert.Empty(audit.Query(new AuditLogFilter(), 0, 10));
+        Assert.Single(CreateReader().GetMutexes());
+    }
+
+    [Fact]
+    public void DetachFromMutex_ReleasesHolder_RecordedOnlyInHolderSet()
+    {
+        // Tolerate a registry entry without its "/jobId" suffix, which GetMutexes already handles.
+        Seed(tx =>
+        {
+            tx.AddToSet("sync:set:mx", "legacy_entry");
+            tx.AddToSet("sync:mx:legacy_entry", "42");
+        });
+
+        Assert.True(CreateService().DetachFromMutex("legacy_entry", "42"));
     }
 
     [Fact]

@@ -50,6 +50,24 @@ else
 
     <h6 class="text-body-secondary mb-2">Holders</h6>
 
+    @if (_detachResult is not null)
+    {
+        <div class="alert @(_detachResult.Value.Detached ? "alert-success" : "alert-secondary") py-2 d-flex align-items-center">
+            <i class="bi @(_detachResult.Value.Detached ? "bi-check-circle" : "bi-info-circle") me-2"></i>
+            <span class="flex-grow-1">
+                @if (_detachResult.Value.Detached)
+                {
+                    @($"Job #{_detachResult.Value.JobId} was detached and its slot freed.")
+                }
+                else
+                {
+                    @($"Job #{_detachResult.Value.JobId} no longer held a slot — nothing was changed.")
+                }
+            </span>
+            <button type="button" class="btn-close" @onclick="() => _detachResult = null"></button>
+        </div>
+    }
+
     @if (_holders.Count == 0)
     {
         <p class="text-body-secondary"><small>No jobs currently hold this semaphore.</small></p>
@@ -60,9 +78,10 @@ else
         {
             <div class="alert alert-warning py-2">
                 <i class="bi bi-exclamation-triangle me-2"></i>
-                Some holders are recorded as Processing on servers without a recent heartbeat.
-                Those jobs aborted without releasing their slot and will never release it on their
-                own — detaching them is the intended recovery.
+                Some holders can no longer release their slot on their own: their job has expired out
+                of storage, finished without releasing, or is recorded as Processing on a server that
+                has stopped sending heartbeats. Detaching them is the intended recovery — hover the
+                <span class="badge bg-danger">orphaned</span> badge for the reason in each case.
             </div>
         }
 
@@ -97,6 +116,13 @@ else
                                         {
                                             <span class="badge @GetStateBadgeClass(holder.StateName)">@holder.StateName</span>
                                         }
+                                        @* A holder can be orphaned with no server at all — an expired job, or one that
+                                           reached a final state without releasing — so the badge belongs here rather
+                                           than in the server column. *@
+                                        @if (holder.IsOrphaned)
+                                        {
+                                            <span class="badge bg-danger ms-2" title="@holder.OrphanReason">orphaned</span>
+                                        }
                                     </td>
                                     <td>
                                         @if (holder.ServerId is null)
@@ -106,10 +132,6 @@ else
                                         else
                                         {
                                             <ServerLabel FullId="@holder.ServerId" />
-                                            @if (holder.IsOrphaned)
-                                            {
-                                                <span class="badge bg-danger ms-2" title="The processing server has no recent heartbeat.">server offline</span>
-                                            }
                                         }
                                     </td>
                                     @if (!Options.IsReadOnly)
@@ -146,6 +168,10 @@ else
     private IReadOnlyList<ThrottleHolderDto> _holders = [];
     private ThrottleHolderDto _pendingDetach;
 
+    // Detaching is idempotent, so a click can legitimately change nothing — say which happened
+    // rather than silently reloading and leaving the operator to infer it from the table.
+    private (string JobId, bool Detached)? _detachResult;
+
     protected override async Task OnParametersSetAsync()
     {
         await LoadDataAsync();
@@ -174,7 +200,8 @@ else
 
         if (pending is null) return;
 
-        await Task.Run(() => ThrottlingOps.DetachFromSemaphore(_semaphore.Id, pending.JobId));
+        var detached = await Task.Run(() => ThrottlingOps.DetachFromSemaphore(_semaphore.Id, pending.JobId));
+        _detachResult = (pending.JobId, detached);
         await LoadDataAsync();
     }
 

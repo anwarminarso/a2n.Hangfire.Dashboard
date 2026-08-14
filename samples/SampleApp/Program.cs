@@ -117,24 +117,53 @@ using (var seedScope = app.Services.CreateScope())
 
     using var seedConn = storage.GetConnection();
     using var seedTx = seedConn.CreateWriteTransaction();
-    foreach (var (id, max, desc) in new[] { ("globallimiter", "100", ""), ("recalculateinventory", "10", "Inventory module concurrency budget"), ("submitscrapdealertransaction", "1", ""), ("rebuildinventory", "10", "") })
+    foreach (var (id, max, desc) in new[]
+    {
+        ("email-dispatch", "100", "Fleet-wide outbound email cap"),
+        ("report-generation", "10", "Reporting module concurrency budget"),
+        ("legacy-api-sync", "1", "One caller at a time"),
+        ("image-processing", "10", ""),
+    })
     {
         seedTx.AddToSet("sync:set:sm", id);
         seedTx.SetRangeInHash($"sync:sm:{id}", new Dictionary<string, string> { ["max"] = max, ["d"] = desc });
     }
-    seedTx.AddToSet("sync:j:sm:globallimiter", "13538");
-    seedTx.AddToSet("sync:j:sm:globallimiter", "13558");
-    seedTx.AddToSet("sync:j:sm:recalculateinventory", orphanJobId);
-    seedTx.AddToSet("sync:j:sm:recalculateinventory", "13538");
-    seedTx.AddToSet("sync:j:sm:submitscrapdealertransaction", "13600");
-    seedTx.AddToSet("sync:set:mx", $"recalculateinventory_3ec979f5-56f7-4437-98e8-5a24d3f402a0/{orphanJobId}");
-    seedTx.AddToSet($"sync:mx:recalculateinventory_3ec979f5-56f7-4437-98e8-5a24d3f402a0", orphanJobId);
-    seedTx.AddToSet("sync:set:fw", "government-report-uploads");
-    seedTx.SetRangeInHash("sync:fw:government-report-uploads", new Dictionary<string, string>
+
+    seedTx.AddToSet("sync:j:sm:email-dispatch", "41201");
+    seedTx.AddToSet("sync:j:sm:email-dispatch", "41202");
+    seedTx.AddToSet("sync:j:sm:report-generation", orphanJobId);
+    seedTx.AddToSet("sync:j:sm:report-generation", "41201");
+    seedTx.AddToSet("sync:j:sm:legacy-api-sync", "41203");
+
+    // Mutex ids are typically a resource key built from a job argument.
+    const string mutexId = "report-generation_customer-4821";
+    seedTx.AddToSet("sync:set:mx", $"{mutexId}/{orphanJobId}");
+    seedTx.AddToSet($"sync:mx:{mutexId}", orphanJobId);
+
+    // One window of each kind, using Hangfire.Throttling's actual serialized shape: abbreviated
+    // field names, and a count field whose type varies by window kind — a plain number for fixed
+    // windows, a bucket map for sliding ones, and a nested per-format map for dynamic ones.
+    seedTx.AddToSet("sync:set:fw", "partner-api-uploads");
+    seedTx.SetRangeInHash("sync:fw:partner-api-uploads", new Dictionary<string, string>
     {
-        ["obj"] = "{\"Limit\":10,\"IntervalInSeconds\":3600,\"ActiveWindow\":123,\"Counter\":4}",
-        ["d"] = "Hourly FTP upload cap",
+        ["obj"] = "{\"l\":10,\"i\":3600,\"w\":1786359600,\"c\":4}",
+        ["d"] = "Hourly upload cap",
     });
+
+    seedTx.AddToSet("sync:set:sw", "search-indexing");
+    seedTx.SetRangeInHash("sync:sw:search-indexing", new Dictionary<string, string>
+    {
+        ["obj"] = "{\"l\":4,\"i\":600,\"b\":120,\"t\":1786362360,\"c\":{\"0\":3,\"1\":1}}",
+        ["d"] = "Rolling 10-minute reindex budget",
+    });
+
+    seedTx.AddToSet("sync:set:dp", "webhook-delivery");
+    seedTx.SetRangeInHash("sync:dp:webhook-delivery", new Dictionary<string, string>
+    {
+        ["obj"] = "{\"i\":600,\"b\":120,\"t\":1786362360,\"maxc\":1000,\"maxs\":3,\"mins\":3,\"w\":{\"webhook-delivery\":{\"0\":3}}}",
+        ["d"] = "Adaptive per-endpoint delivery rate",
+    });
+
     seedTx.Commit();
 }
 

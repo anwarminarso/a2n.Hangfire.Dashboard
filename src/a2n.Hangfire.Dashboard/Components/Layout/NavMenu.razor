@@ -4,7 +4,7 @@
 @using Microsoft.Extensions.DependencyInjection
 @inject HangfireMonitorService Monitor
 @inject TagsDataReader TagsReader
-@inject ThrottlingDataReader ThrottlingReader
+@inject ThrottlingDetectionCache ThrottlingDetection
 @inject QueueOperationsStateCache StateCache
 @inject IServiceProvider ServiceProvider
 @inject NavigationManager Navigation
@@ -274,7 +274,8 @@
         var tagsCount = await Task.Run(() => TagsReader.GetTagsCount());
         // Only computed when not yet detected: the nav item appears once the host application
         // starts writing Hangfire.Throttling data and stays visible for the circuit's lifetime.
-        var hasThrottling = _hasThrottling || await Task.Run(() => ThrottlingReader.HasThrottlingData());
+        // The read is shared across circuits, so installations without the package don't repeat it.
+        var hasThrottling = _hasThrottling || await ThrottlingDetection.GetAsync();
         var ops = await StateCache.GetAsync();
         _stats = stats;
         _tagsCount = tagsCount;
