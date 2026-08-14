@@ -127,6 +127,10 @@ public static class HangfireDashboardUIExtensions
         // the package don't repeat five set counts on every new circuit to reach the same answer.
         services.AddSingleton<ThrottlingDetectionCache>();
 
+        // Shared short-TTL snapshot behind the Throttling page's auto-refresh, so N open tabs cost
+        // one storage pass per TTL rather than N passes per tick.
+        services.AddSingleton<ThrottlingSnapshotCache>();
+
         services.AddScoped<ConsoleDataReader>(sp =>
         {
             var storage = sp.GetRequiredService<JobStorage>();

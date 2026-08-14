@@ -1,6 +1,8 @@
 @page "/throttling/semaphores/{SemaphoreId}"
 @using a2n.Hangfire.Dashboard.Models
+@implements IDisposable
 @inject ThrottlingDataReader ThrottlingReader
+@inject ThrottlingSnapshotCache Snapshots
 @inject ThrottlingOperationsService ThrottlingOps
 @inject DashboardUIOptions Options
 
@@ -33,7 +35,7 @@ else
                         @(_semaphore.Description ?? "No description.")
                     </p>
                 </div>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="LoadDataAsync">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshNowAsync">
                     <i class="bi bi-arrow-clockwise me-1"></i>Refresh
                 </button>
             </div>
@@ -167,6 +169,10 @@ else
     private SemaphoreDto _semaphore;
     private IReadOnlyList<ThrottleHolderDto> _holders = [];
     private ThrottleHolderDto _pendingDetach;
+    private Timer _refreshTimer;
+
+    /// <summary>How often the holder table re-reads storage while the page is open.</summary>
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(6);
 
     // Detaching is idempotent, so a click can legitimately change nothing — say which happened
     // rather than silently reloading and leaving the operator to infer it from the table.
@@ -175,11 +181,30 @@ else
     protected override async Task OnParametersSetAsync()
     {
         await LoadDataAsync();
+
+        // Restart on every parameter change so navigating between semaphores doesn't stack timers.
+        _refreshTimer?.Dispose();
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await LoadDataAsync(showSpinner: false);
+                await InvokeAsync(StateHasChanged);
+            }
+            catch { }
+        }, null, RefreshInterval, RefreshInterval);
     }
 
-    private async Task LoadDataAsync()
+    /// <summary>
+    /// Reads this one semaphore directly rather than through <c>ThrottlingSnapshotCache</c>: the
+    /// snapshot resolves holder state for mutexes, not for a specific semaphore's holders, and this
+    /// page is opened one at a time rather than left open in bulk.
+    /// </summary>
+    private async Task LoadDataAsync(bool showSpinner = true)
     {
-        _loading = true;
+        // On timer ticks the table is already populated, so flipping the spinner would blank it
+        // out every few seconds for no reason.
+        if (showSpinner) _loading = true;
 
         await Task.Run(() =>
         {
@@ -190,6 +215,9 @@ else
 
         _loading = false;
     }
+
+    /// <summary>The table is already populated, so re-reading without flashing the spinner.</summary>
+    private Task RefreshNowAsync() => LoadDataAsync(showSpinner: false);
 
     private void AskDetach(ThrottleHolderDto holder) => _pendingDetach = holder;
 
@@ -202,8 +230,14 @@ else
 
         var detached = await Task.Run(() => ThrottlingOps.DetachFromSemaphore(_semaphore.Id, pending.JobId));
         _detachResult = (pending.JobId, detached);
-        await LoadDataAsync();
+
+        // The Throttling page's occupancy bars read the shared snapshot, so a detach here has to
+        // invalidate it too or navigating back would show the freed slot as still taken.
+        Snapshots.Invalidate();
+        await LoadDataAsync(showSpinner: false);
     }
+
+    public void Dispose() => _refreshTimer?.Dispose();
 
     private int GetUsagePercent()
     {

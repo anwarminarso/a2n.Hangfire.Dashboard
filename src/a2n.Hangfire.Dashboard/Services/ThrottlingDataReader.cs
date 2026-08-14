@@ -131,7 +131,7 @@ public class ThrottlingDataReader
     /// <summary>
     /// Gets all registered semaphores with their limits and current holders.
     /// </summary>
-    public IReadOnlyList<SemaphoreDto> GetSemaphores()
+    public virtual IReadOnlyList<SemaphoreDto> GetSemaphores()
     {
         using var connection = _storage.GetReadOnlyConnection();
         if (connection is not JobStorageConnection storageConnection)

@@ -1,6 +1,7 @@
 @page "/throttling"
 @using a2n.Hangfire.Dashboard.Models
-@inject ThrottlingDataReader ThrottlingReader
+@implements IDisposable
+@inject ThrottlingSnapshotCache Snapshots
 @inject ThrottlingOperationsService ThrottlingOps
 @inject DashboardUIOptions Options
 
@@ -58,7 +59,7 @@ else
             @_semaphores.Count semaphore@(_semaphores.Count != 1 ? "s" : ""),
             @_mutexRows.Count held mutex@(_mutexRows.Count != 1 ? "es" : "")@(_windows.Count > 0 ? $", {_windows.Count} window{(_windows.Count != 1 ? "s" : "")}" : "")
         </small>
-        <button class="btn btn-sm btn-outline-secondary" @onclick="LoadDataAsync">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshNowAsync">
             <i class="bi bi-arrow-clockwise me-1"></i>Refresh
         </button>
     </div>
@@ -289,6 +290,10 @@ else
     private List<MutexRow> _mutexRows = [];
     private IReadOnlyList<ThrottleWindowDto> _windows = [];
     private MutexRow _pendingDetach;
+    private Timer _refreshTimer;
+
+    /// <summary>How often the page re-reads the shared snapshot. Slightly longer than its TTL.</summary>
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(6);
 
     // Detaching is idempotent, so a click can legitimately change nothing — say which happened
     // rather than silently reloading and leaving the operator to infer it from the table.
@@ -303,41 +308,38 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadDataAsync();
+
+        // Occupancy is the fastest-moving thing on this page — holders come and go as jobs acquire
+        // and release — so a load-once snapshot goes stale while the operator is still reading it.
+        // The reads themselves are shared through ThrottlingSnapshotCache, so this timer costs one
+        // storage pass per TTL across every open tab rather than one per tab per tick.
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await LoadDataAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch { }
+        }, null, RefreshInterval, RefreshInterval);
     }
 
     private async Task LoadDataAsync()
     {
-        await Task.Run(() =>
-        {
-            _semaphores = ThrottlingReader.GetSemaphores();
-            _windows = ThrottlingReader.GetWindows();
+        var snapshot = await Snapshots.GetAsync();
 
-            var mutexes = ThrottlingReader.GetMutexes();
-            var holderDetails = ThrottlingReader
-                .GetHolderDetails(mutexes.SelectMany(x => x.HolderJobIds).Distinct())
-                .ToDictionary(x => x.JobId);
+        _semaphores = snapshot.Semaphores;
+        _windows = snapshot.Windows;
+        _mutexRows = snapshot.Mutexes
+            .Select(x => new MutexRow { MutexId = x.MutexId, Holder = x.Holder })
+            .ToList();
+    }
 
-            var rows = new List<MutexRow>();
-            foreach (var mutex in mutexes)
-            {
-                if (mutex.HolderJobIds.Count == 0)
-                {
-                    rows.Add(new MutexRow { MutexId = mutex.Id });
-                    continue;
-                }
-
-                foreach (var jobId in mutex.HolderJobIds)
-                {
-                    rows.Add(new MutexRow
-                    {
-                        MutexId = mutex.Id,
-                        Holder = holderDetails.TryGetValue(jobId, out var holder) ? holder : new ThrottleHolderDto { JobId = jobId },
-                    });
-                }
-            }
-
-            _mutexRows = rows;
-        });
+    /// <summary>Bypasses the TTL so the button reflects storage now, not up to one TTL ago.</summary>
+    private async Task RefreshNowAsync()
+    {
+        await Snapshots.GetAsync(forceRefresh: true);
+        await LoadDataAsync();
     }
 
     private void AskDetachMutex(MutexRow row) => _pendingDetach = row;
@@ -351,8 +353,13 @@ else
 
         var detached = await Task.Run(() => ThrottlingOps.DetachFromMutex(pending.MutexId, pending.Holder.JobId));
         _detachResult = (pending.Holder.JobId, detached);
+
+        // The operator should see the result of their own action immediately, not up to a TTL later.
+        Snapshots.Invalidate();
         await LoadDataAsync();
     }
+
+    public void Dispose() => _refreshTimer?.Dispose();
 
     private static int GetUsagePercent(SemaphoreDto semaphore)
     {
