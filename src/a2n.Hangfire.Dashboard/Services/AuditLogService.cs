@@ -4,6 +4,7 @@ using Hangfire;
 using Hangfire.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using a2n.Hangfire.Dashboard.Storage;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
@@ -166,7 +167,7 @@ public class AuditLogService
         {
             using var connection = _storage.GetReadOnlyConnection();
             if (connection is JobStorageConnection storageConnection)
-                return storageConnection.GetSetCount(SetKey);
+                return SetCounting.Count(storageConnection, SetKey);
             return 0;
         }
         catch
@@ -233,7 +234,7 @@ public class AuditLogService
             using var connection = _storage.GetConnection();
             if (connection is not JobStorageConnection storageConnection) return;
 
-            var total = storageConnection.GetSetCount(SetKey);
+            var total = SetCounting.Count(storageConnection, SetKey);
             var cutoffTicks = (DateTime.UtcNow - _options.AuditLog.Retention).Ticks;
             // See note in Query(): int.MaxValue overflows the SQL providers' "@endingAt + 1".
             var ids = storageConnection.GetRangeFromSet(SetKey, 0, int.MaxValue - 1);
