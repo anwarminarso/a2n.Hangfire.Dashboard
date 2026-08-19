@@ -234,7 +234,7 @@ public class JobBuilderComponentTests
         SubmitButton(cut).Click();
 
         // On success the operator is navigated to the recurring jobs list (Req 11.4).
-        cut.WaitForState(() => nav.Uri.EndsWith("recurring", StringComparison.Ordinal), TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => nav.Uri.EndsWith("recurring", StringComparison.Ordinal), TestTimeouts.RenderWait);
         Assert.EndsWith("recurring", nav.Uri, StringComparison.Ordinal);
     }
 
@@ -257,7 +257,7 @@ public class JobBuilderComponentTests
 
         // The service rejects the unresolvable method; the form stays on the route, shows the error,
         // and retains the operator's entered values (Req 11.5).
-        cut.WaitForState(() => cut.FindAll("div.alert-danger").Count > 0, TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.FindAll("div.alert-danger").Count > 0, TestTimeouts.RenderWait);
         Assert.DoesNotContain("recurring", nav.Uri[nav.BaseUri.Length..], StringComparison.Ordinal);
         Assert.Equal("jbc164-fail-job", cut.Find("#job-builder-id").GetAttribute("value"));
     }
@@ -440,7 +440,7 @@ public class JobBuilderComponentTests
         // A successful enqueue shows a confirmation carrying the enqueued job id (Req 12.6).
         cut.WaitForState(
             () => cut.Markup.Contains("Job enqueued successfully", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(5));
+            TestTimeouts.RenderWait);
         Assert.Contains("Job id:", cut.Markup);
     }
 
@@ -457,7 +457,7 @@ public class JobBuilderComponentTests
 
         // The unresolvable method makes the service reject the enqueue; the form stays put and shows
         // the error without any success confirmation (Req 12.5).
-        cut.WaitForState(() => cut.FindAll("div.alert-danger").Count > 0, TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.FindAll("div.alert-danger").Count > 0, TestTimeouts.RenderWait);
         Assert.DoesNotContain("Job enqueued successfully", cut.Markup);
     }
 }

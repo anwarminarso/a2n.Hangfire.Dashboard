@@ -78,7 +78,7 @@ public class HeatmapPagePopulatedTests
         // The page loads its data asynchronously in OnInitializedAsync; wait for the populated render.
         cut.WaitForAssertion(
             () => Assert.Contains("populated cell", cut.Markup),
-            timeout: TimeSpan.FromSeconds(10));
+            timeout: TestTimeouts.RenderWait);
         return cut;
     }
 
@@ -152,6 +152,6 @@ public class HeatmapPagePopulatedTests
 
         cut.WaitForAssertion(
             () => Assert.Contains("Concurrency", cut.Markup),
-            timeout: TimeSpan.FromSeconds(5));
+            timeout: TestTimeouts.RenderWait);
     }
 }
