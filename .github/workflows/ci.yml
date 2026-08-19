@@ -1,0 +1,55 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One run per ref. A new push supersedes an in-flight run for the same branch or PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & test (net8.0 / net9.0 / net10.0)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore "src/Hangfire Dashboard.slnx"
+
+      - name: Build
+        run: dotnet build "src/Hangfire Dashboard.slnx" -c Release --no-restore
+
+      # Covers the six test projects in the solution, each across all three target frameworks.
+      # The SQL Server and PostgreSQL suites use SkippableFact and skip themselves when no server
+      # is reachable, so no service containers are needed here.
+      - name: Test
+        run: >
+          dotnet test "src/Hangfire Dashboard.slnx" -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ${{ github.workspace }}/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ github.workspace }}/test-results
+          if-no-files-found: warn
+          retention-days: 14
