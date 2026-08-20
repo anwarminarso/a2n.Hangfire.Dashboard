@@ -291,7 +291,7 @@ public class RecurringEditorComponentTests
         // surface it to make the failure actionable.
         try
         {
-            cut.WaitForState(() => nav.Uri.EndsWith("recurring", StringComparison.Ordinal), TimeSpan.FromSeconds(5));
+            cut.WaitForState(() => nav.Uri.EndsWith("recurring", StringComparison.Ordinal), TestTimeouts.RenderWait);
         }
         catch (Exception)
         {

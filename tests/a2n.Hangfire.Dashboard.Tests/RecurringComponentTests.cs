@@ -61,7 +61,7 @@ public class RecurringComponentTests
         Seed(svc, "beta-report");
 
         var cut = ctx.RenderComponent<RecurringPage>();
-        cut.WaitForState(() => cut.FindAll("#recurring-filter").Count > 0, TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.FindAll("#recurring-filter").Count > 0, TestTimeouts.RenderWait);
 
         Assert.Contains("alpha-sync", cut.Markup);
         Assert.Contains("beta-report", cut.Markup);
@@ -76,7 +76,7 @@ public class RecurringComponentTests
         Seed(svc, "beta-report");
 
         var cut = ctx.RenderComponent<RecurringPage>();
-        cut.WaitForState(() => cut.FindAll("#recurring-filter").Count > 0, TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.FindAll("#recurring-filter").Count > 0, TestTimeouts.RenderWait);
 
         // Filtering by a substring of one id shows only the matching job (Issue #13).
         cut.Find("#recurring-filter").Input("alpha");
@@ -85,7 +85,7 @@ public class RecurringComponentTests
         {
             Assert.Contains("alpha-sync", cut.Markup);
             Assert.DoesNotContain("beta-report", cut.Markup);
-        }, TimeSpan.FromSeconds(5));
+        }, TestTimeouts.RenderWait);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public class RecurringComponentTests
         Seed(svc, "beta-report");
 
         var cut = ctx.RenderComponent<RecurringPage>();
-        cut.WaitForState(() => cut.FindAll("#recurring-filter").Count > 0, TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.FindAll("#recurring-filter").Count > 0, TestTimeouts.RenderWait);
 
         cut.Find("#recurring-filter").Input("no-such-job");
 
@@ -107,6 +107,6 @@ public class RecurringComponentTests
             Assert.Contains("No recurring jobs match", cut.Markup);
             Assert.DoesNotContain("alpha-sync", cut.Markup);
             Assert.DoesNotContain("beta-report", cut.Markup);
-        }, TimeSpan.FromSeconds(5));
+        }, TestTimeouts.RenderWait);
     }
 }
