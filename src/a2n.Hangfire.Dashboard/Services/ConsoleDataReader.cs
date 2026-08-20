@@ -2,6 +2,7 @@ using Hangfire;
 using Hangfire.Common;
 using Hangfire.Storage;
 using Newtonsoft.Json.Linq;
+using a2n.Hangfire.Dashboard.Storage;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
@@ -38,11 +39,11 @@ public class ConsoleDataReader
             return null;
 
         // Try new key format first (a2n.Hangfire.Console)
-        var progress = storageConnection.GetValueFromHash(hashKeyNew, "progress");
+        var progress = SafeGetValueFromHash(storageConnection, hashKeyNew, "progress");
         if (string.IsNullOrEmpty(progress))
         {
             // Fallback to old key format (original Hangfire.Console)
-            progress = storageConnection.GetValueFromHash(hashKeyOld, "progress");
+            progress = SafeGetValueFromHash(storageConnection, hashKeyOld, "progress");
         }
 
         if (string.IsNullOrEmpty(progress))
@@ -115,13 +116,13 @@ public class ConsoleDataReader
             return [];
 
         // Try new key format first
-        var count = (int)storageConnection.GetSetCount(setKey);
+        var count = (int)SetCounting.Count(storageConnection, setKey);
         var useOldKeys = false;
 
         if (count == 0)
         {
             // Fallback to old key format
-            count = (int)storageConnection.GetSetCount(oldKey);
+            count = (int)SetCounting.Count(storageConnection, oldKey);
             useOldKeys = true;
         }
 
@@ -129,7 +130,19 @@ public class ConsoleDataReader
             return [];
 
         var actualSetKey = useOldKeys ? oldKey : setKey;
-        var items = storageConnection.GetRangeFromSet(actualSetKey, 0, count - 1);
+
+        List<string> items;
+        try
+        {
+            items = storageConnection.GetRangeFromSet(actualSetKey, 0, count - 1);
+        }
+        catch (NotSupportedException)
+        {
+            // Console lines are ordered by the set score, and GetRangeFromSet is the only member that
+            // preserves that order — it is virtual and unsupported on storages without the extended
+            // API. Reading them unordered would scramble the log, so report no console data instead.
+            return [];
+        }
 
         if (items is null || items.Count == 0)
             return [];
@@ -167,6 +180,24 @@ public class ConsoleDataReader
         }
 
         return lines;
+    }
+
+    /// <summary>
+    /// Reads a hash field, returning null when the storage does not implement the extended API.
+    /// <see cref="JobStorageConnection.GetValueFromHash"/> is virtual and throws by default, and
+    /// progress is read from the Processing page, so a throw here would break that page rather than
+    /// simply omitting a progress circle.
+    /// </summary>
+    private static string SafeGetValueFromHash(JobStorageConnection connection, string key, string name)
+    {
+        try
+        {
+            return connection.GetValueFromHash(key, name);
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

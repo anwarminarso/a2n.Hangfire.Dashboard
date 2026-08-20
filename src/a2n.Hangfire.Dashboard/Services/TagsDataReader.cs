@@ -1,5 +1,6 @@
 using Hangfire;
 using Hangfire.Storage;
+using a2n.Hangfire.Dashboard.Storage;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
@@ -38,7 +39,8 @@ public class TagsDataReader
         if (connection is not JobStorageConnection storageConnection)
             return 0;
 
-        return storageConnection.GetSetCount("tags");
+        // Called from NavMenu, so a storage without the extended API must not throw here.
+        return SetCounting.Count(storageConnection, "tags");
     }
 
     /// <summary>
@@ -74,6 +76,6 @@ public class TagsDataReader
         if (connection is not JobStorageConnection storageConnection)
             return 0;
 
-        return storageConnection.GetSetCount($"tags:{tag}");
+        return SetCounting.Count(storageConnection, $"tags:{tag}");
     }
 }

@@ -4,6 +4,7 @@ using Hangfire.States;
 using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
 using a2n.Hangfire.Dashboard.Internal;
+using a2n.Hangfire.Dashboard.Storage;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
@@ -131,7 +132,7 @@ public class HangfireMonitorService
         using var connection = _storage.GetReadOnlyConnection();
         if (connection is JobStorageConnection storageConnection)
         {
-            return storageConnection.GetSetCount(setName);
+            return SetCounting.Count(storageConnection, setName);
         }
         return 0;
     }
