@@ -1,0 +1,74 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One run per ref. A new push supersedes an in-flight run for the same branch or PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & test (net8.0 / net9.0 / net10.0)
+    runs-on: ubuntu-latest
+
+    services:
+      # The PostgreSQL suite has no skip path: its fixture opens a connection in InitializeAsync and
+      # every test fails when none is reachable. Providing a server is therefore the only way to run
+      # the solution's tests, and it also means the adapter is covered rather than skipped.
+      # Credentials match tests/a2n.Hangfire.Dashboard.PostgreSql.Tests/appsettings.json, which is
+      # committed — a throwaway local test password, not a secret.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: "12345"
+          POSTGRES_DB: hangfire_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore "src/Hangfire Dashboard.slnx"
+
+      - name: Build
+        run: dotnet build "src/Hangfire Dashboard.slnx" -c Release --no-restore
+
+      # Covers the six test projects in the solution, each across all three target frameworks.
+      # PostgreSQL runs against the service container above. The SQL Server suite uses SkippableFact
+      # and skips itself, since no SQL Server is provided here.
+      - name: Test
+        run: >
+          dotnet test "src/Hangfire Dashboard.slnx" -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ${{ github.workspace }}/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ github.workspace }}/test-results
+          if-no-files-found: warn
+          retention-days: 14

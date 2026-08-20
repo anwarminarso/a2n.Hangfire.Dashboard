@@ -348,11 +348,11 @@ public class PreservationPropertyTests
         var cut = ctx.RenderComponent<Home>();
 
         // Wait for async initialization to complete (stats loaded → toggle button appears)
-        cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TestTimeouts.RenderWait);
 
         // The 8-card detailed grid is collapsed by default behind the "Detailed metrics" toggle.
         cut.Find(".hf-stats-toggle").Click();
-        cut.WaitForState(() => cut.Markup.Contains("Servers"), TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.Markup.Contains("Servers"), TestTimeouts.RenderWait);
 
         // Assert - verify all 8 stat cards render with correct labels
         var markup = cut.Markup;
@@ -383,11 +383,11 @@ public class PreservationPropertyTests
         var cut = ctx.RenderComponent<Home>();
 
         // Wait for async initialization to complete (stats loaded → toggle button appears)
-        cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TestTimeouts.RenderWait);
 
         // The 8-card detailed grid is collapsed by default behind the "Detailed metrics" toggle.
         cut.Find(".hf-stats-toggle").Click();
-        cut.WaitForState(() => cut.Markup.Contains("Servers"), TimeSpan.FromSeconds(5));
+        cut.WaitForState(() => cut.Markup.Contains("Servers"), TestTimeouts.RenderWait);
 
         // Assert - all 8 labels are present
         var markup = cut.Markup;
