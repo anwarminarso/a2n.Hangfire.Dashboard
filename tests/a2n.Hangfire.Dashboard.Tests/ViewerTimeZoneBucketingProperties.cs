@@ -73,7 +73,11 @@ public class ViewerTimeZoneBucketingProperties
     private static Gen<ProjectionWindowKind> KindGen =>
         Gen.Elements(ProjectionWindowKind.IdealizedWeek, ProjectionWindowKind.Next7Days);
 
-    /// <summary>Offset (in minutes from the window start) of the single fire inside the window.</summary>
+    /// <summary>
+    /// Offset (in minutes from the window start) of the single fire. Reduced modulo the window's
+    /// actual span before use: seven local days is 168 hours only when no DST transition falls inside
+    /// the window, so a fixed <see cref="WindowMinutes"/> bound would place fires outside it.
+    /// </summary>
     private static Gen<int> FireOffsetMinutesGen => Gen.Choose(0, WindowMinutes - 1);
 
     /// <summary>
@@ -106,7 +110,14 @@ public class ViewerTimeZoneBucketingProperties
             // Build the window in the viewer zone, then place a single absolute fire instant inside
             // the half-open window and normalize it to UTC (as ProjectedFire.FireTimeUtc is stored).
             var window = HeatmapTime.BuildWindow(kind, now, effectiveZone);
-            var fireInstantUtc = window.StartInclusive.AddMinutes(offsetMinutes).ToUniversalTime();
+
+            // The window spans seven local days, which is 167, 168 or 169 hours depending on whether
+            // a DST transition falls inside it, so the offset is reduced modulo the real span to keep
+            // the fire in the half-open interval the property is about.
+            var spanMinutes = (int)(window.EndExclusive - window.StartInclusive).TotalMinutes;
+            var fireInstantUtc = window.StartInclusive
+                .AddMinutes(offsetMinutes % spanMinutes)
+                .ToUniversalTime();
 
             var fire = new ProjectedFire(
                 JobId: "job-1",
