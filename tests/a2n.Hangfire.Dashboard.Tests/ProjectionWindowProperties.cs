@@ -106,11 +106,19 @@ public class ProjectionWindowProperties
                     $"start not at midnight: {window.StartInclusive:o} (kind={kind}, tz={tz.Id})");
             }
 
-            // Exclusive end is exactly seven days after the inclusive start.
-            if (window.EndExclusive != window.StartInclusive.AddDays(WindowDays))
+            // Exclusive end is local midnight seven calendar days after the local start date. It is
+            // deliberately not start.AddDays(7): that adds 168 hours of absolute time at the start's
+            // offset, which lands an hour past local midnight across a spring-forward transition and
+            // an hour short across a fall-back one, putting the window out of step with the seven
+            // local days GetBucket indexes.
+            var expectedEndLocalDate = window.StartInclusive.Date.AddDays(WindowDays);
+            var endLocal = TimeZoneInfo.ConvertTime(window.EndExclusive, tz);
+
+            if (endLocal.Date != expectedEndLocalDate || endLocal.TimeOfDay != TimeSpan.Zero)
             {
                 return false.Label(
-                    $"end != start+7d: start={window.StartInclusive:o} end={window.EndExclusive:o}");
+                    $"end is not local midnight of day 8: end={window.EndExclusive:o} " +
+                    $"endLocal={endLocal:o} expectedDate={expectedEndLocalDate:d} (tz={tz.Id})");
             }
 
             // Inclusive start strictly precedes the exclusive end.
@@ -120,12 +128,15 @@ public class ProjectionWindowProperties
                     $"start !< end: start={window.StartInclusive:o} end={window.EndExclusive:o}");
             }
 
-            // Absolute duration is exactly seven days (168 hours), DST notwithstanding, because
-            // AddDays on a DateTimeOffset adds exact elapsed time.
+            // Absolute duration is seven local days, so 168 hours normally and 167 or 169 across a
+            // DST transition. Anchoring on local midnight is what makes the day index well defined;
+            // a fixed 168 hours would not be.
             var duration = window.EndExclusive - window.StartInclusive;
-            if (duration != TimeSpan.FromDays(WindowDays))
+            var drift = duration - TimeSpan.FromDays(WindowDays);
+            if (drift < TimeSpan.FromHours(-1) || drift > TimeSpan.FromHours(1))
             {
-                return false.Label($"duration != 7d: {duration} (kind={kind}, tz={tz.Id})");
+                return false.Label(
+                    $"duration {duration} is more than an hour from 7d (kind={kind}, tz={tz.Id})");
             }
 
             var localNow = TimeZoneInfo.ConvertTime(now, tz);

@@ -190,8 +190,10 @@ public static class HeatmapTime
     /// <param name="viewerTimeZone">The viewer time zone the window is expressed in; UTC when null.</param>
     /// <returns>
     /// A <see cref="ProjectionWindow"/> whose inclusive start is local midnight (Monday for the
-    /// idealized week, the current local date for next seven days) and whose exclusive end is exactly
-    /// seven days later, yielding a window that covers 00:00 of day 1 through 23:59:59.999 of day 7.
+    /// idealized week, the current local date for next seven days) and whose exclusive end is local
+    /// midnight seven calendar days later, yielding a window that covers 00:00 of day 1 through
+    /// 23:59:59.999 of day 7 in local time. Across a DST transition the absolute duration is
+    /// therefore 167 or 169 hours rather than 168.
     /// </returns>
     public static ProjectionWindow BuildWindow(
         ProjectionWindowKind kind, DateTimeOffset now, TimeZoneInfo viewerTimeZone)
@@ -212,8 +214,15 @@ public static class HeatmapTime
         }
 
         var start = ToZonedMidnight(startDate, tz);
-        // Exactly seven days of absolute duration; the half-open end is 00:00 of the eighth day.
-        var end = start.AddDays(WindowDays);
+
+        // Seven local calendar days, which is what a seven-column grid means. Resolving the end as
+        // local midnight of the eighth day (rather than start.AddDays(7), which adds 168 hours of
+        // absolute time at the start's offset) keeps the window aligned with GetBucket's day index
+        // across a DST transition. With absolute arithmetic, a spring-forward week ran an hour past
+        // local midnight, so an in-window fire could land on day index 7 and be dropped by consumers
+        // that only build cells for days 0-6; a fall-back week ended an hour early, leaving the last
+        // hour of day 6 unprojected. The absolute duration is therefore 167, 168 or 169 hours.
+        var end = ToZonedMidnight(startDate.AddDays(WindowDays), tz);
         return new ProjectionWindow(start, end, kind);
     }
 
