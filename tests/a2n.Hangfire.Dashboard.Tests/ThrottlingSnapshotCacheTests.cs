@@ -103,18 +103,22 @@ public class ThrottlingSnapshotCacheTests
     }
 
     [Fact]
-    public async Task Invalidate_ShowsADetachImmediately()
+    public async Task Invalidate_ForcesRefreshOnNextGet()
     {
-        // Detach invalidates so the operator sees the freed slot at once rather than up to a TTL
-        // later — the case where a stale read would look like the detach silently failed.
         var sp = BuildProvider();
         var cache = sp.GetRequiredService<ThrottlingSnapshotCache>();
 
         SeedSemaphore("email-dispatch", "10", "41201");
         Assert.Single(Assert.Single((await cache.GetAsync()).Semaphores).HolderJobIds);
 
-        var ops = new ThrottlingOperationsService(_storage, new AuditLogService(_storage, new DashboardUIOptions(), null, null, null));
-        Assert.True(ops.DetachFromSemaphore("email-dispatch", "41201"));
+        // Simulate external change: remove the holder directly from storage.
+        using (var connection = _storage.GetConnection())
+        using (var tx = connection.CreateWriteTransaction())
+        {
+            tx.RemoveFromSet("sync:j:sm:email-dispatch", "41201");
+            tx.Commit();
+        }
+
         cache.Invalidate();
 
         Assert.Empty(Assert.Single((await cache.GetAsync()).Semaphores).HolderJobIds);

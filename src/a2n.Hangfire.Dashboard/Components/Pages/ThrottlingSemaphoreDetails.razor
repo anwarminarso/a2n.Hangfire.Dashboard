@@ -3,7 +3,6 @@
 @implements IDisposable
 @inject ThrottlingDataReader ThrottlingReader
 @inject ThrottlingSnapshotCache Snapshots
-@inject ThrottlingOperationsService ThrottlingOps
 @inject DashboardUIOptions Options
 
 <PageTitle>@(_notFound ? "Semaphore Not Found" : $"Semaphore {SemaphoreId}")</PageTitle>
@@ -52,24 +51,6 @@ else
 
     <h6 class="text-body-secondary mb-2">Holders</h6>
 
-    @if (_detachResult is not null)
-    {
-        <div class="alert @(_detachResult.Value.Detached ? "alert-success" : "alert-secondary") py-2 d-flex align-items-center">
-            <i class="bi @(_detachResult.Value.Detached ? "bi-check-circle" : "bi-info-circle") me-2"></i>
-            <span class="flex-grow-1">
-                @if (_detachResult.Value.Detached)
-                {
-                    @($"Job #{_detachResult.Value.JobId} was detached and its slot freed.")
-                }
-                else
-                {
-                    @($"Job #{_detachResult.Value.JobId} no longer held a slot — nothing was changed.")
-                }
-            </span>
-            <button type="button" class="btn-close" @onclick="() => _detachResult = null"></button>
-        </div>
-    }
-
     @if (_holders.Count == 0)
     {
         <p class="text-body-secondary"><small>No jobs currently hold this semaphore.</small></p>
@@ -96,10 +77,6 @@ else
                                 <th style="width: 18%;">Job</th>
                                 <th style="width: 14%;">State</th>
                                 <th>Server</th>
-                                @if (!Options.IsReadOnly)
-                                {
-                                    <th style="width: 110px;"></th>
-                                }
                             </tr>
                         </thead>
                         <tbody>
@@ -136,14 +113,6 @@ else
                                             <ServerLabel FullId="@holder.ServerId" />
                                         }
                                     </td>
-                                    @if (!Options.IsReadOnly)
-                                    {
-                                        <td class="text-end">
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => AskDetach(holder)">
-                                                <i class="bi bi-scissors me-1"></i>Detach
-                                            </button>
-                                        </td>
-                                    }
                                 </tr>
                             }
                         </tbody>
@@ -152,13 +121,6 @@ else
             </div>
         </div>
     }
-
-    <ConfirmModal Visible="@(_pendingDetach is not null)"
-                  Title="Detach job from semaphore"
-                  Message="@($"Detach job #{_pendingDetach?.JobId} from semaphore \"{_semaphore.Id}\"? The slot is freed immediately; only do this when the holding job will never release it on its own.")"
-                  ConfirmText="Detach"
-                  OnConfirm="ConfirmDetach"
-                  OnCancel="() => _pendingDetach = null" />
 }
 
 @code {
@@ -168,15 +130,10 @@ else
     private bool _notFound;
     private SemaphoreDto _semaphore;
     private IReadOnlyList<ThrottleHolderDto> _holders = [];
-    private ThrottleHolderDto _pendingDetach;
     private Timer _refreshTimer;
 
     /// <summary>How often the holder table re-reads storage while the page is open.</summary>
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(6);
-
-    // Detaching is idempotent, so a click can legitimately change nothing — say which happened
-    // rather than silently reloading and leaving the operator to infer it from the table.
-    private (string JobId, bool Detached)? _detachResult;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -218,24 +175,6 @@ else
 
     /// <summary>The table is already populated, so re-reading without flashing the spinner.</summary>
     private Task RefreshNowAsync() => LoadDataAsync(showSpinner: false);
-
-    private void AskDetach(ThrottleHolderDto holder) => _pendingDetach = holder;
-
-    private async Task ConfirmDetach()
-    {
-        var pending = _pendingDetach;
-        _pendingDetach = null;
-
-        if (pending is null) return;
-
-        var detached = await Task.Run(() => ThrottlingOps.DetachFromSemaphore(_semaphore.Id, pending.JobId));
-        _detachResult = (pending.JobId, detached);
-
-        // The Throttling page's occupancy bars read the shared snapshot, so a detach here has to
-        // invalidate it too or navigating back would show the freed slot as still taken.
-        Snapshots.Invalidate();
-        await LoadDataAsync(showSpinner: false);
-    }
 
     public void Dispose() => _refreshTimer?.Dispose();
 

@@ -2,7 +2,6 @@
 @using a2n.Hangfire.Dashboard.Models
 @implements IDisposable
 @inject ThrottlingSnapshotCache Snapshots
-@inject ThrottlingOperationsService ThrottlingOps
 @inject DashboardUIOptions Options
 
 <PageTitle>Throttling</PageTitle>
@@ -131,24 +130,6 @@ else
 
     <h6 class="text-body-secondary mt-3 mb-2">Held Mutexes</h6>
 
-    @if (_detachResult is not null)
-    {
-        <div class="alert @(_detachResult.Value.Detached ? "alert-success" : "alert-secondary") py-2 d-flex align-items-center">
-            <i class="bi @(_detachResult.Value.Detached ? "bi-check-circle" : "bi-info-circle") me-2"></i>
-            <span class="flex-grow-1">
-                @if (_detachResult.Value.Detached)
-                {
-                    @($"Job #{_detachResult.Value.JobId} was detached and the mutex released.")
-                }
-                else
-                {
-                    @($"Job #{_detachResult.Value.JobId} no longer held the mutex — nothing was changed.")
-                }
-            </span>
-            <button type="button" class="btn-close" @onclick="() => _detachResult = null"></button>
-        </div>
-    }
-
     @if (_mutexRows.Count > 0)
     {
         <div class="card">
@@ -161,10 +142,6 @@ else
                                 <th style="width: 14%; min-width: 120px;">Held By</th>
                                 <th style="width: 12%;">State</th>
                                 <th style="width: 18%;">Server</th>
-                                @if (!Options.IsReadOnly)
-                                {
-                                    <th style="width: 110px;"></th>
-                                }
                             </tr>
                         </thead>
                         <tbody>
@@ -208,17 +185,6 @@ else
                                             <ServerLabel FullId="@row.Holder.ServerId" />
                                         }
                                     </td>
-                                    @if (!Options.IsReadOnly)
-                                    {
-                                        <td class="text-end">
-                                            @if (row.Holder is not null)
-                                            {
-                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => AskDetachMutex(row)">
-                                                    <i class="bi bi-scissors me-1"></i>Detach
-                                                </button>
-                                            }
-                                        </td>
-                                    }
                                 </tr>
                             }
                         </tbody>
@@ -277,27 +243,16 @@ else
         </div>
     }
 
-    <ConfirmModal Visible="@(_pendingDetach is not null)"
-                  Title="Detach job from mutex"
-                  Message="@($"Detach job #{_pendingDetach?.Holder?.JobId} from mutex \"{_pendingDetach?.MutexId}\"? The mutex is released immediately; only do this when the holding job will never release it on its own.")"
-                  ConfirmText="Detach"
-                  OnConfirm="ConfirmDetachMutex"
-                  OnCancel="() => _pendingDetach = null" />
 }
 
 @code {
     private IReadOnlyList<SemaphoreDto> _semaphores;
     private List<MutexRow> _mutexRows = [];
     private IReadOnlyList<ThrottleWindowDto> _windows = [];
-    private MutexRow _pendingDetach;
     private Timer _refreshTimer;
 
     /// <summary>How often the page re-reads the shared snapshot. Slightly longer than its TTL.</summary>
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(6);
-
-    // Detaching is idempotent, so a click can legitimately change nothing — say which happened
-    // rather than silently reloading and leaving the operator to infer it from the table.
-    private (string JobId, bool Detached)? _detachResult;
 
     private sealed class MutexRow
     {
@@ -339,23 +294,6 @@ else
     private async Task RefreshNowAsync()
     {
         await Snapshots.GetAsync(forceRefresh: true);
-        await LoadDataAsync();
-    }
-
-    private void AskDetachMutex(MutexRow row) => _pendingDetach = row;
-
-    private async Task ConfirmDetachMutex()
-    {
-        var pending = _pendingDetach;
-        _pendingDetach = null;
-
-        if (pending?.Holder is null) return;
-
-        var detached = await Task.Run(() => ThrottlingOps.DetachFromMutex(pending.MutexId, pending.Holder.JobId));
-        _detachResult = (pending.Holder.JobId, detached);
-
-        // The operator should see the result of their own action immediately, not up to a TTL later.
-        Snapshots.Invalidate();
         await LoadDataAsync();
     }
 
