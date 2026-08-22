@@ -8,7 +8,8 @@ Thank you for your interest in contributing! This project is open source and wel
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download) or later
 - A code editor (Visual Studio, VS Code, Rider, etc.)
-- For PostgreSQL adapter tests: a local PostgreSQL instance (see `tests/a2n.Hangfire.Dashboard.PostgreSql.Tests/appsettings.json`)
+
+No database is required. The SQL Server and PostgreSQL adapter suites skip themselves when no server is reachable, so `dotnet test` is green on a clean clone.
 
 ### Setting Up the Development Environment
 
@@ -30,6 +31,15 @@ dotnet build src/Hangfire\ Dashboard.slnx
 ```bash
 dotnet test
 ```
+
+The two storage-adapter suites report as **skipped** unless a server is reachable. To run them, point each at your own instance — either edit the suite's `appsettings.json` or set an environment variable, which is preferred since it keeps a committed file unmodified:
+
+```bash
+ConnectionStrings__SqlServer="Server=localhost;Database=master;..."
+ConnectionStrings__PostgreSql="Host=localhost;Port=5432;Database=hangfire_test;..."
+```
+
+Each run creates a uniquely named schema and drops it again on completion, so it will not disturb existing data.
 
 4. Run the sample app:
 
@@ -118,7 +128,7 @@ git commit -m "feat: add your feature description"
 - Keep PRs focused — one feature or fix per PR.
 - Include a clear description of what changed and why.
 - Reference related issues (e.g., "Closes #42").
-- Ensure the build and tests pass before requesting review.
+- Ensure the build and tests pass before requesting review. CI also builds and tests every pull request across net8.0, net9.0, and net10.0, so you will see the same result there.
 - Be responsive to feedback during code review.
 
 ## License
