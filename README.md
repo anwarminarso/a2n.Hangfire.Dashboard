@@ -125,6 +125,7 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Visual cron builder | 🆕 Build cron schedules field-by-field with a human-readable description and next-run preview |
 | Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
 | Job tags | Tagging and tag cloud (Hangfire.Tags-compatible storage) |
+| Throttling | 🆕 Semaphore occupancy, held mutexes, and rate-limit windows with orphaned-holder detection — appears automatically when the host uses [Hangfire.Throttling](https://docs.hangfire.io/en/latest/background-processing/throttling.html) |
 | Job dependency graph | 🆕 Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
 | Retry summary | 🆕 Inline banner above state history showing retry count + exception consistency |
 | Stack trace links | 🆕 File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |

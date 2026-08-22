@@ -12,7 +12,7 @@ public class GetJobsByStateTests
         _provider = new PostgreSqlQueryProvider(fixture.ConnectionString, fixture.SchemaName);
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData("Succeeded", 40)]
     [InlineData("Failed", 20)]
     [InlineData("Processing", 15)]
@@ -20,35 +20,40 @@ public class GetJobsByStateTests
     [InlineData("Enqueued", 15)]
     public async Task GetByState_ReturnsCorrectCount(string state, int expectedCount)
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetJobsByStateAsync(state, 1, 50, CancellationToken.None);
         Assert.Equal(expectedCount, result.TotalCount);
         Assert.All(result.Items, item => Assert.Equal(state, item.State));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetByState_NonExistent_ReturnsEmpty()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetJobsByStateAsync("Deleted", 1, 50, CancellationToken.None);
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetByState_EmptyString_ReturnsEmpty()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetJobsByStateAsync("", 1, 50, CancellationToken.None);
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetByState_CaseSensitive()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetJobsByStateAsync("succeeded", 1, 50, CancellationToken.None);
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetByState_Pagination()
     {
+        PostgreSqlFixture.RequireAvailable();
         var page1 = await _provider.GetJobsByStateAsync("Succeeded", 1, 10, CancellationToken.None);
         Assert.Equal(40, page1.TotalCount);
         Assert.Equal(10, page1.Items.Count);
@@ -64,9 +69,10 @@ public class GetJobsByStateTests
         Assert.Empty(ids1.Intersect(ids2));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetByState_OrderedByCreatedAtDescending()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetJobsByStateAsync("Succeeded", 1, 50, CancellationToken.None);
         for (int i = 0; i < result.Items.Count - 1; i++)
         {
@@ -77,9 +83,10 @@ public class GetJobsByStateTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetByState_TotalPages()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetJobsByStateAsync("Succeeded", 1, 10, CancellationToken.None);
         Assert.Equal(4, result.TotalPages);
     }

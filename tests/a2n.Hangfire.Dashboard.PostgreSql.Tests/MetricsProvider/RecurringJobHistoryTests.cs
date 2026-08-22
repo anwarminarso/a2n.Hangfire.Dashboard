@@ -26,9 +26,10 @@ public class RecurringJobHistoryTests
         _provider = new PostgreSqlMetricsProvider(fixture.ConnectionString, fixture.SchemaName);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Batch_matches_the_per_job_query_for_every_seeded_id()
     {
+        PostgreSqlFixture.RequireAvailable();
         var batch = await _provider.GetRecurringJobExecutionsBatchAsync(
             SeededRecurringIds, 20, CancellationToken.None);
 
@@ -53,9 +54,10 @@ public class RecurringJobHistoryTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Batch_honours_the_per_job_count_limit()
     {
+        PostgreSqlFixture.RequireAvailable();
         var batch = await _provider.GetRecurringJobExecutionsBatchAsync(
             SeededRecurringIds, 1, CancellationToken.None);
 
@@ -70,9 +72,10 @@ public class RecurringJobHistoryTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Batch_omits_unknown_ids_and_tolerates_an_empty_request()
     {
+        PostgreSqlFixture.RequireAvailable();
         var batch = await _provider.GetRecurringJobExecutionsBatchAsync(
             new[] { "simple-job", "no-such-recurring-job" }, 20, CancellationToken.None);
 
@@ -83,9 +86,10 @@ public class RecurringJobHistoryTests
             Array.Empty<string>(), 20, CancellationToken.None));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Executions_are_ordered_newest_first()
     {
+        PostgreSqlFixture.RequireAvailable();
         var executions = await _provider.GetRecurringJobExecutionsAsync(
             "simple-job", 20, CancellationToken.None);
 
@@ -94,9 +98,10 @@ public class RecurringJobHistoryTests
             Assert.True(executions[i].ExecutedAt >= executions[i + 1].ExecutedAt);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Health_reports_last_results_and_average_duration()
     {
+        PostgreSqlFixture.RequireAvailable();
         var health = await _provider.GetRecurringJobHealthAsync(CancellationToken.None);
 
         // The seeder writes recurring job parameters but no 'recurring-jobs' set, so the health list
