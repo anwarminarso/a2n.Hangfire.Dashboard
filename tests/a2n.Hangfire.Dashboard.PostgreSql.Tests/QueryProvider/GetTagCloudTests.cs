@@ -12,39 +12,44 @@ public class GetTagCloudTests
         _provider = new PostgreSqlQueryProvider(fixture.ConnectionString, fixture.SchemaName);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTagCloud_ReturnsAllTags()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetTagCloudAsync(CancellationToken.None);
         // 10 possible tags: email, report, critical, import, sample, payment, notification, bulk, urgent, daily
         Assert.True(result.Count >= 8);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTagCloud_OrderedByCountDescending()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetTagCloudAsync(CancellationToken.None);
         for (int i = 0; i < result.Count - 1; i++)
             Assert.True(result[i].Count >= result[i + 1].Count);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTagCloud_TagNamesDoNotContainPrefix()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetTagCloudAsync(CancellationToken.None);
         Assert.All(result, tag => Assert.DoesNotContain("tags:", tag.Tag));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTagCloud_AllCountsPositive()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetTagCloudAsync(CancellationToken.None);
         Assert.All(result, tag => Assert.True(tag.Count > 0));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTagCloud_ContainsExpectedTags()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetTagCloudAsync(CancellationToken.None);
         var tagNames = result.Select(t => t.Tag).ToHashSet();
 
@@ -54,9 +59,10 @@ public class GetTagCloudTests
         Assert.Contains("urgent", tagNames);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTagCloud_BulkTagHasExpectedCount()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await _provider.GetTagCloudAsync(CancellationToken.None);
         var bulk = result.FirstOrDefault(t => t.Tag == "bulk");
         Assert.NotNull(bulk);

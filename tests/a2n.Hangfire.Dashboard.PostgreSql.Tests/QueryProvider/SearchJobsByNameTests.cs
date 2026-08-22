@@ -22,40 +22,45 @@ public class SearchJobsByNameTests
         => _provider.GetJobsWithFilterAsync(
             new JobFilterCriteria { JobNamePattern = pattern }, page, pageSize, CancellationToken.None);
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByClassName_EmailService()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("EmailService");
         Assert.True(result.TotalCount > 0);
         Assert.All(result.Items, item => Assert.Contains("EmailService", item.JobName));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByClassName_PaymentProcessor()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("PaymentProcessor");
         Assert.True(result.TotalCount > 0);
         Assert.All(result.Items, item => Assert.Contains("PaymentProcessor", item.JobName));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByMethodName_SendEmail()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("SendEmail");
         Assert.True(result.TotalCount > 0);
         Assert.All(result.Items, item => Assert.Contains("SendEmail", item.JobName));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByMethodName_GenerateReport()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("GenerateReport");
         Assert.True(result.TotalCount > 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchCaseInsensitive()
     {
+        PostgreSqlFixture.RequireAvailable();
         var upper = await SearchByName("EMAILSERVICE");
         var lower = await SearchByName("emailservice");
         var mixed = await SearchByName("eMaIlSeRvIcE");
@@ -65,46 +70,52 @@ public class SearchJobsByNameTests
         Assert.True(upper.TotalCount > 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchPartialName_Sample()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("Sample");
         Assert.True(result.TotalCount > 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByNamespace_SampleApp()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("SampleApp.Jobs");
         // All 100 jobs have "SampleApp.Jobs" in InvocationData
         Assert.Equal(100, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchNonExistent_ReturnsEmpty()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("NonExistentClassName12345", pageSize: 50);
         Assert.Equal(0, result.TotalCount);
         Assert.Empty(result.Items);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchEmptyString_ReturnsEmpty()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("", pageSize: 50);
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchWhitespace_ReturnsEmpty()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("   ", pageSize: 50);
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchWithSpecialChars_SafeFromInjection()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("100%", pageSize: 50);
         Assert.Equal(0, result.TotalCount);
 
@@ -115,27 +126,30 @@ public class SearchJobsByNameTests
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchPagination_FirstPage()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("SampleJobs", page: 1, pageSize: 10);
         Assert.True(result.TotalCount > 10);
         Assert.Equal(10, result.Items.Count);
         Assert.True(result.HasNextPage);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchPagination_SecondPage()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("SampleJobs", page: 2, pageSize: 10);
         Assert.True(result.TotalCount > 10);
         Assert.Equal(10, result.Items.Count);
         Assert.True(result.HasPreviousPage);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchResults_OrderedByCreatedAtDescending()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("SampleJobs", pageSize: 50);
         Assert.True(result.Items.Count >= 2);
 
@@ -148,9 +162,10 @@ public class SearchJobsByNameTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchResults_ContainExpectedFields()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByName("SimpleJob", pageSize: 10);
         Assert.True(result.Items.Count > 0);
         var item = result.Items[0];

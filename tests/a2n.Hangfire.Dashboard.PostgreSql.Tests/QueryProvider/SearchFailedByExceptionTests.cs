@@ -21,83 +21,94 @@ public class SearchFailedByExceptionTests
         => _provider.GetJobsWithFilterAsync(
             new JobFilterCriteria { ExceptionPattern = pattern }, page, pageSize, CancellationToken.None);
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByExceptionType_InvalidOperation()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("InvalidOperationException");
         Assert.True(result.TotalCount > 0);
         Assert.All(result.Items, item => Assert.Equal("Failed", item.State));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByExceptionType_Timeout()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("TimeoutException");
         Assert.True(result.TotalCount > 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByExceptionType_Partial()
     {
+        PostgreSqlFixture.RequireAvailable();
         // "Exception" should match all failed jobs (all have "Exception" in type name)
         var result = await SearchByException("Exception");
         Assert.Equal(20, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByExceptionMessage_Timeout()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("timed out");
         Assert.True(result.TotalCount > 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByExceptionMessage_SMTP()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("SMTP");
         Assert.True(result.TotalCount > 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchByExceptionMessage_Deadlock()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("Deadlock");
         Assert.True(result.TotalCount > 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchCaseInsensitive()
     {
+        PostgreSqlFixture.RequireAvailable();
         var upper = await SearchByException("TIMEOUTEXCEPTION");
         var lower = await SearchByException("timeoutexception");
         Assert.Equal(upper.TotalCount, lower.TotalCount);
         Assert.True(upper.TotalCount > 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchNonExistent_ReturnsEmpty()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("StackOverflowException");
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchEmptyString_ReturnsEmpty()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("");
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchOnlyReturnsFailedJobs()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("Exception");
         Assert.All(result.Items, item => Assert.Equal("Failed", item.State));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchResults_ContainExceptionDetails()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("InvalidOperation");
         Assert.True(result.Items.Count > 0);
         Assert.All(result.Items, item =>
@@ -107,16 +118,18 @@ public class SearchFailedByExceptionTests
         });
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchWithSpecialChars_SafeFromInjection()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("'; DROP TABLE state; --");
         Assert.Equal(0, result.TotalCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchPagination_Works()
     {
+        PostgreSqlFixture.RequireAvailable();
         var page1 = await SearchByException("Exception", page: 1, pageSize: 10);
         Assert.Equal(20, page1.TotalCount);
         Assert.Equal(10, page1.Items.Count);
@@ -127,9 +140,10 @@ public class SearchFailedByExceptionTests
         Assert.False(page2.HasNextPage);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchResults_OrderedByCreatedAtDescending()
     {
+        PostgreSqlFixture.RequireAvailable();
         var result = await SearchByException("Exception");
         for (int i = 0; i < result.Items.Count - 1; i++)
         {

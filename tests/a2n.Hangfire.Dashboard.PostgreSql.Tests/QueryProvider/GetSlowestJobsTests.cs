@@ -12,9 +12,10 @@ public class GetSlowestJobsTests
         _provider = new PostgreSqlQueryProvider(fixture.ConnectionString, fixture.SchemaName);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetSlowest_Top5_OrderedByDuration()
     {
+        PostgreSqlFixture.RequireAvailable();
         var from = DateTimeOffset.UtcNow.AddDays(-8);
         var to = DateTimeOffset.UtcNow;
         var result = await _provider.GetSlowestJobsAsync(5, from, to, CancellationToken.None);
@@ -24,9 +25,10 @@ public class GetSlowestJobsTests
             Assert.True(result[i].DurationMs >= result[i + 1].DurationMs);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetSlowest_Top1_ReturnsSlowest()
     {
+        PostgreSqlFixture.RequireAvailable();
         var from = DateTimeOffset.UtcNow.AddDays(-8);
         var to = DateTimeOffset.UtcNow;
         var result = await _provider.GetSlowestJobsAsync(1, from, to, CancellationToken.None);
@@ -36,9 +38,10 @@ public class GetSlowestJobsTests
         Assert.Equal(120000, result[0].DurationMs);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetSlowest_AllInRange()
     {
+        PostgreSqlFixture.RequireAvailable();
         var from = DateTimeOffset.UtcNow.AddDays(-8);
         var to = DateTimeOffset.UtcNow;
         var result = await _provider.GetSlowestJobsAsync(100, from, to, CancellationToken.None);
@@ -47,9 +50,10 @@ public class GetSlowestJobsTests
         Assert.Equal(40, result.Count);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetSlowest_NarrowTimeRange()
     {
+        PostgreSqlFixture.RequireAvailable();
         // Succeeded jobs (IDs 1-40) are created between 168h and ~101h ago
         // Use a range that covers part of that window
         var from = DateTimeOffset.UtcNow.AddDays(-6);
@@ -60,27 +64,30 @@ public class GetSlowestJobsTests
         Assert.True(result.Count < 40); // not all succeeded jobs
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetSlowest_FutureRange_ReturnsEmpty()
     {
+        PostgreSqlFixture.RequireAvailable();
         var from = DateTimeOffset.UtcNow.AddDays(1);
         var to = DateTimeOffset.UtcNow.AddDays(2);
         var result = await _provider.GetSlowestJobsAsync(10, from, to, CancellationToken.None);
         Assert.Empty(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetSlowest_CountCappedAt100()
     {
+        PostgreSqlFixture.RequireAvailable();
         var from = DateTimeOffset.UtcNow.AddDays(-8);
         var to = DateTimeOffset.UtcNow;
         var result = await _provider.GetSlowestJobsAsync(200, from, to, CancellationToken.None);
         Assert.True(result.Count <= 100);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetSlowest_Results_ContainExpectedFields()
     {
+        PostgreSqlFixture.RequireAvailable();
         var from = DateTimeOffset.UtcNow.AddDays(-8);
         var to = DateTimeOffset.UtcNow;
         var result = await _provider.GetSlowestJobsAsync(5, from, to, CancellationToken.None);
@@ -94,9 +101,10 @@ public class GetSlowestJobsTests
         });
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetSlowest_JobNamesExtracted()
     {
+        PostgreSqlFixture.RequireAvailable();
         var from = DateTimeOffset.UtcNow.AddDays(-8);
         var to = DateTimeOffset.UtcNow;
         var result = await _provider.GetSlowestJobsAsync(5, from, to, CancellationToken.None);
