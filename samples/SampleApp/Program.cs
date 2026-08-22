@@ -100,6 +100,73 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Demo data for the Throttling pages. The dashboard reads Hangfire.Throttling's storage format
+// directly, so the sample seeds equivalent entries without referencing that (commercial) package:
+// semaphores with holders, a held mutex, and a fixed rate-limit window. Disable by setting
+// SeedThrottling=false.
+if (builder.Configuration["SeedThrottling"] != "false")
+using (var seedScope = app.Services.CreateScope())
+{
+    var storage = seedScope.ServiceProvider.GetRequiredService<JobStorage>();
+
+    // A job stuck in Processing on a server that no longer exists: demonstrates the
+    // orphaned-holder detection and the detach recovery flow on the semaphore details page.
+    var orphanJobId = new Hangfire.BackgroundJobClient(storage).Create(
+        Hangfire.Common.Job.FromExpression(() => Console.WriteLine("orphan demo")),
+        new FakeProcessingState("dead-server-01"));
+
+    using var seedConn = storage.GetConnection();
+    using var seedTx = seedConn.CreateWriteTransaction();
+    foreach (var (id, max, desc) in new[]
+    {
+        ("email-dispatch", "100", "Fleet-wide outbound email cap"),
+        ("report-generation", "10", "Reporting module concurrency budget"),
+        ("legacy-api-sync", "1", "One caller at a time"),
+        ("image-processing", "10", ""),
+    })
+    {
+        seedTx.AddToSet("sync:set:sm", id);
+        seedTx.SetRangeInHash($"sync:sm:{id}", new Dictionary<string, string> { ["max"] = max, ["d"] = desc });
+    }
+
+    seedTx.AddToSet("sync:j:sm:email-dispatch", "41201");
+    seedTx.AddToSet("sync:j:sm:email-dispatch", "41202");
+    seedTx.AddToSet("sync:j:sm:report-generation", orphanJobId);
+    seedTx.AddToSet("sync:j:sm:report-generation", "41201");
+    seedTx.AddToSet("sync:j:sm:legacy-api-sync", "41203");
+
+    // Mutex ids are typically a resource key built from a job argument.
+    const string mutexId = "report-generation_customer-4821";
+    seedTx.AddToSet("sync:set:mx", $"{mutexId}/{orphanJobId}");
+    seedTx.AddToSet($"sync:mx:{mutexId}", orphanJobId);
+
+    // One window of each kind, using Hangfire.Throttling's actual serialized shape: abbreviated
+    // field names, and a count field whose type varies by window kind — a plain number for fixed
+    // windows, a bucket map for sliding ones, and a nested per-format map for dynamic ones.
+    seedTx.AddToSet("sync:set:fw", "partner-api-uploads");
+    seedTx.SetRangeInHash("sync:fw:partner-api-uploads", new Dictionary<string, string>
+    {
+        ["obj"] = "{\"l\":10,\"i\":3600,\"w\":1786359600,\"c\":4}",
+        ["d"] = "Hourly upload cap",
+    });
+
+    seedTx.AddToSet("sync:set:sw", "search-indexing");
+    seedTx.SetRangeInHash("sync:sw:search-indexing", new Dictionary<string, string>
+    {
+        ["obj"] = "{\"l\":4,\"i\":600,\"b\":120,\"t\":1786362360,\"c\":{\"0\":3,\"1\":1}}",
+        ["d"] = "Rolling 10-minute reindex budget",
+    });
+
+    seedTx.AddToSet("sync:set:dp", "webhook-delivery");
+    seedTx.SetRangeInHash("sync:dp:webhook-delivery", new Dictionary<string, string>
+    {
+        ["obj"] = "{\"i\":600,\"b\":120,\"t\":1786362360,\"maxc\":1000,\"maxs\":3,\"mins\":3,\"w\":{\"webhook-delivery\":{\"0\":3}}}",
+        ["d"] = "Adaptive per-endpoint delivery rate",
+    });
+
+    seedTx.Commit();
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
@@ -160,3 +227,19 @@ app.Lifetime.ApplicationStarted.Register(SampleJobsSeeder.SeedAll);
 app.MapHealthChecks("/health");
 
 app.Run();
+
+/// <summary>
+/// Demo-only state that mimics Processing on a given server (ProcessingState's constructor is
+/// internal). Used to simulate a job that aborted on a dead server while holding throttling
+/// primitives, so the Throttling pages can demonstrate orphan detection and detach.
+/// </summary>
+internal sealed class FakeProcessingState : Hangfire.States.IState
+{
+    private readonly string _serverId;
+    public FakeProcessingState(string serverId) => _serverId = serverId;
+    public string Name => Hangfire.States.ProcessingState.StateName;
+    public string Reason => null;
+    public bool IsFinal => false;
+    public bool IgnoreJobLoadException => false;
+    public Dictionary<string, string> SerializeData() => new() { ["ServerId"] = _serverId, ["WorkerId"] = "1" };
+}

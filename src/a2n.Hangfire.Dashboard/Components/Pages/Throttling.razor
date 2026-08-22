@@ -1,0 +1,405 @@
+@page "/throttling"
+@using a2n.Hangfire.Dashboard.Models
+@implements IDisposable
+@inject ThrottlingSnapshotCache Snapshots
+@inject ThrottlingOperationsService ThrottlingOps
+@inject DashboardUIOptions Options
+
+<PageTitle>Throttling</PageTitle>
+
+@if (_semaphores is null)
+{
+    <p class="text-body-secondary">Loading...</p>
+}
+else if (_semaphores.Count == 0 && _mutexRows.Count == 0 && _windows.Count == 0)
+{
+    @* No throttling data in storage — the host application likely does not use Hangfire.Throttling.
+       Follows the AnalyticsNotAvailable pattern: explain the dependency instead of a bare empty state. *@
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <div class="card border-warning">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-sliders text-warning fs-3 me-3"></i>
+                        <h4 class="card-title mb-0">Throttling Requires Hangfire.Throttling</h4>
+                    </div>
+
+                    <p class="text-body-secondary">
+                        This page shows the concurrency primitives — semaphores, mutexes, and rate-limit
+                        windows — written by the
+                        <a href="https://docs.hangfire.io/en/latest/extensions/throttling.html" target="_blank" rel="noopener">Hangfire.Throttling</a>
+                        package: each semaphore's limit and live occupancy, and which jobs currently hold each mutex.
+                        No throttling data was found in storage.
+                    </p>
+
+                    <hr />
+
+                    <h5 class="mb-3">Configuration</h5>
+
+                    <pre class="bg-body-tertiary p-3 rounded"><code>GlobalConfiguration.Configuration
+    .UseThrottling(ThrottlingAction.RetryJob, TimeSpan.FromSeconds(15));
+
+var manager = new ThrottlingManager();
+manager.AddOrUpdateSemaphore("newsletter", new SemaphoreOptions(maxCount: 10));</code></pre>
+
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Once the host application registers semaphores or jobs acquire mutexes, they appear
+                        here automatically — no dashboard configuration is required.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <small class="text-body-secondary">
+            @_semaphores.Count semaphore@(_semaphores.Count != 1 ? "s" : ""),
+            @_mutexRows.Count held mutex@(_mutexRows.Count != 1 ? "es" : "")@(_windows.Count > 0 ? $", {_windows.Count} window{(_windows.Count != 1 ? "s" : "")}" : "")
+        </small>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshNowAsync">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+        </button>
+    </div>
+
+    @if (_semaphores.Count > 0)
+    {
+        <h6 class="text-body-secondary mt-3 mb-2">Semaphores</h6>
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 22%;">Id</th>
+                                <th>Description</th>
+                                <th style="width: 240px;" class="pe-4">Usage</th>
+                                <th style="width: 24%; min-width: 160px;">Holders</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var semaphore in _semaphores)
+                            {
+                                <tr>
+                                    <td class="font-monospace">
+                                        <a href="throttling/semaphores/@Uri.EscapeDataString(semaphore.Id)">@semaphore.Id</a>
+                                    </td>
+                                    <td>
+                                        @if (semaphore.Description is null)
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            @semaphore.Description
+                                        }
+                                    </td>
+                                    <td class="pe-4">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="progress flex-grow-1" style="height: 6px; min-width: 100px;">
+                                                <div class="progress-bar @GetUsageBarClass(semaphore)"
+                                                     style="width: @GetUsagePercent(semaphore)%"></div>
+                                            </div>
+                                            <small class="text-body-secondary text-nowrap">
+                                                @semaphore.HolderJobIds.Count / @semaphore.MaxCount
+                                            </small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if (semaphore.HolderJobIds.Count == 0)
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var jobId in semaphore.HolderJobIds)
+                                            {
+                                                <a href="jobs/details/@jobId" class="font-monospace me-2">@ShortenId(jobId)</a>
+                                            }
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    <h6 class="text-body-secondary mt-3 mb-2">Held Mutexes</h6>
+
+    @if (_detachResult is not null)
+    {
+        <div class="alert @(_detachResult.Value.Detached ? "alert-success" : "alert-secondary") py-2 d-flex align-items-center">
+            <i class="bi @(_detachResult.Value.Detached ? "bi-check-circle" : "bi-info-circle") me-2"></i>
+            <span class="flex-grow-1">
+                @if (_detachResult.Value.Detached)
+                {
+                    @($"Job #{_detachResult.Value.JobId} was detached and the mutex released.")
+                }
+                else
+                {
+                    @($"Job #{_detachResult.Value.JobId} no longer held the mutex — nothing was changed.")
+                }
+            </span>
+            <button type="button" class="btn-close" @onclick="() => _detachResult = null"></button>
+        </div>
+    }
+
+    @if (_mutexRows.Count > 0)
+    {
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Id</th>
+                                <th style="width: 14%; min-width: 120px;">Held By</th>
+                                <th style="width: 12%;">State</th>
+                                <th style="width: 18%;">Server</th>
+                                @if (!Options.IsReadOnly)
+                                {
+                                    <th style="width: 110px;"></th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _mutexRows)
+                            {
+                                <tr>
+                                    <td class="font-monospace">@row.MutexId</td>
+                                    <td>
+                                        @if (row.Holder is null)
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            <a href="jobs/details/@row.Holder.JobId" class="font-monospace">@ShortenId(row.Holder.JobId)</a>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (row.Holder?.StateName is null)
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge @GetStateBadgeClass(row.Holder.StateName)">@row.Holder.StateName</span>
+                                        }
+                                        @* Orphaned holders may have no server at all — an expired job, or one that
+                                           reached a final state without releasing — so the badge lives here. *@
+                                        @if (row.Holder?.IsOrphaned == true)
+                                        {
+                                            <span class="badge bg-danger ms-2" title="@row.Holder.OrphanReason">orphaned</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (row.Holder?.ServerId is null)
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            <ServerLabel FullId="@row.Holder.ServerId" />
+                                        }
+                                    </td>
+                                    @if (!Options.IsReadOnly)
+                                    {
+                                        <td class="text-end">
+                                            @if (row.Holder is not null)
+                                            {
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => AskDetachMutex(row)">
+                                                    <i class="bi bi-scissors me-1"></i>Detach
+                                                </button>
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <p class="text-body-secondary"><small>No mutexes are currently held. Mutex entries appear here only while a job holds them.</small></p>
+    }
+
+    @if (_windows.Count > 0)
+    {
+        <h6 class="text-body-secondary mt-3 mb-2">Rate-Limit Windows</h6>
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 10%;">Type</th>
+                                <th style="width: 22%;">Id</th>
+                                <th>Description</th>
+                                <th style="width: 12%;" class="text-end">Limit</th>
+                                <th style="width: 12%;" class="text-end">Interval</th>
+                                <th style="width: 14%;" class="text-end">Current Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var window in _windows)
+                            {
+                                <tr>
+                                    <td><span class="badge bg-secondary">@window.Type</span></td>
+                                    <td class="font-monospace">@window.Id</td>
+                                    <td>
+                                        @if (window.Description is null)
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            @window.Description
+                                        }
+                                    </td>
+                                    <td class="text-end">@(window.Limit?.ToString() ?? "—")</td>
+                                    <td class="text-end">@FormatInterval(window.IntervalSeconds)</td>
+                                    <td class="text-end">@(window.Counter?.ToString() ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    <ConfirmModal Visible="@(_pendingDetach is not null)"
+                  Title="Detach job from mutex"
+                  Message="@($"Detach job #{_pendingDetach?.Holder?.JobId} from mutex \"{_pendingDetach?.MutexId}\"? The mutex is released immediately; only do this when the holding job will never release it on its own.")"
+                  ConfirmText="Detach"
+                  OnConfirm="ConfirmDetachMutex"
+                  OnCancel="() => _pendingDetach = null" />
+}
+
+@code {
+    private IReadOnlyList<SemaphoreDto> _semaphores;
+    private List<MutexRow> _mutexRows = [];
+    private IReadOnlyList<ThrottleWindowDto> _windows = [];
+    private MutexRow _pendingDetach;
+    private Timer _refreshTimer;
+
+    /// <summary>How often the page re-reads the shared snapshot. Slightly longer than its TTL.</summary>
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(6);
+
+    // Detaching is idempotent, so a click can legitimately change nothing — say which happened
+    // rather than silently reloading and leaving the operator to infer it from the table.
+    private (string JobId, bool Detached)? _detachResult;
+
+    private sealed class MutexRow
+    {
+        public string MutexId { get; set; }
+        public ThrottleHolderDto Holder { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+
+        // Occupancy is the fastest-moving thing on this page — holders come and go as jobs acquire
+        // and release — so a load-once snapshot goes stale while the operator is still reading it.
+        // The reads themselves are shared through ThrottlingSnapshotCache, so this timer costs one
+        // storage pass per TTL across every open tab rather than one per tab per tick.
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await LoadDataAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch { }
+        }, null, RefreshInterval, RefreshInterval);
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var snapshot = await Snapshots.GetAsync();
+
+        _semaphores = snapshot.Semaphores;
+        _windows = snapshot.Windows;
+        _mutexRows = snapshot.Mutexes
+            .Select(x => new MutexRow { MutexId = x.MutexId, Holder = x.Holder })
+            .ToList();
+    }
+
+    /// <summary>Bypasses the TTL so the button reflects storage now, not up to one TTL ago.</summary>
+    private async Task RefreshNowAsync()
+    {
+        await Snapshots.GetAsync(forceRefresh: true);
+        await LoadDataAsync();
+    }
+
+    private void AskDetachMutex(MutexRow row) => _pendingDetach = row;
+
+    private async Task ConfirmDetachMutex()
+    {
+        var pending = _pendingDetach;
+        _pendingDetach = null;
+
+        if (pending?.Holder is null) return;
+
+        var detached = await Task.Run(() => ThrottlingOps.DetachFromMutex(pending.MutexId, pending.Holder.JobId));
+        _detachResult = (pending.Holder.JobId, detached);
+
+        // The operator should see the result of their own action immediately, not up to a TTL later.
+        Snapshots.Invalidate();
+        await LoadDataAsync();
+    }
+
+    public void Dispose() => _refreshTimer?.Dispose();
+
+    private static int GetUsagePercent(SemaphoreDto semaphore)
+    {
+        if (semaphore.MaxCount <= 0) return 0;
+        var percent = (int)Math.Round(100.0 * semaphore.HolderJobIds.Count / semaphore.MaxCount);
+        return Math.Min(percent, 100);
+    }
+
+    private static string GetUsageBarClass(SemaphoreDto semaphore)
+    {
+        var percent = GetUsagePercent(semaphore);
+        return percent switch
+        {
+            >= 100 => "bg-danger",
+            >= 75 => "bg-warning",
+            _ => "bg-success",
+        };
+    }
+
+    private static string GetStateBadgeClass(string state)
+    {
+        return state?.ToLowerInvariant() switch
+        {
+            "succeeded" => "bg-success",
+            "failed" => "bg-danger",
+            "processing" => "bg-warning text-dark",
+            "enqueued" => "bg-info text-dark",
+            "scheduled" => "bg-info text-dark",
+            "deleted" => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
+    private static string FormatInterval(int? seconds)
+    {
+        if (seconds is null) return "—";
+        if (seconds % 3600 == 0) return $"{seconds / 3600}h";
+        if (seconds % 60 == 0) return $"{seconds / 60}m";
+        return $"{seconds}s";
+    }
+
+    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+}

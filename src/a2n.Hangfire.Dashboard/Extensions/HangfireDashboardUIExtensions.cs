@@ -123,6 +123,14 @@ public static class HangfireDashboardUIExtensions
         // the maintenance banner, and the Queues page so they don't each poll storage per circuit.
         services.AddSingleton<QueueOperationsStateCache>();
 
+        // Shared cache for the "is Hangfire.Throttling in use?" nav check, so installations without
+        // the package don't repeat five set counts on every new circuit to reach the same answer.
+        services.AddSingleton<ThrottlingDetectionCache>();
+
+        // Shared short-TTL snapshot behind the Throttling page's auto-refresh, so N open tabs cost
+        // one storage pass per TTL rather than N passes per tick.
+        services.AddSingleton<ThrottlingSnapshotCache>();
+
         services.AddScoped<ConsoleDataReader>(sp =>
         {
             var storage = sp.GetRequiredService<JobStorage>();
@@ -133,6 +141,21 @@ public static class HangfireDashboardUIExtensions
         {
             var storage = sp.GetRequiredService<JobStorage>();
             return new TagsDataReader(storage);
+        });
+
+        services.AddScoped<ThrottlingDataReader>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            var options = sp.GetRequiredService<DashboardUIOptions>();
+            return new ThrottlingDataReader(storage, options);
+        });
+
+        services.AddScoped<ThrottlingOperationsService>(sp =>
+        {
+            var storage = sp.GetRequiredService<JobStorage>();
+            var audit = sp.GetRequiredService<AuditLogService>();
+            var options = sp.GetRequiredService<DashboardUIOptions>();
+            return new ThrottlingOperationsService(storage, audit, options);
         });
 
         services.AddScoped<JobGraphService>();

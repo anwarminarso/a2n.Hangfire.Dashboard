@@ -576,5 +576,7 @@ public class PreservationPropertyTests
         ctx.Services.AddScoped<HangfireMonitorService>(sp => new HangfireMonitorService(
             _storage, sp.GetRequiredService<AuditLogService>()));
         ctx.Services.AddSingleton(new TagsDataReader(_storage));
+        ctx.Services.AddSingleton(new ThrottlingDataReader(_storage));
+        ctx.Services.AddSingleton<ThrottlingDetectionCache>();
     }
 }
