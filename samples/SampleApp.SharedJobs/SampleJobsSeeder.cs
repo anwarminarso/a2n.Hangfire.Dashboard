@@ -19,6 +19,7 @@ public static class SampleJobsSeeder
         SeedContinuationPipeline();
         SeedFtpTransferService();
         SeedSecondaryQueues();
+        SeedDictionaryArgumentRepro();
     }
 
     /// <summary>
@@ -57,6 +58,40 @@ public static class SampleJobsSeeder
     public static void SeedContinuationPipeline()
     {
         RecurringJob.AddOrUpdate<SampleJobs>("pipeline-trigger", x => x.SeedPipeline(null!), "*/7 * * * *");
+    }
+
+    /// <summary>
+    /// Registers the issue #39 repro: a recurring job built against
+    /// <see cref="JobBuilderSampleJobs.SendReportEmailAsync"/>, whose <c>parameters</c> argument is a
+    /// <see cref="Dictionary{TKey, TValue}"/>. Open this job in the recurring edit form and toggle
+    /// JSON → Form → JSON to confirm <c>parameters</c> survives the round-trip instead of becoming
+    /// <c>null</c>.
+    /// </summary>
+    public static void SeedDictionaryArgumentRepro()
+    {
+        // Built outside the expression tree below: an expression-tree lambda (which
+        // RecurringJob.AddOrUpdate builds from the call) cannot contain a collection initializer.
+        var reportParameters = new Dictionary<string, string> { ["region"] = "west", ["month"] = "2026-08" };
+
+        RecurringJob.AddOrUpdate<JobBuilderSampleJobs>(
+            "report-email-dictionary-args",
+            x => x.SendReportEmailAsync(
+                null!,
+                42,
+                "ReportingDb",
+                "usp_GenerateSalesReport",
+                "Monthly Sales Report",
+                "sales-report.csv",
+                "csv",
+                "Attached is the monthly sales report.",
+                reportParameters,
+                "Monthly Sales",
+                true,
+                60,
+                "en-US",
+                null,
+                CancellationToken.None),
+            "0 6 * * *");
     }
 
     /// <summary>
