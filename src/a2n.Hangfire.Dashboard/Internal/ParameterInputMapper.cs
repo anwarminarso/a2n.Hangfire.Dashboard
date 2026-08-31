@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 
 namespace a2n.Hangfire.Dashboard.Internal;
 
@@ -124,6 +125,15 @@ internal static class ParameterInputMapper
                 }
             }
 
+            return ParameterInputKind.Json;
+        }
+
+        // Collection types (Dictionary<K,V>, List<T>, IEnumerable<T>, etc.) are concrete classes
+        // that pass IsNestedObjectCandidate, but their entries are not CLR properties — the
+        // NestedObject sub-form would lose the data. Route them to JSON instead (#39).
+        // (string and arrays are already handled above.)
+        if (typeof(IEnumerable).IsAssignableFrom(type))
+        {
             return ParameterInputKind.Json;
         }
 

@@ -166,10 +166,16 @@ else
     // --- Form/JSON mode toggle (Req 9) -------------------------------------------------------
 
     // Switch from JSON mode to Form mode (Req 9.5, 9.6). The edited Parameter_JSON is repopulated
-    // into the form ONLY when it is valid for the selected method — well-formed JSON, an array of
-    // the right length, every required parameter present, and each value convertible to its
-    // parameter's declared type. Otherwise JSON mode stays active, the content is preserved
-    // unchanged, and a constraint-specific error is shown.
+    // into the form ONLY when it is *structurally* valid for the selected method — well-formed
+    // JSON, an array of the right length, and each present value convertible to its parameter's
+    // declared type. Otherwise JSON mode stays active, the content is preserved unchanged, and a
+    // constraint-specific error is shown.
+    //
+    // A required parameter left blank (JSON null) does NOT block this switch: leaving a required
+    // field empty while still shaping the rest of the job is normal mid-edit state, not a switch-
+    // blocking error. Required-ness is enforced only at submit time (JobBuilder.Submit reads the
+    // overall ParameterState.IsValid, which still reflects blank required fields via FieldValid),
+    // so the operator can freely move between Form and JSON while filling the form out.
     private void SwitchToFormMode()
     {
         if (!_jsonMode)
@@ -177,7 +183,7 @@ else
             return; // already in Form mode
         }
 
-        var (valid, error) = ValidateJsonForMethod(_editorJson);
+        var (valid, error) = ValidateJsonForMethod(_editorJson, requireAllPresent: false);
         if (!valid)
         {
             _jsonError = error;
@@ -218,11 +224,18 @@ else
     }
 
     // Validity of a Parameter_JSON for the selected method (Req 9.6): well-formed JSON, a top-level
-    // array whose length equals the method's Job_Parameter count, every required parameter present,
-    // and each value convertible to its parameter's declared type. Type/required convertibility is
-    // decided with the same conversion the form uses (ApplyElement + FieldValid), so Form and JSON
-    // modes agree on what is acceptable.
-    private (bool valid, string error) ValidateJsonForMethod(string json)
+    // array whose length equals the method's Job_Parameter count, and each *present* value
+    // convertible to its parameter's declared type. Type convertibility is decided with the same
+    // conversion the form uses (ApplyElement + FieldValid), so Form and JSON modes agree on what
+    // is structurally acceptable.
+    //
+    // <paramref name="requireAllPresent"/> controls whether a blank (JSON null) required parameter
+    // also fails validation:
+    //   - true  (submit-time / EmitJsonState's reported validity): a required parameter must be
+    //     present, matching the Form-mode submit gate (Req 8.15).
+    //   - false (the JSON→Form switch gate): a required parameter may stay blank — switching
+    //     views must not force the operator to finish a field they haven't gotten to yet.
+    private (bool valid, string error) ValidateJsonForMethod(string json, bool requireAllPresent = true)
     {
         var descriptors = SelectedMethod?.JobParameters ?? Array.Empty<JobParameterDescriptor>();
 
@@ -263,34 +276,44 @@ else
 
             foreach (var field in temp)
             {
-                if (FieldValid(field))
-                {
-                    continue;
-                }
-
                 if (field.Invalid)
                 {
                     return (false, $"Parameter '{field.Name}': {field.Error}");
                 }
 
-                if (field.IsRequired && IsEmptySlot(field))
+                var missingRequired = field.IsRequired && IsEmptySlot(field);
+                if (missingRequired)
                 {
-                    return (false, $"Parameter '{field.Name}' is required.");
+                    // A blank required field is a structurally valid (but incomplete) slot: only
+                    // fail on it when the caller demands full completeness (submit-time), not when
+                    // merely checking whether the JSON is well-formed enough to redraw the form.
+                    if (requireAllPresent)
+                    {
+                        return (false, $"Parameter '{field.Name}' is required.");
+                    }
+
+                    continue;
                 }
 
-                return (false, $"The value for parameter '{field.Name}' is not valid for type {FriendlyType(field.DeclaredType)}.");
+                if (!FieldValid(field))
+                {
+                    return (false, $"The value for parameter '{field.Name}' is not valid for type {FriendlyType(field.DeclaredType)}.");
+                }
             }
 
             return (true, null);
         }
     }
 
-    // Emit the parent state derived from the edited JSON while in JSON mode. Validity follows the
-    // same rule as the Form→JSON switch; the elements are surfaced when the JSON is a well-formed
-    // array so the parent can read the current Argument_Values regardless of the active mode.
+    // Emit the parent state derived from the edited JSON while in JSON mode. Unlike the JSON→Form
+    // switch gate, this reports full validity — including required-ness — because it feeds the
+    // parent's submit gate (JobBuilder.Submit checks ParameterState.IsValid): the operator must
+    // still fill every required parameter before submitting, even while staying in JSON mode. The
+    // elements are surfaced when the JSON is a well-formed array so the parent can read the current
+    // Argument_Values regardless of the active mode.
     private void EmitJsonState()
     {
-        var (valid, _) = ValidateJsonForMethod(_editorJson);
+        var (valid, _) = ValidateJsonForMethod(_editorJson, requireAllPresent: true);
 
         var elements = new List<JsonElement>();
         try

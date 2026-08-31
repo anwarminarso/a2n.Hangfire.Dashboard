@@ -173,6 +173,46 @@ public class JobBuilderSampleJobs
         Thread.Sleep(100);
     }
 
+    // === Dictionary<string, string> (collection type — Issue #39 repro) =====================
+
+    /// <summary>
+    /// Issue #39 repro: a <see cref="Dictionary{TKey, TValue}"/> argument (<paramref name="parameters"/>)
+    /// alongside several scalar/optional parameters, mirroring the reported signature. Opening this
+    /// job in the recurring editor and toggling JSON → Form → JSON must round-trip
+    /// <paramref name="parameters"/> unchanged instead of losing it (the bug: the dictionary was
+    /// mapped to a NestedObject sub-form, whose reflection-based property walk finds no dictionary
+    /// entries, so switching to Form view silently dropped the data).
+    /// </summary>
+    [JobDisplayName("Send Report Email")]
+    public Task SendReportEmailAsync(
+        PerformContext context,
+        int reportId,
+        string database,
+        string storedProcedure,
+        string subject,
+        string fileName,
+        string format,
+        string message,
+        Dictionary<string, string> parameters = null,
+        string reportName = null,
+        bool skipWhenNoRows = true,
+        int? commandTimeout = null,
+        string csvCulture = null,
+        string archiveFilePath = null,
+        CancellationToken cancellationToken = default)
+    {
+        context?.WriteLine($"Report {reportId} ('{reportName ?? storedProcedure}') — {parameters?.Count ?? 0} parameter(s).");
+        if (parameters is not null)
+        {
+            foreach (var (key, value) in parameters)
+            {
+                context?.WriteLine($"  {key} = {value}");
+            }
+        }
+
+        return Task.Delay(150, cancellationToken);
+    }
+
     // === Cancellation token (injected, excluded from the form) ===============================
 
     /// <summary>One text input; the <see cref="CancellationToken"/> is Hangfire-injected and not

@@ -4,6 +4,7 @@ using System.Linq;
 using Bunit;
 using FsCheck;
 using FsCheck.Xunit;
+using Xunit;
 using a2n.Hangfire.Dashboard;
 using a2n.Hangfire.Dashboard.Components.Shared;
 
@@ -11,18 +12,24 @@ namespace a2n.Hangfire.Dashboard.Tests;
 
 // Feature: job-builder, Property 16: Invalid JSON blocks the switch to Form mode.
 //
-// For any Parameter_JSON that is not valid for the selected method, attempting to switch from JSON
-// mode to Form mode keeps JSON mode active, preserves the entered Parameter_JSON content unchanged,
-// and surfaces a validation error indicating which constraint failed (Req 9.6).
+// For any Parameter_JSON that is *structurally* invalid for the selected method, attempting to
+// switch from JSON mode to Form mode keeps JSON mode active, preserves the entered Parameter_JSON
+// content unchanged, and surfaces a validation error indicating which constraint failed (Req 9.6).
 //
-// "Valid for the selected method" means: well-formed JSON AND a top-level array AND the right
-// element count AND every required parameter present AND each value matching its parameter's
-// declared type. This property generates INVALID candidates across each failing constraint:
+// "Structurally valid for the selected method" means: well-formed JSON AND a top-level array AND
+// the right element count AND each *present* value matching its parameter's declared type. This
+// property generates INVALID candidates across each failing structural constraint:
 //   • malformed JSON                  (not well-formed)
 //   • non-array top-level             (well-formed but not an array)
 //   • wrong element count             (array of the wrong length)
 //   • type-incompatible element       (e.g. a string/decimal/bool where an int is required)
-//   • missing required parameter      (a null where a required value is expected)
+//
+// A missing *required* parameter (a JSON null in a required slot) is intentionally NOT one of these
+// candidates: leaving a required field blank while switching views must not block the switch — see
+// RequiredMissingDoesNotBlockSwitch_ButStillFailsSubmitValidity below, which locks in that a blank
+// required value round-trips into Form mode yet still marks the overall state invalid (bug fix:
+// switching JSON → Form used to reject a blank required field with "Parameter 'x' is required.",
+// even though the operator was still mid-edit and hadn't attempted to submit anything).
 //
 // Approach (bunit): render ParameterBuilder with a SelectedMethod carrying a single required int
 // Job_Parameter. Click the JSON toggle to enter JSON mode, set the textarea to a generated invalid
@@ -71,11 +78,6 @@ public class InvalidJsonBlocksFormProperties
         Gen.Elements("[\"abc\"]", "[\"x\"]", "[true]", "[1.5]", "[\"3.14\"]", "[[1]]")
             .Select(s => new InvalidJsonCase { Constraint = "type-error", Raw = s });
 
-    // A single-element array whose element is null where the required parameter is expected.
-    private static Gen<InvalidJsonCase> RequiredMissingGen() =>
-        Gen.Constant("[null]")
-            .Select(s => new InvalidJsonCase { Constraint = "required-missing", Raw = s });
-
     private static Arbitrary<InvalidJsonCase> CaseArb =>
         Arb.From(Gen.OneOf(new[]
         {
@@ -83,7 +85,6 @@ public class InvalidJsonBlocksFormProperties
             NonArrayGen(),
             WrongCountGen(),
             TypeErrorGen(),
-            RequiredMissingGen(),
         }));
 
     // A method with exactly one required int Job_Parameter, so every generated candidate above is
@@ -160,5 +161,50 @@ public class InvalidJsonBlocksFormProperties
                     $"errorShown={errorShown}, " +
                     $"value='{(stillJsonMode ? textareas[0].GetAttribute("value") : "<none>")}'");
         });
+    }
+
+    /// <summary>
+    /// Bug fix regression test: a JSON array that is structurally well-formed but leaves a required
+    /// parameter blank (JSON null) must NOT block the switch from JSON mode to Form mode. The
+    /// operator is allowed to move between views while a required field is still unset — only
+    /// submitting is gated on required-ness (Req 8.15), not viewing the form. This locks in the fix
+    /// for the reported bug: editing/creating a recurring job whose method has parameters, switching
+    /// to JSON and back to Form incorrectly rejected the switch with "Parameter 'x' is required."
+    /// even though the JSON itself was well-formed and the operator hadn't attempted to submit.
+    /// </summary>
+    [Fact]
+    public void RequiredMissing_DoesNotBlockSwitchToForm_ButLeavesOverallStateInvalid()
+    {
+        using var ctx = new Bunit.TestContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var method = OneRequiredIntMethod();
+        ParameterBuilder.ParameterState last = null;
+
+        var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+            .Add(x => x.SelectedMethod, method)
+            .Add(x => x.OnParametersChanged, (ParameterBuilder.ParameterState s) => last = s));
+
+        // Switch to JSON mode and set the single required int parameter to null (blank).
+        cut.FindAll(".btn-group button")[1].Click();
+        cut.Find("textarea").Change("[null]");
+
+        // Switch back to Form mode — this must succeed despite the required value being blank.
+        cut.FindAll(".btn-group button")[0].Click();
+
+        var textareas = cut.FindAll("textarea");
+        Assert.Empty(textareas); // no longer in JSON mode: the switch was not blocked
+
+        // No switch-blocking error message ("Parameter 'x' is required.") was surfaced. The
+        // required marker on the field label ("*", text-danger) and the Form mode's own blank-
+        // required-value affordance ("This value is required.", text-warning) are expected and are
+        // not the switch-blocking error this asserts against.
+        var switchBlockingError = cut.FindAll(".text-danger").Any(e => e.TextContent.Contains("is required."));
+        Assert.False(switchBlockingError);
+
+        // The overall ParameterState is still correctly reported as invalid, so the parent
+        // JobBuilder still blocks submission until the operator fills the field in.
+        Assert.NotNull(last);
+        Assert.False(last.IsValid);
     }
 }

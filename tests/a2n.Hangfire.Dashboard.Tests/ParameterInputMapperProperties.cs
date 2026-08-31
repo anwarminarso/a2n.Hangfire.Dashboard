@@ -154,6 +154,14 @@ public class ParameterInputMapperProperties
         Case(typeof(int[,]), ParameterInputKind.Json, note: "multi-dim array"),
         Case(typeof(ParamInputMap_Nested[]), ParameterInputKind.Json, note: "array of non-scalar"),
 
+        // Collection types (IEnumerable, not an array) -> Json, not NestedObject: their entries
+        // are not CLR properties, so a NestedObject sub-form would silently drop the data (Issue #39).
+        Case(typeof(Dictionary<string, string>), ParameterInputKind.Json, note: "Issue #39: Dictionary<K,V>"),
+        Case(typeof(Dictionary<string, int>), ParameterInputKind.Json, note: "Issue #39: Dictionary<K,V>"),
+        Case(typeof(List<string>), ParameterInputKind.Json, note: "IEnumerable, not array"),
+        Case(typeof(HashSet<int>), ParameterInputKind.Json, note: "IEnumerable, not array"),
+        Case(typeof(IEnumerable<string>), ParameterInputKind.Json, note: "IEnumerable interface"),
+
         // Nullable<T> (other than bool?) maps like its underlying T.
         Case(typeof(int?), ParameterInputKind.Integer, note: "Nullable<int> == int"),
         Case(typeof(long?), ParameterInputKind.Integer, note: "Nullable<long> == long"),
