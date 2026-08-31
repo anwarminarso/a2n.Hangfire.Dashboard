@@ -76,7 +76,7 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var stopped in FilteredStopped)
+                            @foreach (var stopped in PagedStopped)
                             {
                                 <tr class="table-secondary">
                                     <td><span class="hf-job-name font-monospace" title="@stopped.Id">@stopped.Id</span></td>
@@ -100,6 +100,8 @@ else
                     </table>
                 </div>
             </div>
+            <Pager TotalCount="FilteredStopped.Count" PageSize="_pageSize" From="_stoppedFrom"
+                   OnPageChanged="HandleStoppedPageChanged" />
         </div>
     }
 
@@ -131,7 +133,7 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var job in FilteredJobs)
+                            @foreach (var job in PagedJobs)
                             {
                                 <tr>
                                     <td>
@@ -206,6 +208,8 @@ else
                 </div>
             </div>
         </div>
+        <Pager TotalCount="FilteredJobs.Count" PageSize="_pageSize" From="_from"
+               OnPageChanged="HandlePageChanged" />
     }
 
     @* Filter is active but nothing matched across both the active and stopped lists (Issue #13). *@
@@ -230,6 +234,8 @@ else
     private bool _selectAll;
     private bool _showDeleteConfirm;
     private int _pageSize = 20;
+    private int _from;
+    private int _stoppedFrom;
     private Timer _refreshTimer;
     private string _successMessage;
 
@@ -244,6 +250,10 @@ else
                 ? _jobs
                 : _jobs.Where(MatchesFilter).ToList();
 
+    // The current page of active recurring jobs (Issue #37).
+    private IReadOnlyList<RecurringJobDto> PagedJobs =>
+        FilteredJobs.Skip(_from).Take(_pageSize).ToList();
+
     // The stopped recurring jobs after applying the same filter (Issue #13).
     private List<StoppedJobInfo> FilteredStopped =>
         string.IsNullOrWhiteSpace(_filter)
@@ -251,6 +261,10 @@ else
             : _stoppedJobs
                 .Where(s => Contains(s.Id) || Contains($"{s.TypeName}.{s.MethodName}"))
                 .ToList();
+
+    // The current page of stopped recurring jobs (Issue #37).
+    private List<StoppedJobInfo> PagedStopped =>
+        FilteredStopped.Skip(_stoppedFrom).Take(_pageSize).ToList();
 
     private bool MatchesFilter(RecurringJobDto job) =>
         Contains(job.Id) || Contains(GetJobName(job));
@@ -266,9 +280,12 @@ else
     private void OnFilterInput(ChangeEventArgs e)
     {
         _filter = e.Value?.ToString() ?? "";
+        // Reset pagination when filter changes (Issue #37).
+        _from = 0;
+        _stoppedFrom = 0;
         // A narrowed view shouldn't keep selections for rows that are no longer visible.
         _selectedJobs.RemoveWhere(id => !FilteredJobs.Any(j => j.Id == id));
-        _selectAll = FilteredJobs.Count > 0 && FilteredJobs.All(j => _selectedJobs.Contains(j.Id));
+        _selectAll = PagedJobs.Count > 0 && PagedJobs.All(j => _selectedJobs.Contains(j.Id));
     }
 
     // Carries the deleted job id when arriving from the edit-form delete so a confirmation can be
@@ -363,28 +380,45 @@ else
     private void HandlePageSizeChanged(int newSize)
     {
         _pageSize = newSize;
+        // Reset pagination when page size changes (Issue #37).
+        _from = 0;
+        _stoppedFrom = 0;
         _selectedJobs.Clear();
         _selectAll = false;
+    }
+
+    // Handles pagination for the active recurring jobs table (Issue #37).
+    private void HandlePageChanged((int From, int PageSize) args)
+    {
+        _from = args.From;
+        _selectedJobs.Clear();
+        _selectAll = false;
+    }
+
+    // Handles pagination for the stopped recurring jobs table (Issue #37).
+    private void HandleStoppedPageChanged((int From, int PageSize) args)
+    {
+        _stoppedFrom = args.From;
     }
 
     private bool IsSelected(string id) => _selectedJobs.Contains(id);
     private void ToggleJob(string id)
     {
         if (!_selectedJobs.Remove(id)) _selectedJobs.Add(id);
-        _selectAll = FilteredJobs.Count > 0 && FilteredJobs.All(j => _selectedJobs.Contains(j.Id));
+        _selectAll = PagedJobs.Count > 0 && PagedJobs.All(j => _selectedJobs.Contains(j.Id));
     }
     private void ToggleAll(ChangeEventArgs e)
     {
         if (_jobs is null) return;
         if ((bool)(e.Value ?? false))
         {
-            // Select only the currently visible (filtered) jobs (Issue #13).
-            foreach (var job in FilteredJobs) _selectedJobs.Add(job.Id);
+            // Select only the currently visible (paged) jobs (Issue #13, #37).
+            foreach (var job in PagedJobs) _selectedJobs.Add(job.Id);
             _selectAll = true;
         }
         else
         {
-            foreach (var job in FilteredJobs) _selectedJobs.Remove(job.Id);
+            foreach (var job in PagedJobs) _selectedJobs.Remove(job.Id);
             _selectAll = false;
         }
     }
