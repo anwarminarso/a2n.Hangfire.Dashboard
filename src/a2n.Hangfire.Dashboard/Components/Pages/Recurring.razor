@@ -139,7 +139,16 @@ else
                                     <td>
                                         <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" />
                                     </td>
-                                    <td><span class="hf-job-name font-monospace" title="@job.Id">@job.Id</span></td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(job.LastJobId))
+                                        {
+                                            <a class="hf-job-name font-monospace text-decoration-none" href="jobs/details/@job.LastJobId" title="@job.Id">@job.Id</a>
+                                        }
+                                        else
+                                        {
+                                            <span class="hf-job-name font-monospace" title="@job.Id">@job.Id</span>
+                                        }
+                                    </td>
                                     <td><code class="font-monospace">@job.Cron</code></td>
                                     <td>@(job.TimeZoneId ?? "UTC")</td>
                                     <td><span class="hf-job-name" title="@GetJobName(job)">@GetJobName(job)</span></td>
@@ -160,9 +169,18 @@ else
                                     <td class="text-end">
                                         @if (job.LastExecution.HasValue)
                                         {
-                                            <span class="@GetLastStateClass(job.LastJobState)">
-                                                <RelativeTime UtcTime="@job.LastExecution.Value" />
-                                            </span>
+                                            @if (!string.IsNullOrEmpty(job.LastJobId))
+                                            {
+                                                <a class="@GetLastStateClass(job.LastJobState) text-decoration-none" href="jobs/details/@job.LastJobId">
+                                                    <RelativeTime UtcTime="@job.LastExecution.Value" />
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span class="@GetLastStateClass(job.LastJobState)">
+                                                    <RelativeTime UtcTime="@job.LastExecution.Value" />
+                                                </span>
+                                            }
                                         }
                                         else
                                         {
