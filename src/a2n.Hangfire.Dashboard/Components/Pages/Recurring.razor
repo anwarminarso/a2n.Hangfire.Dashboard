@@ -350,6 +350,27 @@ else
             _jobs = Monitor.GetRecurringJobs();
             LoadStoppedJobs();
         });
+        // The visible list can shrink after a reload (delete/trigger/stop/start, or the 10s
+        // auto-refresh finding fewer jobs), which can leave _from/_stoppedFrom pointing past the
+        // end and render an empty trailing page (Issue #37 follow-up). Re-clamp both offsets back
+        // into range every time the data changes.
+        ClampPaging();
+    }
+
+    // Clamps _from/_stoppedFrom to the last valid page for the current filtered counts, so a
+    // shrinking list (after delete/trigger/stop/start, or a background refresh) never leaves the
+    // pager pointing at an empty trailing page.
+    private void ClampPaging()
+    {
+        _from = ClampOffset(_from, FilteredJobs.Count, _pageSize);
+        _stoppedFrom = ClampOffset(_stoppedFrom, FilteredStopped.Count, _pageSize);
+    }
+
+    private static int ClampOffset(int from, int totalCount, int pageSize)
+    {
+        if (totalCount == 0 || pageSize <= 0) return 0;
+        var maxOffset = (totalCount - 1) / pageSize * pageSize;
+        return Math.Clamp(from, 0, maxOffset);
     }
 
     private void LoadStoppedJobs()
