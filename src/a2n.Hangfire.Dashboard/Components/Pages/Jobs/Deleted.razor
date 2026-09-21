@@ -71,7 +71,7 @@
                                     }
                                     else
                                     {
-                                        <td><span class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</span></td>
+                                        <td><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
                                         @if (_hasExceptionData)
                                         {
                                             <td>
@@ -201,8 +201,6 @@
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
-    private static string GetJobName(DeletedJobDto dto) =>
-        dto is null ? "(unknown)" : Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
 
     private static string GetExceptionType(DeletedJobDto dto)
     {

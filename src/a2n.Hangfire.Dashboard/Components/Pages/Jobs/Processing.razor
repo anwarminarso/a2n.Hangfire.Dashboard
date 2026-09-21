@@ -83,7 +83,7 @@
                                             {
                                                 <i class="bi bi-exclamation-triangle text-warning me-1" title="Server heartbeat timeout — job may be aborted"></i>
                                             }
-                                            <span class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</span>
+                                            <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
                                         </td>
                                         <td class="text-end">
                                             @if (job.Value.StartedAt.HasValue)
@@ -300,11 +300,6 @@
         return $"#{id}";
     }
 
-    private static string GetJobName(ProcessingJobDto dto)
-    {
-        if (dto is null) return "(unknown)";
-        return Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
-    }
 
     public void Dispose()
     {

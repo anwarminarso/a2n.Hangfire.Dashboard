@@ -52,7 +52,7 @@
                                                @onchange="() => ToggleJob(job.Key)" />
                                     </td>
                                     <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                    <td><span class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</span></td>
+                                    <td><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
                                     <td>@GetPerformanceDuration(job.Value)</td>
                                     <td>@GetLatency(job.Value)</td>
                                     <td class="text-end">
@@ -169,11 +169,6 @@
         return $"#{id}";
     }
 
-    private static string GetJobName(SucceededJobDto dto)
-    {
-        if (dto is null) return "(unknown)";
-        return Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
-    }
 
     private static string GetPerformanceDuration(SucceededJobDto dto)
     {

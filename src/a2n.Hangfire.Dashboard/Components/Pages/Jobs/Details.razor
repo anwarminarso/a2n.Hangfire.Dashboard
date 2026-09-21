@@ -38,16 +38,13 @@
         @* Continuations / dependency graph *@
         <JobGraphViewer JobId="@JobId" />
 
-        @* Job Code Snippet *@
-        if (_job.Job is not null)
+        @* Job Code Snippet — method call with arguments, as the original Hangfire dashboard renders it.
+           Also rendered when the target method could not be resolved, using the raw invocation data. *@
+        if (_job.Job is not null || _job.InvocationData is not null)
         {
             <div class="card mb-3">
                 <div class="card-body p-0">
-                    <pre class="hf-code-block mb-0 p-3"><code><span class="code-comment">// Id: #@JobId</span>
-<span class="code-keyword">using</span> <span class="code-namespace">@(_job.Job.Type.Namespace)</span>;
-
-<span class="code-keyword">var</span> sampleJobs = Activate&lt;<span class="code-type">@(_job.Job.Type.Name)</span>&gt;();
-sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupString)GetFormattedArguments()));</code></pre>
+                    <pre class="hf-code-block mb-0 p-3"><code>@((MarkupString)RenderMethodCall())</code></pre>
                 </div>
             </div>
         }
@@ -344,16 +341,11 @@ sampleJobs.<span class="code-method">@(_job.Job.Method.Name)</span>(@((MarkupStr
         return Helpers.JobNameHelper.GetDisplayName(_job.Job, _job.InvocationData);
     }
 
-    private string GetFormattedArguments()
-    {
-        if (_job?.Job?.Args is null || _job.Job.Args.Count == 0) return "";
-        return string.Join(", ", _job.Job.Args.Select(a =>
-        {
-            if (a is null) return "<span class=\"code-keyword\">null</span>";
-            if (a is string s) return $"<span class=\"code-string\">\"{System.Net.WebUtility.HtmlEncode(s)}\"</span>";
-            return $"<span class=\"code-number\">{System.Net.WebUtility.HtmlEncode(a.ToString() ?? "")}</span>";
-        }));
-    }
+    /// <summary>
+    /// Renders the job's invocation as a C# method call with type-aware argument formatting.
+    /// </summary>
+    private string RenderMethodCall()
+        => Helpers.JobArgumentsRenderer.RenderMethodCall(_job?.Job, _job?.InvocationData, JobId);
 
     private string GetExpiryInfo()
     {

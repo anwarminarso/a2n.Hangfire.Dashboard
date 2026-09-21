@@ -56,7 +56,7 @@
                                     <td class="font-monospace">
                                         <a href="jobs/details/@jobId">@ShortenId(jobId)</a>
                                     </td>
-                                    <td>@(info.jobName ?? "Unknown")</td>
+                                    <td><JobNameDisplay Name="@(info.jobName ?? "Unknown")" ArgumentsText="@(info.jobArgs ?? "")" /></td>
                                     <td>
                                         @if (!string.IsNullOrEmpty(info.options))
                                         {
@@ -111,7 +111,7 @@
 
 @code {
     private IReadOnlyList<string> _jobIds;
-    private Dictionary<string, (string jobName, string options, string parentId, string parentState, DateTime? createdAt)> _jobInfo = new();
+    private Dictionary<string, (string jobName, string jobArgs, string options, string parentId, string parentState, DateTime? createdAt)> _jobInfo = new();
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
     private long _totalCount;
@@ -153,6 +153,9 @@
                     var jobName = detail is not null
                         ? Helpers.JobNameHelper.GetDisplayName(detail.Job, detail.InvocationData)
                         : null;
+                    var jobArgs = detail is not null
+                        ? Helpers.JobArgumentsRenderer.GetArgumentsText(detail.Job, detail.InvocationData)
+                        : null;
                     string parentId = null;
                     string parentState = null;
                     string options = null;
@@ -176,7 +179,7 @@
                         detail?.Properties?.TryGetValue("ParentId", out parentId);
                     }
 
-                    _jobInfo[jobId] = (jobName, options, parentId, parentState, createdAt);
+                    _jobInfo[jobId] = (jobName, jobArgs, options, parentId, parentState, createdAt);
                 }
             }
         });

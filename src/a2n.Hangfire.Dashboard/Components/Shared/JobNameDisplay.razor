@@ -1,0 +1,51 @@
+@*
+    Renders a job's display name for list rows, with a compact summary of its arguments underneath.
+
+    The original Hangfire dashboard only shows arguments on the job details page; showing them in the
+    list makes rows distinguishable when many jobs share the same method, and makes "args:" search
+    results verifiable at a glance. Both lines are width-constrained with the full value in a title
+    tooltip, so a large payload cannot widen the table.
+*@
+@using global::Hangfire.Common
+
+<span class="hf-job-name" title="@_name">@_name</span>
+@if (!string.IsNullOrEmpty(_argsSummary))
+{
+    <span class="hf-job-args" title="@_argsText">@_argsSummary</span>
+}
+
+@code {
+    /// <summary>
+    /// The resolved job, or <c>null</c> when the dashboard cannot load the job's assembly.
+    /// </summary>
+    [Parameter] public Job Job { get; set; }
+
+    /// <summary>
+    /// Raw invocation data, used for the argument payload and as a fallback for the name.
+    /// </summary>
+    [Parameter] public InvocationData InvocationData { get; set; }
+
+    /// <summary>
+    /// Overrides the resolved display name. Used by callers that already have a name to show
+    /// (for example "(unknown)" for a job that has expired).
+    /// </summary>
+    [Parameter] public string Name { get; set; }
+
+    /// <summary>
+    /// Overrides the argument text. Used by callers that read the job details once up front and
+    /// cache the text, instead of holding on to the <see cref="InvocationData"/> per row.
+    /// An empty string suppresses the argument line.
+    /// </summary>
+    [Parameter] public string ArgumentsText { get; set; }
+
+    private string _name;
+    private string _argsText;
+    private string _argsSummary;
+
+    protected override void OnParametersSet()
+    {
+        _name = Name ?? JobNameHelper.GetDisplayName(Job, InvocationData);
+        _argsText = ArgumentsText ?? JobArgumentsRenderer.GetArgumentsText(Job, InvocationData);
+        _argsSummary = JobArgumentsRenderer.SummarizeArgumentsText(_argsText);
+    }
+}

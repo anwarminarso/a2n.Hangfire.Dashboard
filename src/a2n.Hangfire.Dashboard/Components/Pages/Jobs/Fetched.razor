@@ -76,7 +76,7 @@
                                     else
                                     {
                                         <td><span class="badge bg-secondary">@(job.Value.State ?? "N/A")</span></td>
-                                        <td><span class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</span></td>
+                                        <td><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
                                         <td class="text-end">
                                             @if (job.Value.FetchedAt.HasValue)
                                             {
@@ -220,8 +220,6 @@
     }
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
-    private static string GetJobName(FetchedJobDto dto) =>
-        dto is null ? "(unknown)" : Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
 
     public void Dispose()
     {

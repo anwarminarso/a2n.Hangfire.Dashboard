@@ -57,7 +57,7 @@ else
                                     <a href="jobs/details/@jobId" class="font-monospace">@ShortenId(jobId)</a>
                                 </td>
                                 <td><span class="badge bg-secondary">@(info.state ?? "Scheduled")</span></td>
-                                <td>@(info.jobName ?? "Unknown")</td>
+                                <td><JobNameDisplay Name="@(info.jobName ?? "Unknown")" ArgumentsText="@(info.jobArgs ?? "")" /></td>
                                 <td class="text-body-secondary">@(info.reason ?? "")</td>
                                 <td class="text-end">
                                     @if (info.retryAt.HasValue)
@@ -90,7 +90,7 @@ else
 
 @code {
     private IReadOnlyList<string> _jobIds;
-    private Dictionary<string, (string jobName, string state, string reason, DateTime? retryAt, DateTime? createdAt)> _jobInfo = new();
+    private Dictionary<string, (string jobName, string jobArgs, string state, string reason, DateTime? retryAt, DateTime? createdAt)> _jobInfo = new();
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
     private long _totalCount;
@@ -132,6 +132,9 @@ else
                     var jobName = detail is not null
                         ? Helpers.JobNameHelper.GetDisplayName(detail.Job, detail.InvocationData)
                         : null;
+                    var jobArgs = detail is not null
+                        ? Helpers.JobArgumentsRenderer.GetArgumentsText(detail.Job, detail.InvocationData)
+                        : null;
                     var currentState = detail?.History?.FirstOrDefault();
                     var state = currentState?.StateName;
                     var reason = currentState?.Reason;
@@ -147,7 +150,7 @@ else
                         }
                     }
 
-                    _jobInfo[jobId] = (jobName, state, reason, retryAt, createdAt);
+                    _jobInfo[jobId] = (jobName, jobArgs, state, reason, retryAt, createdAt);
                 }
             }
         });
