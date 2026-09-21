@@ -41,6 +41,18 @@ internal static class PgHelper
         )";
 
     /// <summary>
+    /// SQL expression that yields the serialized job arguments, and nothing else. Hangfire.PostgreSql
+    /// keeps the argument array in the <c>job.arguments</c> column and writes <c>invocationdata</c>
+    /// with its own Arguments property left null, so the column holds the exact stored payload.
+    /// Matching it instead of the whole payload keeps an argument search off type and method names.
+    ///
+    /// The cast is required: the column is <c>jsonb</c> on a current Hangfire schema (and <c>text</c>
+    /// on an older one), and jsonb supports neither ILIKE nor COALESCE with a text literal.
+    /// </summary>
+    public static string JobArgumentsSql(string jobAlias = "j")
+        => $"COALESCE({jobAlias}.arguments::text, '')";
+
+    /// <summary>
     /// Escapes ILIKE pattern special characters: %, _, \
     /// </summary>
     public static string EscapeILikePattern(string input)

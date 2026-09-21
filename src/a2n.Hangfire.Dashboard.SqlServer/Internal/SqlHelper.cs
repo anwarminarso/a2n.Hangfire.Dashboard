@@ -28,6 +28,15 @@ internal static class SqlHelper
     }
 
     /// <summary>
+    /// SQL expression that yields the serialized job arguments, and nothing else. Hangfire.SqlServer
+    /// keeps the argument array in the <c>Job.Arguments</c> column and writes <c>InvocationData</c>
+    /// with its own Arguments property left null, so the column holds the exact stored text.
+    /// Matching it instead of the whole payload keeps an argument search off type and method names.
+    /// </summary>
+    public static string JobArgumentsSql(string jobAlias = "j")
+        => $"COALESCE({jobAlias}.Arguments, '')";
+
+    /// <summary>
     /// Escapes LIKE pattern special characters: %, _, [
     /// Must be called before embedding user input into a LIKE pattern parameter.
     /// Order matters: [ must be escaped first to avoid double-escaping.

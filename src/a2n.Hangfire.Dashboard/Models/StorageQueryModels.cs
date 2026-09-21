@@ -191,6 +191,13 @@ public class JobFilterCriteria
     public string JobNamePattern { get; set; }
 
     /// <summary>
+    /// Search by the serialized job arguments, as they are stored.
+    /// Unlike <see cref="JobNamePattern"/> this only matches the argument payload, so a value
+    /// that also appears in a type or method name does not produce a hit.
+    /// </summary>
+    public string ArgumentsPattern { get; set; }
+
+    /// <summary>
     /// Search by exception type or message (ILIKE on State.Data exception fields).
     /// Replaces SearchFailedByExceptionAsync.
     /// </summary>
@@ -242,6 +249,7 @@ public class JobFilterCriteria
             || (Tags != null && Tags.Count > 0)
             || !string.IsNullOrWhiteSpace(RecurringJobId)
             || !string.IsNullOrWhiteSpace(JobNamePattern)
+            || !string.IsNullOrWhiteSpace(ArgumentsPattern)
             || !string.IsNullOrWhiteSpace(ExceptionPattern)
             || !string.IsNullOrWhiteSpace(ContentPattern);
     }

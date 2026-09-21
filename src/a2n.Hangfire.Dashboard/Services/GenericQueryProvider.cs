@@ -1,3 +1,4 @@
+using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 using Hangfire;
@@ -47,7 +48,8 @@ public class GenericQueryProvider : IStorageQueryProvider
             if (ct.IsCancellationRequested || candidates.Count >= SafetyCap)
                 break;
 
-            ScanState(monitoringApi, state, criteria.JobNamePattern, candidates, ct);
+            ScanState(monitoringApi, state,
+                new ScanFilter(criteria.JobNamePattern, criteria.ArgumentsPattern), candidates, ct);
         }
 
         // Apply client-side filters
@@ -147,7 +149,7 @@ public class GenericQueryProvider : IStorageQueryProvider
         var monitoringApi = _storage.GetMonitoringApi();
         var candidates = new List<JobSummaryDto>();
 
-        ScanState(monitoringApi, stateName, null, candidates, ct);
+        ScanState(monitoringApi, stateName, ScanFilter.None, candidates, ct);
 
         return Task.FromResult(SortAndPaginate(candidates, page, pageSize));
     }
@@ -228,38 +230,38 @@ public class GenericQueryProvider : IStorageQueryProvider
     }
 
     /// <summary>
-    /// Scans a state for jobs, optionally filtering by name pattern.
+    /// Scans a state for jobs, optionally filtering by name and argument patterns.
     /// </summary>
-    private void ScanState(IMonitoringApi monitoringApi, string state, string namePattern,
+    private void ScanState(IMonitoringApi monitoringApi, string state, ScanFilter filter,
         List<JobSummaryDto> candidates, CancellationToken ct)
     {
         switch (state.ToLowerInvariant())
         {
             case "enqueued":
-                ScanEnqueued(monitoringApi, namePattern, candidates, ct);
+                ScanEnqueued(monitoringApi, filter, candidates, ct);
                 break;
             case "processing":
-                ScanBatched(monitoringApi.ProcessingJobs, "Processing", namePattern, candidates, ct,
-                    dto => dto?.Job, dto => dto?.StartedAt, dto => dto?.Job?.Queue);
+                ScanBatched(monitoringApi.ProcessingJobs, "Processing", filter, candidates, ct,
+                    dto => dto?.Job, dto => dto?.InvocationData, dto => dto?.StartedAt, dto => dto?.Job?.Queue);
                 break;
             case "scheduled":
-                ScanBatched(monitoringApi.ScheduledJobs, "Scheduled", namePattern, candidates, ct,
-                    dto => dto?.Job, dto => dto?.ScheduledAt, dto => dto?.Job?.Queue);
+                ScanBatched(monitoringApi.ScheduledJobs, "Scheduled", filter, candidates, ct,
+                    dto => dto?.Job, dto => dto?.InvocationData, dto => dto?.ScheduledAt, dto => dto?.Job?.Queue);
                 break;
             case "succeeded":
-                ScanSucceeded(monitoringApi, namePattern, candidates, ct);
+                ScanSucceeded(monitoringApi, filter, candidates, ct);
                 break;
             case "failed":
-                ScanFailed(monitoringApi, namePattern, candidates, ct);
+                ScanFailed(monitoringApi, filter, candidates, ct);
                 break;
             case "deleted":
-                ScanBatched(monitoringApi.DeletedJobs, "Deleted", namePattern, candidates, ct,
-                    dto => dto?.Job, dto => dto?.DeletedAt, dto => dto?.Job?.Queue);
+                ScanBatched(monitoringApi.DeletedJobs, "Deleted", filter, candidates, ct,
+                    dto => dto?.Job, dto => dto?.InvocationData, dto => dto?.DeletedAt, dto => dto?.Job?.Queue);
                 break;
         }
     }
 
-    private void ScanEnqueued(IMonitoringApi monitoringApi, string namePattern,
+    private void ScanEnqueued(IMonitoringApi monitoringApi, ScanFilter filter,
         List<JobSummaryDto> candidates, CancellationToken ct)
     {
         var queues = monitoringApi.Queues();
@@ -280,7 +282,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                     if (candidates.Count >= SafetyCap) break;
                     var dto = entry.Value;
                     if (dto?.Job == null) continue;
-                    if (!MatchesName(dto.Job, namePattern)) continue;
+                    if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
 
                     candidates.Add(new JobSummaryDto
                     {
@@ -297,7 +299,7 @@ public class GenericQueryProvider : IStorageQueryProvider
         }
     }
 
-    private void ScanSucceeded(IMonitoringApi monitoringApi, string namePattern,
+    private void ScanSucceeded(IMonitoringApi monitoringApi, ScanFilter filter,
         List<JobSummaryDto> candidates, CancellationToken ct)
     {
         int from = 0;
@@ -311,7 +313,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 if (dto?.Job == null) continue;
-                if (!MatchesName(dto.Job, namePattern)) continue;
+                if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -328,7 +330,7 @@ public class GenericQueryProvider : IStorageQueryProvider
         }
     }
 
-    private void ScanFailed(IMonitoringApi monitoringApi, string namePattern,
+    private void ScanFailed(IMonitoringApi monitoringApi, ScanFilter filter,
         List<JobSummaryDto> candidates, CancellationToken ct)
     {
         int from = 0;
@@ -342,7 +344,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 if (dto?.Job == null) continue;
-                if (!MatchesName(dto.Job, namePattern)) continue;
+                if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -361,8 +363,9 @@ public class GenericQueryProvider : IStorageQueryProvider
     }
 
     private void ScanBatched<TDto>(Func<int, int, JobList<TDto>> fetchBatch,
-        string stateName, string namePattern, List<JobSummaryDto> candidates, CancellationToken ct,
-        Func<TDto, Job> getJob, Func<TDto, DateTime?> getTimestamp, Func<TDto, string> getQueue)
+        string stateName, ScanFilter filter, List<JobSummaryDto> candidates, CancellationToken ct,
+        Func<TDto, Job> getJob, Func<TDto, InvocationData> getInvocationData,
+        Func<TDto, DateTime?> getTimestamp, Func<TDto, string> getQueue)
     {
         int from = 0;
         while (!ct.IsCancellationRequested && candidates.Count < SafetyCap)
@@ -376,7 +379,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 var dto = entry.Value;
                 var job = getJob(dto);
                 if (job == null) continue;
-                if (!MatchesName(job, namePattern)) continue;
+                if (!filter.Matches(job, getInvocationData(dto))) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -512,5 +515,32 @@ public class GenericQueryProvider : IStorageQueryProvider
             return true;
 
         return false;
+    }
+
+    /// <summary>
+    /// Matches against the serialized job arguments only, never the type or method name — the
+    /// same scope the storage adapters use for their SQL predicate.
+    /// </summary>
+    private static bool MatchesArguments(Job job, InvocationData invocationData, string pattern)
+    {
+        if (string.IsNullOrEmpty(pattern)) return true;
+
+        var arguments = JobArgumentsRenderer.GetArgumentsText(job, invocationData);
+        return arguments.Contains(pattern, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Patterns applied while scanning, before a job becomes a candidate. Filtering here rather
+    /// than in <see cref="ApplyFilters"/> keeps the <see cref="SafetyCap"/> budget available for
+    /// rows that can actually be returned.
+    /// </summary>
+    private readonly record struct ScanFilter(string NamePattern, string ArgumentsPattern)
+    {
+        /// <summary>No filtering — every scanned job becomes a candidate.</summary>
+        public static ScanFilter None => default;
+
+        public bool Matches(Job job, InvocationData invocationData)
+            => MatchesName(job, NamePattern)
+            && MatchesArguments(job, invocationData, ArgumentsPattern);
     }
 }
