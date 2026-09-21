@@ -133,7 +133,8 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Job dependency graph | 🆕 Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
 | Retry summary | 🆕 Inline banner above state history showing retry count + exception consistency |
 | Stack trace links | 🆕 File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
-| Global search | Search by job ID, name, queue, tag, or exception text |
+| Job arguments | 🆕 Job lists show each job's arguments, and the Job Details page renders the full method call with type-aware argument formatting — including jobs whose assembly the dashboard does not reference |
+| Global search | Search by job ID, name, queue, tag, exception text, or job arguments (`args:value`) |
 | Advanced filters | Filter by date, duration, state, server, and more |
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
 | Health checks | 🆕 `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
