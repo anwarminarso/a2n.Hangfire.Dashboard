@@ -74,13 +74,19 @@ else
                     <table class="table table-hover table-sm mb-0">
                         <thead>
                             <tr>
-                                <th style="width: 18%;">Job</th>
-                                <th style="width: 14%;">State</th>
-                                <th>Server</th>
+                                <SortableHeader Label="Job" Style="width: 18%;"
+                                                IsActive="@_sort.IsActive(HolderSort.Job)" Descending="@_sort.Descending"
+                                                OnSort="() => _sort.Toggle(HolderSort.Job)" />
+                                <SortableHeader Label="State" Style="width: 14%;"
+                                                IsActive="@_sort.IsActive(HolderSort.State)" Descending="@_sort.Descending"
+                                                OnSort="() => _sort.Toggle(HolderSort.State)" />
+                                <SortableHeader Label="Server"
+                                                IsActive="@_sort.IsActive(HolderSort.Server)" Descending="@_sort.Descending"
+                                                OnSort="() => _sort.Toggle(HolderSort.Server)" />
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var holder in _holders)
+                            @foreach (var holder in SortedHolders)
                             {
                                 <tr>
                                     <td>
@@ -131,6 +137,19 @@ else
     private SemaphoreDto _semaphore;
     private IReadOnlyList<ThrottleHolderDto> _holders = [];
     private Timer _refreshTimer;
+
+    private enum HolderSort { None, Job, State, Server }
+
+    private readonly GridSortState<HolderSort> _sort = new();
+
+    // A holder whose job no longer exists has no state; it sorts with the other missing values.
+    private IEnumerable<ThrottleHolderDto> SortedHolders => GridSort.Apply(_holders, _sort, column => column switch
+    {
+        HolderSort.Job => h => h.JobId,
+        HolderSort.State => h => h.StateName,
+        HolderSort.Server => h => h.ServerId,
+        _ => null
+    }, h => h.JobId);
 
     /// <summary>How often the holder table re-reads storage while the page is open.</summary>
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(6);

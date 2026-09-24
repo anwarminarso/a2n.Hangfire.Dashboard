@@ -3,7 +3,7 @@
     passes whether this column is the active one and in which direction.
 *@
 
-<th class="@CssClass" aria-sort="@AriaSort">
+<th class="@CssClass" style="@Style" aria-sort="@AriaSort">
     <button type="button" class="hf-sort-btn" @onclick="OnSort"
             title="@($"Sort by {Label}")">
         @Label
@@ -24,6 +24,9 @@
 
     /// <summary>Extra classes for the <c>th</c> element, e.g. <c>text-end</c>.</summary>
     [Parameter] public string CssClass { get; set; }
+
+    /// <summary>Inline style for the <c>th</c> element, e.g. a fixed column width.</summary>
+    [Parameter] public string Style { get; set; }
 
     private string AriaSort => !IsActive ? "none" : Descending ? "descending" : "ascending";
 

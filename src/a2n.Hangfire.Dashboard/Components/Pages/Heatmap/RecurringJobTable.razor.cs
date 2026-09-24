@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.Models;
 using Microsoft.AspNetCore.Components;
 
@@ -56,6 +57,25 @@ public partial class RecurringJobTable
     /// <summary>The number of long-period rows, surfaced in the table header.</summary>
     private int LongPeriodCount { get; set; }
 
+    private enum RowSort { None, Id, Queue, TimeZone, Duration, Cells }
+
+    private readonly GridSortState<RowSort> _sort = new();
+
+    /// <summary>
+    /// <see cref="Rows"/> in the column order the operator picked. Until a header is clicked the
+    /// default order from <see cref="BuildRows"/> (long-period jobs first, then by id) is kept. A job
+    /// with no estimated duration (shown as "—") sorts with the missing values.
+    /// </summary>
+    private IEnumerable<RowModel> SortedRows => GridSort.Apply(Rows, _sort, column => column switch
+    {
+        RowSort.Id => r => r.JobId,
+        RowSort.Queue => r => r.Queue,
+        RowSort.TimeZone => r => r.TimeZoneLabel,
+        RowSort.Duration => r => r.Duration > TimeSpan.Zero ? r.Duration : null,
+        RowSort.Cells => r => r.ContributingCellCount,
+        _ => null
+    }, r => r.JobId);
+
     protected override void OnParametersSet()
     {
         Rows = BuildRows();
@@ -96,6 +116,7 @@ public partial class RecurringJobTable
                     job.CronExpression,
                     string.IsNullOrWhiteSpace(job.Queue) ? "default" : job.Queue,
                     FormatTimeZone(job.TimeZoneId),
+                    job.EstimatedDuration,
                     FormatDuration(job.EstimatedDuration),
                     cells,
                     longPeriod.Contains(job.JobId)));
@@ -108,7 +129,7 @@ public partial class RecurringJobTable
             if (seen.Add(jobId))
             {
                 contributingCells.TryGetValue(jobId, out var cells);
-                rows.Add(new RowModel(jobId, null, "default", "UTC", "—", cells, IsLongPeriod: true));
+                rows.Add(new RowModel(jobId, null, "default", "UTC", TimeSpan.Zero, "—", cells, IsLongPeriod: true));
             }
         }
 
@@ -181,6 +202,7 @@ public partial class RecurringJobTable
     /// <param name="CronExpression">The job's cron expression; <c>null</c> when unknown.</param>
     /// <param name="Queue">The resolved queue name.</param>
     /// <param name="TimeZoneLabel">The display label for the job's time zone (UTC when none).</param>
+    /// <param name="Duration">The estimated duration, used for sorting; zero when unknown.</param>
     /// <param name="DurationLabel">The formatted estimated duration.</param>
     /// <param name="ContributingCellCount">The number of active-window cells the job contributes to.</param>
     /// <param name="IsLongPeriod">Whether the job's recurrence period exceeds seven days (Req 9.7).</param>
@@ -189,6 +211,7 @@ public partial class RecurringJobTable
         string CronExpression,
         string Queue,
         string TimeZoneLabel,
+        TimeSpan Duration,
         string DurationLabel,
         int ContributingCellCount,
         bool IsLongPeriod);

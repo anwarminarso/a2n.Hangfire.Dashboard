@@ -49,15 +49,19 @@ else
                 <table class="table table-hover table-sm mb-0">
                     <thead>
                         <tr>
-                            <th>Job ID</th>
-                            <th>Status</th>
-                            <th>Last Run</th>
-                            <th>Avg Duration</th>
+                            <SortableHeader Label="Job ID" IsActive="@_sort.IsActive(HealthSort.JobId)" Descending="@_sort.Descending"
+                                            OnSort="() => _sort.Toggle(HealthSort.JobId)" />
+                            <SortableHeader Label="Status" IsActive="@_sort.IsActive(HealthSort.Status)" Descending="@_sort.Descending"
+                                            OnSort="() => _sort.Toggle(HealthSort.Status)" />
+                            <SortableHeader Label="Last Run" IsActive="@_sort.IsActive(HealthSort.LastRun)" Descending="@_sort.Descending"
+                                            OnSort="() => _sort.Toggle(HealthSort.LastRun)" />
+                            <SortableHeader Label="Avg Duration" IsActive="@_sort.IsActive(HealthSort.AvgDuration)" Descending="@_sort.Descending"
+                                            OnSort="() => _sort.Toggle(HealthSort.AvgDuration)" />
                             <th>Last 5 Results</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var job in _healthData)
+                        @foreach (var job in SortedHealthData)
                         {
                             <tr>
                                 <td class="font-monospace small">@job.JobId</td>
@@ -183,6 +187,21 @@ else
     private int _problemsCount;
 
     private readonly CancellationTokenSource _cts = new();
+
+    private enum HealthSort { None, JobId, Status, LastRun, AvgDuration }
+
+    private readonly GridSortState<HealthSort> _sort = new();
+
+    // Status orders Healthy → Warning → Error, so descending puts problems first. A job that never
+    // ran, or has no measured duration (shown as "—"), counts as missing for those columns.
+    private IEnumerable<RecurringJobHealthDto> SortedHealthData => GridSort.Apply(_healthData, _sort, column => column switch
+    {
+        HealthSort.JobId => j => j.JobId,
+        HealthSort.Status => j => j.Status,
+        HealthSort.LastRun => j => j.LastRunTime,
+        HealthSort.AvgDuration => j => j.AverageDurationMs > 0 ? j.AverageDurationMs : null,
+        _ => null
+    }, j => j.JobId);
 
     protected override async Task OnInitializedAsync()
     {

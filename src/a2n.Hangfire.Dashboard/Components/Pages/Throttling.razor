@@ -72,14 +72,20 @@ else
                     <table class="table table-hover table-sm mb-0">
                         <thead>
                             <tr>
-                                <th style="width: 22%;">Id</th>
+                                <SortableHeader Label="Id" Style="width: 22%;"
+                                                IsActive="@_semaphoreSort.IsActive(SemaphoreSort.Id)" Descending="@_semaphoreSort.Descending"
+                                                OnSort="() => _semaphoreSort.Toggle(SemaphoreSort.Id)" />
                                 <th>Description</th>
-                                <th style="width: 240px;" class="pe-4">Usage</th>
-                                <th style="width: 24%; min-width: 160px;">Holders</th>
+                                <SortableHeader Label="Usage" CssClass="pe-4" Style="width: 240px;"
+                                                IsActive="@_semaphoreSort.IsActive(SemaphoreSort.Usage)" Descending="@_semaphoreSort.Descending"
+                                                OnSort="() => _semaphoreSort.Toggle(SemaphoreSort.Usage)" />
+                                <SortableHeader Label="Holders" Style="width: 24%; min-width: 160px;"
+                                                IsActive="@_semaphoreSort.IsActive(SemaphoreSort.Holders)" Descending="@_semaphoreSort.Descending"
+                                                OnSort="() => _semaphoreSort.Toggle(SemaphoreSort.Holders)" />
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var semaphore in _semaphores)
+                            @foreach (var semaphore in SortedSemaphores)
                             {
                                 <tr>
                                     <td class="font-monospace">
@@ -138,14 +144,22 @@ else
                     <table class="table table-hover table-sm mb-0">
                         <thead>
                             <tr>
-                                <th>Id</th>
-                                <th style="width: 14%; min-width: 120px;">Held By</th>
-                                <th style="width: 12%;">State</th>
-                                <th style="width: 18%;">Server</th>
+                                <SortableHeader Label="Id"
+                                                IsActive="@_mutexSort.IsActive(MutexSort.Id)" Descending="@_mutexSort.Descending"
+                                                OnSort="() => _mutexSort.Toggle(MutexSort.Id)" />
+                                <SortableHeader Label="Held By" Style="width: 14%; min-width: 120px;"
+                                                IsActive="@_mutexSort.IsActive(MutexSort.HeldBy)" Descending="@_mutexSort.Descending"
+                                                OnSort="() => _mutexSort.Toggle(MutexSort.HeldBy)" />
+                                <SortableHeader Label="State" Style="width: 12%;"
+                                                IsActive="@_mutexSort.IsActive(MutexSort.State)" Descending="@_mutexSort.Descending"
+                                                OnSort="() => _mutexSort.Toggle(MutexSort.State)" />
+                                <SortableHeader Label="Server" Style="width: 18%;"
+                                                IsActive="@_mutexSort.IsActive(MutexSort.Server)" Descending="@_mutexSort.Descending"
+                                                OnSort="() => _mutexSort.Toggle(MutexSort.Server)" />
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var row in _mutexRows)
+                            @foreach (var row in SortedMutexRows)
                             {
                                 <tr>
                                     <td class="font-monospace">@row.MutexId</td>
@@ -207,16 +221,26 @@ else
                     <table class="table table-hover table-sm mb-0">
                         <thead>
                             <tr>
-                                <th style="width: 10%;">Type</th>
-                                <th style="width: 22%;">Id</th>
+                                <SortableHeader Label="Type" Style="width: 10%;"
+                                                IsActive="@_windowSort.IsActive(WindowSort.Type)" Descending="@_windowSort.Descending"
+                                                OnSort="() => _windowSort.Toggle(WindowSort.Type)" />
+                                <SortableHeader Label="Id" Style="width: 22%;"
+                                                IsActive="@_windowSort.IsActive(WindowSort.Id)" Descending="@_windowSort.Descending"
+                                                OnSort="() => _windowSort.Toggle(WindowSort.Id)" />
                                 <th>Description</th>
-                                <th style="width: 12%;" class="text-end">Limit</th>
-                                <th style="width: 12%;" class="text-end">Interval</th>
-                                <th style="width: 14%;" class="text-end">Current Count</th>
+                                <SortableHeader Label="Limit" CssClass="text-end" Style="width: 12%;"
+                                                IsActive="@_windowSort.IsActive(WindowSort.Limit)" Descending="@_windowSort.Descending"
+                                                OnSort="() => _windowSort.Toggle(WindowSort.Limit)" />
+                                <SortableHeader Label="Interval" CssClass="text-end" Style="width: 12%;"
+                                                IsActive="@_windowSort.IsActive(WindowSort.Interval)" Descending="@_windowSort.Descending"
+                                                OnSort="() => _windowSort.Toggle(WindowSort.Interval)" />
+                                <SortableHeader Label="Current Count" CssClass="text-end" Style="width: 14%;"
+                                                IsActive="@_windowSort.IsActive(WindowSort.Count)" Descending="@_windowSort.Descending"
+                                                OnSort="() => _windowSort.Toggle(WindowSort.Count)" />
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var window in _windows)
+                            @foreach (var window in SortedWindows)
                             {
                                 <tr>
                                     <td><span class="badge bg-secondary">@window.Type</span></td>
@@ -259,6 +283,41 @@ else
         public string MutexId { get; set; }
         public ThrottleHolderDto Holder { get; set; }
     }
+
+    private enum SemaphoreSort { None, Id, Usage, Holders }
+    private enum MutexSort { None, Id, HeldBy, State, Server }
+    private enum WindowSort { None, Type, Id, Limit, Interval, Count }
+
+    private readonly GridSortState<SemaphoreSort> _semaphoreSort = new();
+    private readonly GridSortState<MutexSort> _mutexSort = new();
+    private readonly GridSortState<WindowSort> _windowSort = new();
+
+    private IEnumerable<SemaphoreDto> SortedSemaphores => GridSort.Apply(_semaphores, _semaphoreSort, column => column switch
+    {
+        SemaphoreSort.Id => s => s.Id,
+        SemaphoreSort.Usage => s => s.MaxCount > 0 ? (double)s.HolderJobIds.Count / s.MaxCount : null,
+        SemaphoreSort.Holders => s => s.HolderJobIds.Count,
+        _ => null
+    }, s => s.Id);
+
+    private IEnumerable<MutexRow> SortedMutexRows => GridSort.Apply(_mutexRows, _mutexSort, column => column switch
+    {
+        MutexSort.Id => r => r.MutexId,
+        MutexSort.HeldBy => r => r.Holder?.JobId,
+        MutexSort.State => r => r.Holder?.StateName,
+        MutexSort.Server => r => r.Holder?.ServerId,
+        _ => null
+    }, r => r.MutexId);
+
+    private IEnumerable<ThrottleWindowDto> SortedWindows => GridSort.Apply(_windows, _windowSort, column => column switch
+    {
+        WindowSort.Type => w => w.Type,
+        WindowSort.Id => w => w.Id,
+        WindowSort.Limit => w => w.Limit,
+        WindowSort.Interval => w => w.IntervalSeconds,
+        WindowSort.Count => w => w.Counter,
+        _ => null
+    }, w => w.Id);
 
     protected override async Task OnInitializedAsync()
     {

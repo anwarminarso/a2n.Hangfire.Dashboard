@@ -154,6 +154,89 @@ public class GridSortingTests
         cut.WaitForAssertion(() => Assert.Equal(new[] { "beta", "gamma", "alpha" }, Names()), TestTimeouts.RenderWait);
     }
 
+    // ─── GridSort.Apply ────────────────────────────────────────────────────
+
+    private sealed record Item(string Name, int? Value);
+
+    private static Func<Item, object> KeyFor(Column column) => column switch
+    {
+        Column.A => i => i.Name,
+        Column.B => i => i.Value,
+        _ => null
+    };
+
+    private static readonly Item[] Items =
+    {
+        new("beta", 2), new("Alpha", null), new("gamma", 1),
+    };
+
+    [Fact]
+    public void Apply_NoneColumn_KeepsOriginalOrder()
+    {
+        var sorted = GridSort.Apply(Items, new GridSortState<Column>(), KeyFor, i => i.Name);
+
+        Assert.Equal(new[] { "beta", "Alpha", "gamma" }, sorted.Select(i => i.Name));
+    }
+
+    [Fact]
+    public void Apply_Strings_CompareCaseInsensitively()
+    {
+        var sort = new GridSortState<Column>();
+        sort.Toggle(Column.A);
+
+        Assert.Equal(new[] { "Alpha", "beta", "gamma" },
+            GridSort.Apply(Items, sort, KeyFor, i => i.Name).Select(i => i.Name));
+    }
+
+    [Theory]
+    [InlineData(false, new[] { "gamma", "beta", "Alpha" })]
+    [InlineData(true, new[] { "beta", "gamma", "Alpha" })]
+    public void Apply_NullKey_GoesLast_InBothDirections(bool descending, string[] expected)
+    {
+        var sort = new GridSortState<Column>();
+        sort.Toggle(Column.B);
+        if (descending) sort.Toggle(Column.B);
+
+        Assert.Equal(expected, GridSort.Apply(Items, sort, KeyFor, i => i.Name).Select(i => i.Name));
+    }
+
+    [Fact]
+    public void Apply_NullItems_IsEmpty()
+    {
+        var sort = new GridSortState<Column>();
+        sort.Toggle(Column.A);
+
+        Assert.Empty(GridSort.Apply((Item[])null, sort, KeyFor));
+    }
+
+    // ─── Heatmap recurring job table ───────────────────────────────────────
+
+    [Fact]
+    public void HeatmapRecurringJobTable_KeepsDefaultOrder_ThenSortsByDuration_UnknownLast()
+    {
+        using var ctx = NewContext();
+        var jobs = new[]
+        {
+            new a2n.Hangfire.Dashboard.Models.RecurringJobSpec("job-b", "0 9 * * *", null, "default", TimeSpan.FromHours(1), false),
+            new a2n.Hangfire.Dashboard.Models.RecurringJobSpec("job-a", "0 8 * * *", null, "default", TimeSpan.FromMinutes(2), false),
+            new a2n.Hangfire.Dashboard.Models.RecurringJobSpec("job-c", "0 7 * * *", null, "default", TimeSpan.Zero, false),
+        };
+
+        var cut = ctx.RenderComponent<a2n.Hangfire.Dashboard.Components.Pages.Heatmap.RecurringJobTable>(p => p
+            .Add(c => c.Jobs, (System.Collections.Generic.IReadOnlyList<a2n.Hangfire.Dashboard.Models.RecurringJobSpec>)jobs));
+
+        string[] Ids() => cut.FindAll("tbody tr td:nth-child(1) .hf-job-name").Select(e => e.TextContent.Trim()).ToArray();
+
+        // Default order from the component: by id.
+        Assert.Equal(new[] { "job-a", "job-b", "job-c" }, Ids());
+
+        cut.Find("button[title='Sort by Est. Duration']").Click();
+        cut.WaitForAssertion(() => Assert.Equal(new[] { "job-a", "job-b", "job-c" }, Ids()), TestTimeouts.RenderWait);
+
+        cut.Find("button[title='Sort by Est. Duration']").Click();
+        cut.WaitForAssertion(() => Assert.Equal(new[] { "job-b", "job-a", "job-c" }, Ids()), TestTimeouts.RenderWait);
+    }
+
     private static TestContext NewContext()
     {
         var ctx = new TestContext();
