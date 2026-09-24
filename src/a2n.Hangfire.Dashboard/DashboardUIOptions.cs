@@ -100,6 +100,15 @@ public class DashboardUIOptions
     public int JobGraphMaxNodes { get; set; } = 30;
 
     /// <summary>
+    /// Maximum time, in seconds, the Search page waits for a search before cancelling it and
+    /// reporting that it timed out. Set to 0 or less to remove the dashboard-side limit, leaving the
+    /// storage's own command timeout in charge (for SQL Server and PostgreSQL, the
+    /// <c>Command Timeout</c> connection-string setting, 30 seconds unless configured). A running
+    /// search can always be cancelled from the page. Default: 30.
+    /// </summary>
+    public int SearchTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>
     /// Optional source-control link configuration. When set, file paths in stack traces become
     /// clickable links pointing to the configured provider (GitHub, GitLab, Azure DevOps, Bitbucket,
     /// a self-hosted Git server, or a local IDE handler such as <c>vscode://</c>). When null,

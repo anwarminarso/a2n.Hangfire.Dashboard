@@ -259,6 +259,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     EnableJobManagement = true,  // set false to hide Create/Edit/Stop and the Enqueue page
     JobGraphMaxDepth = 5,   // continuation graph traversal depth (default 5)
     JobGraphMaxNodes = 30,  // continuation graph node budget (default 30)
+    SearchTimeoutSeconds = 30,  // Search page limit; 0 = no limit, storage command timeout applies (default 30)
     // SourceLink = SourceLinkOptions.GitHub("owner/repo"),  // clickable stack-trace file links
 });
 

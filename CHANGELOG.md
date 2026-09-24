@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased — Job arguments display and argument search
+## Unreleased — Job arguments display, argument search, configurable search timeout
 
-> Two gaps against the original Hangfire dashboard: job arguments were never shown, and there was no way to search by an argument value. No public API removals; no migration.
+> Two gaps against the original Hangfire dashboard: job arguments were never shown, and there was no way to search by an argument value. Also removes the hardcoded 5-second search timeout ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)). No public API removals; no migration.
 
 ### Added
 
@@ -14,6 +14,9 @@
 
 ### Fixed
 
+- **Search is no longer cut off after 5 seconds ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)).** The Search page cancelled every search after a hardcoded 5 seconds, which made search unusable on large instances and overrode any longer `Command Timeout` set in the storage connection string. The limit is now `DashboardUIOptions.SearchTimeoutSeconds`, defaulting to 30 seconds (the SQL Server and PostgreSQL default command timeout). Set it to `0` or less to remove the dashboard-side limit and let the storage's command timeout decide. The timed-out message shows the configured limit.
+  - **A running search can be cancelled.** The Searching indicator now has a **Cancel** button. Starting a new search, changing page, or leaving the page also cancels the search still in flight, so an abandoned search no longer keeps a database query running.
+  - **Cancelled SQL Server searches report as timed out.** SqlClient reports a cancelled command as a `SqlException` rather than an `OperationCanceledException`, so `SearchService` showed a timed-out SQL Server search as "storage error" and logged it as an error. An exception raised after the search's cancellation token fired is now reported as a timeout.
 - **The Job Details snippet no longer misrepresents the invocation.** It hardcoded an activation line — `var sampleJobs = Activate<T>();` — for every job: the variable was always named `sampleJobs` regardless of the type, and the line was emitted even for `static` methods, which are never activated. Generic and nested types were printed as a bare `Type.Name` (losing type arguments and the outer type), and `async` methods were missing the `await` they would be called with. The renderer now derives the variable name from the type, omits activation for static methods, spells out generic and nested type names, and prefixes task-returning methods with `await` — the same output the original dashboard produces.
 - **Argument values are no longer styled by guesswork.** The snippet formatted the live `Job.Args` objects rather than the stored payload, with a three-branch rule: `null`, `string`, and *everything else as a number*. Dates, booleans, enums, `TimeSpan`, collections, and complex objects were all rendered as bare `ToString()` output in number styling, and a `CancellationToken` printed its internal representation. Each type is now rendered as it would be written in C#.
 
