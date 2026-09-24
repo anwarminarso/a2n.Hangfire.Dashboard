@@ -119,13 +119,21 @@ else
                         <thead>
                             <tr>
                                 <th style="width: 2rem;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" /></th>
-                                <th>Id</th>
+                                <SortableHeader Label="Id" IsActive="@(_sortColumn == RecurringJobSortColumn.Id)" Descending="@_sortDescending"
+                                                OnSort="() => SortBy(RecurringJobSortColumn.Id)" />
                                 <th>Cron</th>
                                 <th>Time Zone</th>
-                                <th>Job</th>
-                                <th class="text-end">Next Execution</th>
-                                <th class="text-end">Last Execution</th>
-                                <th class="text-end">Created</th>
+                                <SortableHeader Label="Job" IsActive="@(_sortColumn == RecurringJobSortColumn.Job)" Descending="@_sortDescending"
+                                                OnSort="() => SortBy(RecurringJobSortColumn.Job)" />
+                                <SortableHeader Label="Next Execution" CssClass="text-end"
+                                                IsActive="@(_sortColumn == RecurringJobSortColumn.NextExecution)" Descending="@_sortDescending"
+                                                OnSort="() => SortBy(RecurringJobSortColumn.NextExecution)" />
+                                <SortableHeader Label="Last Execution" CssClass="text-end"
+                                                IsActive="@(_sortColumn == RecurringJobSortColumn.LastExecution)" Descending="@_sortDescending"
+                                                OnSort="() => SortBy(RecurringJobSortColumn.LastExecution)" />
+                                <SortableHeader Label="Created" CssClass="text-end"
+                                                IsActive="@(_sortColumn == RecurringJobSortColumn.Created)" Descending="@_sortDescending"
+                                                OnSort="() => SortBy(RecurringJobSortColumn.Created)" />
                                 @if (Options.EnableJobManagement)
                                 {
                                     <th>Actions</th>
@@ -268,9 +276,37 @@ else
                 ? _jobs
                 : _jobs.Where(MatchesFilter).ToList();
 
+    // Column sort (Issue #41). Applied to the whole filtered list before paging, so the order
+    // spans every page rather than only the visible one.
+    private RecurringJobSortColumn _sortColumn = RecurringJobSortColumn.None;
+    private bool _sortDescending;
+
+    private IReadOnlyList<RecurringJobDto> SortedJobs =>
+        RecurringJobSorter.Sort(FilteredJobs, _sortColumn, _sortDescending);
+
     // The current page of active recurring jobs (Issue #37).
     private IReadOnlyList<RecurringJobDto> PagedJobs =>
-        FilteredJobs.Skip(_from).Take(_pageSize).ToList();
+        SortedJobs.Skip(_from).Take(_pageSize).ToList();
+
+    // First click on a column sorts ascending; clicking the active column flips the direction.
+    private void SortBy(RecurringJobSortColumn column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortDescending = !_sortDescending;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortDescending = false;
+        }
+
+        // The rows on each page change, so start from the first page with nothing selected, as
+        // paging does.
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
+    }
 
     // The stopped recurring jobs after applying the same filter (Issue #13).
     private List<StoppedJobInfo> FilteredStopped =>
@@ -492,8 +528,7 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
-    private static string GetJobName(RecurringJobDto dto) =>
-        dto?.Job is null ? "(unknown)" : JobNameHelper.GetDisplayName(dto.Job, null);
+    private static string GetJobName(RecurringJobDto dto) => RecurringJobSorter.GetJobName(dto);
 
     private static string GetLastStateClass(string state) => state switch
     {

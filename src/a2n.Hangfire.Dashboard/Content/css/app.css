@@ -1241,6 +1241,23 @@ a.hf-st-link:hover .hf-st-link-icon {
     .hf-job-name { max-width: 14rem; }
 }
 
+/* Clickable header for sortable table columns (SortableHeader). */
+.hf-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.hf-sort-btn:hover { color: var(--bs-link-hover-color); }
+.hf-sort-btn .bi { font-size: 0.75em; }
+.hf-sort-btn .hf-sort-idle { opacity: 0.35; }
+
 /* Argument summary rendered under a job name in list rows. Same width constraint as the job name so
    a large payload can't widen the table; the full argument text is available via the title tooltip. */
 .hf-job-args {

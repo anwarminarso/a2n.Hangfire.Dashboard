@@ -1,0 +1,31 @@
+@*
+    A table header cell that sorts its column when clicked. The parent owns the sort state and
+    passes whether this column is the active one and in which direction.
+*@
+
+<th class="@CssClass" aria-sort="@AriaSort">
+    <button type="button" class="hf-sort-btn" @onclick="OnSort"
+            title="@($"Sort by {Label}")">
+        @Label
+        <i class="bi @IconClass @(IsActive ? "" : "hf-sort-idle")" aria-hidden="true"></i>
+    </button>
+</th>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; }
+
+    /// <summary>Whether the table is currently sorted by this column.</summary>
+    [Parameter] public bool IsActive { get; set; }
+
+    /// <summary>Sort direction; only meaningful while <see cref="IsActive"/> is true.</summary>
+    [Parameter] public bool Descending { get; set; }
+
+    [Parameter] public EventCallback OnSort { get; set; }
+
+    /// <summary>Extra classes for the <c>th</c> element, e.g. <c>text-end</c>.</summary>
+    [Parameter] public string CssClass { get; set; }
+
+    private string AriaSort => !IsActive ? "none" : Descending ? "descending" : "ascending";
+
+    private string IconClass => !IsActive ? "bi-chevron-expand" : Descending ? "bi-caret-down-fill" : "bi-caret-up-fill";
+}
