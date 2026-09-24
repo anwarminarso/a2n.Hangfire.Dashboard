@@ -28,7 +28,7 @@ public class ScheduleBuilderComponentTests
     {
         using var ctx = new Bunit.TestContext();
 
-        var cut = ctx.RenderComponent<ScheduleBuilder>();
+        var cut = ctx.Render<ScheduleBuilder>();
 
         // Both mutually-exclusive mode options are present (Req 10.1).
         Assert.NotNull(cut.Find("#schedule-mode-builder"));
@@ -44,7 +44,7 @@ public class ScheduleBuilderComponentTests
     {
         using var ctx = new Bunit.TestContext();
 
-        var cut = ctx.RenderComponent<ScheduleBuilder>();
+        var cut = ctx.Render<ScheduleBuilder>();
 
         // No manual input while in builder mode.
         Assert.Empty(cut.FindAll("#cron-manual"));
@@ -62,7 +62,7 @@ public class ScheduleBuilderComponentTests
     {
         using var ctx = new Bunit.TestContext();
 
-        var cut = ctx.RenderComponent<ScheduleBuilder>();
+        var cut = ctx.Render<ScheduleBuilder>();
         cut.Find("#schedule-mode-manual").Change(true);
 
         var input = cut.Find("#cron-manual");
@@ -77,7 +77,7 @@ public class ScheduleBuilderComponentTests
     {
         using var ctx = new Bunit.TestContext();
 
-        var cut = ctx.RenderComponent<ScheduleBuilder>();
+        var cut = ctx.Render<ScheduleBuilder>();
         cut.Find("#schedule-mode-manual").Change(true);
 
         // Enter a well-known daily cron (Req 10.3).
@@ -94,7 +94,7 @@ public class ScheduleBuilderComponentTests
     {
         using var ctx = new Bunit.TestContext();
 
-        var cut = ctx.RenderComponent<ScheduleBuilder>();
+        var cut = ctx.Render<ScheduleBuilder>();
         cut.Find("#schedule-mode-manual").Change(true);
 
         cut.Find("#cron-manual").Input("0 0 * * *");
@@ -110,7 +110,7 @@ public class ScheduleBuilderComponentTests
     {
         using var ctx = new Bunit.TestContext();
 
-        var cut = ctx.RenderComponent<ScheduleBuilder>();
+        var cut = ctx.Render<ScheduleBuilder>();
         cut.Find("#schedule-mode-manual").Change(true);
 
         cut.Find("#cron-manual").Input("this is not a cron");
@@ -131,7 +131,7 @@ public class ScheduleBuilderComponentTests
         using var ctx = new Bunit.TestContext();
 
         ScheduleBuilder.ScheduleState captured = null;
-        var cut = ctx.RenderComponent<ScheduleBuilder>(parameters => parameters
+        var cut = ctx.Render<ScheduleBuilder>(parameters => parameters
             .Add(p => p.OnScheduleChanged, (ScheduleBuilder.ScheduleState s) => captured = s));
 
         cut.Find("#schedule-mode-manual").Change(true);
@@ -157,7 +157,7 @@ public class ScheduleBuilderComponentTests
         using var ctx = new Bunit.TestContext();
 
         ScheduleBuilder.ScheduleState captured = null;
-        var cut = ctx.RenderComponent<ScheduleBuilder>(parameters => parameters
+        var cut = ctx.Render<ScheduleBuilder>(parameters => parameters
             .Add(p => p.OnScheduleChanged, (ScheduleBuilder.ScheduleState s) => captured = s));
 
         // The builder emits its initial (default) schedule state on load so the parent has a cron and
@@ -173,7 +173,7 @@ public class ScheduleBuilderComponentTests
         using var ctx = new Bunit.TestContext();
 
         ScheduleBuilder.ScheduleState captured = null;
-        var cut = ctx.RenderComponent<ScheduleBuilder>(parameters => parameters
+        var cut = ctx.Render<ScheduleBuilder>(parameters => parameters
             .Add(p => p.InitialCron, "0 0 31 2 *")
             .Add(p => p.OnScheduleChanged, (ScheduleBuilder.ScheduleState s) => captured = s));
 

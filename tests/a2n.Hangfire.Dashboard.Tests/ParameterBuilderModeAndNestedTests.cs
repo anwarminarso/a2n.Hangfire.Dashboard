@@ -59,7 +59,7 @@ public class ParameterBuilderModeAndNestedTests
 
         var method = Method(Param("name", typeof(string), ParameterInputKind.Text, 0));
 
-        var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+        var cut = ctx.Render<ParameterBuilder>(p => p
             .Add(c => c.SelectedMethod, method));
 
         var buttons = ModeButtons(cut);
@@ -90,7 +90,7 @@ public class ParameterBuilderModeAndNestedTests
 
         var method = Method(Param("name", typeof(string), ParameterInputKind.Text, 0));
 
-        var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+        var cut = ctx.Render<ParameterBuilder>(p => p
             .Add(c => c.SelectedMethod, method));
 
         // Click the JSON mode button.
@@ -118,7 +118,7 @@ public class ParameterBuilderModeAndNestedTests
 
         var method = Method(Param("name", typeof(string), ParameterInputKind.Text, 0));
 
-        var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+        var cut = ctx.Render<ParameterBuilder>(p => p
             .Add(c => c.SelectedMethod, method));
 
         // Form -> JSON -> Form.
@@ -147,7 +147,7 @@ public class ParameterBuilderModeAndNestedTests
         var method = Method(
             Param("settings", typeof(ModeAndNestedSettingsFixture), ParameterInputKind.NestedObject, 0));
 
-        var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+        var cut = ctx.Render<ParameterBuilder>(p => p
             .Add(c => c.SelectedMethod, method));
 
         // The collapsed placeholder is shown with a Create button (Req 8.10)...
@@ -167,7 +167,7 @@ public class ParameterBuilderModeAndNestedTests
         var method = Method(
             Param("settings", typeof(ModeAndNestedSettingsFixture), ParameterInputKind.NestedObject, 0));
 
-        var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+        var cut = ctx.Render<ParameterBuilder>(p => p
             .Add(c => c.SelectedMethod, method));
 
         // Activate the nested object (Req 8.10).

@@ -9,7 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- bunit 1.40 calls IHtmlCollection<T>.get_Item(int), which AngleSharp dropped from its
+         net8+ builds in 1.4. bunit 2 is built against AngleSharp 1.8, so the pin both clears
+         GHSA-pgww-w46g-26qg (vulnerable: < 1.5.0, which bunit 1 resolved as 1.2.0) and matches
+         the test library. -->
     <PackageReference Include="AngleSharp" Version="1.8.2" />
+    <PackageReference Include="bunit" Version="2.11.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.*" />
@@ -19,7 +24,6 @@
     <!-- Cronos is ILMerged into Hangfire.Core, so the test needs a direct reference to compute the
          next-occurrence oracle for the CronPreview property tests (Property 18, Req 10.5/10.6). -->
     <PackageReference Include="Cronos" Version="0.11.0" />
-    <PackageReference Include="bunit" Version="1.*" />
     <PackageReference Include="FsCheck.Xunit" Version="2.*" />
     <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
     <!-- In-memory ASP.NET Core pipeline host for the heatmap authorization integration test

@@ -163,7 +163,7 @@ public class FormInputCaptureProperties
                 Queue: new QueueAttributeInfo(false, null, false));
 
             ParameterBuilder.ParameterState last = null;
-            var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+            var cut = ctx.Render<ParameterBuilder>(p => p
                 .Add(x => x.SelectedMethod, method)
                 .Add(x => x.OnParametersChanged, (ParameterBuilder.ParameterState s) => last = s));
 

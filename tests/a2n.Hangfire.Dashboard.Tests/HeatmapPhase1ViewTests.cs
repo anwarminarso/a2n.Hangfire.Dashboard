@@ -71,7 +71,7 @@ public class HeatmapPhase1ViewTests
         var matrix = Matrix(new[] { Cell("alpha", 0, 9, 3, "j1"), Cell("beta", 1, 10, 2, "j2") },
             new[] { "alpha", "beta" });
 
-        var cut = ctx.RenderComponent<PunchcardView>(p => p
+        var cut = ctx.Render<PunchcardView>(p => p
             .Add(c => c.Matrix, matrix)
             .Add(c => c.Source, HeatmapSource.Projected));
 
@@ -89,7 +89,7 @@ public class HeatmapPhase1ViewTests
         using var ctx = NewCtx();
         var matrix = Matrix(new[] { Cell("alpha", 0, 9, 3, "j1") }, new[] { "alpha" });
 
-        var cut = ctx.RenderComponent<PunchcardView>(p => p
+        var cut = ctx.Render<PunchcardView>(p => p
             .Add(c => c.Matrix, matrix)
             .Add(c => c.Source, HeatmapSource.Historical));
 
@@ -105,7 +105,7 @@ public class HeatmapPhase1ViewTests
     {
         using var ctx = NewCtx();
 
-        var cut = ctx.RenderComponent<QueueHourView>(p => p.Add(c => c.Matrix, (HeatmapMatrix)null));
+        var cut = ctx.Render<QueueHourView>(p => p.Add(c => c.Matrix, (HeatmapMatrix)null));
 
         Assert.Contains("No queues to display.", cut.Markup);
         Assert.Single(cut.FindAll("i.bi-grid-3x3"));
@@ -120,7 +120,7 @@ public class HeatmapPhase1ViewTests
         var matrix = Matrix(new[] { Cell("q1", 0, 9, 5, "j1"), Cell("q2", 1, 10, 2, "j2") },
             new[] { "q1", "q2" });
 
-        var cut = ctx.RenderComponent<QueueHourView>(p => p.Add(c => c.Matrix, matrix));
+        var cut = ctx.Render<QueueHourView>(p => p.Add(c => c.Matrix, matrix));
 
         Assert.Single(cut.FindAll("[data-hm-queuehour]"));
         // One row per visible queue (Req 3.1) and exactly 24 hour columns advertised in the header.
@@ -136,7 +136,7 @@ public class HeatmapPhase1ViewTests
         var matrix = Matrix(new[] { Cell("q1", 2, 9, 5, "j1") }, new[] { "q1" });
 
         // Day index 2 with default Mon..Sun labels → "Wed" (Req 3.2 per-day mode).
-        var cut = ctx.RenderComponent<QueueHourView>(p => p
+        var cut = ctx.Render<QueueHourView>(p => p
             .Add(c => c.Matrix, matrix)
             .Add(c => c.SelectedDay, 2));
 
@@ -150,7 +150,7 @@ public class HeatmapPhase1ViewTests
     {
         using var ctx = NewCtx();
 
-        var cut = ctx.RenderComponent<PerQueueView>(p => p.Add(c => c.Matrix, EmptyMatrix()));
+        var cut = ctx.Render<PerQueueView>(p => p.Add(c => c.Matrix, EmptyMatrix()));
 
         Assert.Contains("No per-queue schedule to display.", cut.Markup);
         Assert.Empty(cut.FindAll(".heatmap-perqueue"));
@@ -162,7 +162,7 @@ public class HeatmapPhase1ViewTests
         using var ctx = NewCtx();
         var matrix = Matrix(new[] { Cell("q1", 0, 9, 4, "j1") }, new[] { "q1" });
 
-        var cut = ctx.RenderComponent<PerQueueView>(p => p.Add(c => c.Matrix, matrix));
+        var cut = ctx.Render<PerQueueView>(p => p.Add(c => c.Matrix, matrix));
 
         var container = cut.Find(".heatmap-perqueue");
         // Accessibility attribute on the small-multiples container (Req 24.4, 24.5).
@@ -176,7 +176,7 @@ public class HeatmapPhase1ViewTests
     {
         using var ctx = NewCtx();
 
-        var cut = ctx.RenderComponent<CalendarView>(p => p.Add(c => c.Matrix, (HeatmapMatrix)null));
+        var cut = ctx.Render<CalendarView>(p => p.Add(c => c.Matrix, (HeatmapMatrix)null));
 
         Assert.Contains("No schedule to display.", cut.Markup);
         Assert.Single(cut.FindAll("i.bi-calendar3"));
@@ -190,7 +190,7 @@ public class HeatmapPhase1ViewTests
         var matrix = Matrix(new[] { Cell("q1", 0, 9, 5, "j1"), Cell("q1", 1, 10, 0, "j2") },
             new[] { "q1" });
 
-        var cut = ctx.RenderComponent<CalendarView>(p => p.Add(c => c.Matrix, matrix));
+        var cut = ctx.Render<CalendarView>(p => p.Add(c => c.Matrix, matrix));
 
         Assert.Contains("Calendar — day × hour", cut.Markup);
         Assert.Contains("Neutral ramp", cut.Markup);
@@ -207,7 +207,7 @@ public class HeatmapPhase1ViewTests
 
         // color-by-failure may stay selected while Historical is inactive; cells then render empty
         // (Req 6.7).
-        var cut = ctx.RenderComponent<CalendarView>(p => p
+        var cut = ctx.Render<CalendarView>(p => p
             .Add(c => c.Matrix, matrix)
             .Add(c => c.ColorBy, "failure")
             .Add(c => c.HistoricalActive, false));
@@ -222,7 +222,7 @@ public class HeatmapPhase1ViewTests
         var matrix = Matrix(new[] { Cell("q1", 0, 9, 5, "j1") }, new[] { "q1" });
         var historical = new[] { new HeatmapHistoricalCell(0, 9, FireCount: 10, FailureCount: 3, P95Ms: 1200) };
 
-        var cut = ctx.RenderComponent<CalendarView>(p => p
+        var cut = ctx.Render<CalendarView>(p => p
             .Add(c => c.Matrix, matrix)
             .Add(c => c.ColorBy, "failure")
             .Add(c => c.HistoricalActive, true)
@@ -238,7 +238,7 @@ public class HeatmapPhase1ViewTests
     {
         using var ctx = NewCtx();
 
-        var cut = ctx.RenderComponent<ConcurrencyView>(p => p
+        var cut = ctx.Render<ConcurrencyView>(p => p
             .Add(c => c.Result, (ConcurrencyResult)null)
             .Add(c => c.Capacity, 0));
 
@@ -258,7 +258,7 @@ public class HeatmapPhase1ViewTests
             OverCapacitySlotCount: 2,
             PerQueueSeries: new[] { new QueueConcurrencySeries("q1", perSlot) });
 
-        var cut = ctx.RenderComponent<ConcurrencyView>(p => p
+        var cut = ctx.Render<ConcurrencyView>(p => p
             .Add(c => c.Result, result)
             .Add(c => c.Capacity, 2)
             .Add(c => c.DayLabel, "Mon"));
@@ -285,7 +285,7 @@ public class HeatmapPhase1ViewTests
         var baseline = new int[1440];
         baseline[540] = 2; // ad-hoc baseline at 09:00
 
-        var cut = ctx.RenderComponent<ConcurrencyView>(p => p
+        var cut = ctx.Render<ConcurrencyView>(p => p
             .Add(c => c.Result, result)
             .Add(c => c.Capacity, 4)
             .Add(c => c.JobClass, "Combined")
@@ -315,7 +315,7 @@ public class HeatmapPhase1ViewTests
         var baseline = new int[1440];
         baseline[540] = 2;
 
-        var cut = ctx.RenderComponent<ConcurrencyView>(p => p
+        var cut = ctx.Render<ConcurrencyView>(p => p
             .Add(c => c.Result, result)
             .Add(c => c.Capacity, 4)
             .Add(c => c.JobClass, jobClass)
@@ -346,7 +346,7 @@ public class HeatmapPhase1ViewTests
     {
         using var ctx = NewCtx();
 
-        var cut = ctx.RenderComponent<LongPeriodBanner>(p => p.Add(c => c.JobIds, (IReadOnlyList<string>)null));
+        var cut = ctx.Render<LongPeriodBanner>(p => p.Add(c => c.JobIds, (IReadOnlyList<string>)null));
 
         // Req 9.6 — no banner when there are no long-period jobs.
         Assert.Empty(cut.FindAll("[data-hm-long-period-banner]"));
@@ -358,7 +358,7 @@ public class HeatmapPhase1ViewTests
         using var ctx = NewCtx();
         var ids = new[] { "monthly-report", "yearly-cleanup" };
 
-        var cut = ctx.RenderComponent<LongPeriodBanner>(p => p.Add(c => c.JobIds, (IReadOnlyList<string>)ids));
+        var cut = ctx.Render<LongPeriodBanner>(p => p.Add(c => c.JobIds, (IReadOnlyList<string>)ids));
 
         // Req 9.5 — banner lists each long-period job id and is announced as a status region.
         var banner = cut.Find("[data-hm-long-period-banner]");
@@ -373,7 +373,7 @@ public class HeatmapPhase1ViewTests
     {
         using var ctx = NewCtx();
 
-        var cut = ctx.RenderComponent<LongPeriodBanner>(p => p
+        var cut = ctx.Render<LongPeriodBanner>(p => p
             .Add(c => c.JobIds, (IReadOnlyList<string>)new[] { "monthly-report" }));
 
         Assert.Contains("1 long-period job ", cut.Markup);
@@ -386,7 +386,7 @@ public class HeatmapPhase1ViewTests
     {
         using var ctx = NewCtx();
 
-        var cut = ctx.RenderComponent<RecurringJobTable>(p => p
+        var cut = ctx.Render<RecurringJobTable>(p => p
             .Add(c => c.Jobs, (IReadOnlyList<RecurringJobSpec>)null));
 
         // Req 1.7 / 9.1 — empty state rather than an empty grid.
@@ -406,7 +406,7 @@ public class HeatmapPhase1ViewTests
         // job-a contributes one cell; monthly (long-period) contributes none but is still retained.
         var matrix = Matrix(new[] { Cell("default", 0, 9, 1, "job-a") }, new[] { "default" });
 
-        var cut = ctx.RenderComponent<RecurringJobTable>(p => p
+        var cut = ctx.Render<RecurringJobTable>(p => p
             .Add(c => c.Jobs, (IReadOnlyList<RecurringJobSpec>)jobs)
             .Add(c => c.Matrix, matrix)
             .Add(c => c.LongPeriodJobIds, (IReadOnlyList<string>)new[] { "monthly" }));

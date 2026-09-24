@@ -103,12 +103,14 @@ public class JobBuilderComponentTests
             Queue: new QueueAttributeInfo(false, null, false));
 
     /// <summary>The single submit button (recurring/enqueue), located by its label text.</summary>
-    private static AngleSharp.Dom.IElement SubmitButton(IRenderedFragment cut)
+    private static AngleSharp.Dom.IElement SubmitButton<TComponent>(IRenderedComponent<TComponent> cut)
+        where TComponent : IComponent
         => cut.FindAll("button").Single(b =>
             b.TextContent.Contains("recurring job", StringComparison.Ordinal)
             || b.TextContent.Contains("Enqueue job", StringComparison.Ordinal));
 
-    private static void SelectRegistered(IRenderedFragment cut, int index)
+    private static void SelectRegistered<TComponent>(IRenderedComponent<TComponent> cut, int index)
+        where TComponent : IComponent
     {
         // With Custom_Method invocation disabled (the test default) the Registered/Custom toggle is
         // not rendered and the picker is already in Registered mode, so the radio is absent. When the
@@ -136,7 +138,7 @@ public class JobBuilderComponentTests
         var h = NewContext(isReadOnly: true);
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         // A persistent, visible read-only indication is shown (Req 4.2).
         Assert.Contains("read-only", cut.Markup, StringComparison.OrdinalIgnoreCase);
@@ -151,7 +153,7 @@ public class JobBuilderComponentTests
         var h = NewContext(recurringAdmin: false);
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         // A persistent job-management-disabled indication is shown (Req 4.3)...
         Assert.Contains("Job management is", cut.Markup);
@@ -167,7 +169,7 @@ public class JobBuilderComponentTests
             registered: Describe(typeof(Jbc164_PlainJob), nameof(Jbc164_PlainJob.RunNoArgs)));
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         // With custom invocation disabled the Registered/Custom toggle is omitted entirely and only
         // the Registered_Method selector is presented (Req 4.4, 6.1).
@@ -182,7 +184,7 @@ public class JobBuilderComponentTests
         var h = NewContext(customMethod: true);
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         // CustomMethodEnabled=true makes the Custom option interactive (Req 4.5).
         Assert.False(cut.Find("#method-mode-custom").HasAttribute("disabled"));
@@ -200,7 +202,7 @@ public class JobBuilderComponentTests
         using var _ = h.Ctx;
 
         // The create route host renders JobBuilder in Recurring mode as the sole form (Req 11.1).
-        var cut = h.Ctx.RenderComponent<RecurringEditorPage>();
+        var cut = h.Ctx.Render<RecurringEditorPage>();
 
         // JobBuilder presents an editable control for each recurring field (Req 11.2):
         Assert.NotNull(cut.Find("#job-builder-id"));            // job identifier
@@ -219,7 +221,7 @@ public class JobBuilderComponentTests
 
         var nav = h.Ctx.Services.GetRequiredService<NavigationManager>();
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         // Select the resolvable, parameter-less registered method (its descriptor emits a valid []).
         SelectRegistered(cut, 0);
@@ -246,7 +248,7 @@ public class JobBuilderComponentTests
 
         var nav = h.Ctx.Services.GetRequiredService<NavigationManager>();
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         SelectRegistered(cut, 0);
         cut.Find("#job-builder-id").Input("jbc164-fail-job");
@@ -275,7 +277,7 @@ public class JobBuilderComponentTests
         var h = NewContext();
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         cut.Find("#job-builder-id").Input(id);
 
@@ -295,7 +297,7 @@ public class JobBuilderComponentTests
         var h = NewContext();
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         cut.Find("#job-builder-id").Input(id);
 
@@ -322,7 +324,7 @@ public class JobBuilderComponentTests
             IsCustomMethod: false));
         Assert.True(seed.Success, seed.Error);
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
 
         // Entering the existing id on a create form flags a duplicate inline — create must not
         // silently overwrite an existing recurring job.
@@ -343,7 +345,7 @@ public class JobBuilderComponentTests
         var h = NewContext(registered: Describe(typeof(Jbc164_PlainJob), nameof(Jbc164_PlainJob.RunNoArgs)));
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
         SelectRegistered(cut, 0);
 
         var queue = cut.Find("#job-builder-queue");
@@ -361,7 +363,7 @@ public class JobBuilderComponentTests
         var h = NewContext(registered: Describe(typeof(Jbc164_FixedQueueJob), nameof(Jbc164_FixedQueueJob.Run)));
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
         SelectRegistered(cut, 0);
 
         var queue = cut.Find("#job-builder-queue");
@@ -379,7 +381,7 @@ public class JobBuilderComponentTests
         var h = NewContext(registered: Describe(typeof(Jbc164_TemplateQueueJob), nameof(Jbc164_TemplateQueueJob.Run)));
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Recurring));
         SelectRegistered(cut, 0);
 
         var queue = cut.Find("#job-builder-queue");
@@ -401,7 +403,7 @@ public class JobBuilderComponentTests
         var h = NewContext();
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Enqueue));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Enqueue));
 
         // The Schedule_Builder is hidden entirely in Enqueue mode (Req 12.1).
         Assert.Empty(cut.FindAll("#schedule-mode-builder"));
@@ -419,7 +421,7 @@ public class JobBuilderComponentTests
         var h = NewContext();
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<EnqueueJobPage>();
+        var cut = h.Ctx.Render<EnqueueJobPage>();
 
         // The enqueue route hosts JobBuilder in Enqueue mode: no schedule, a queue selector (Req 12.1, 12.2).
         Assert.Empty(cut.FindAll("#schedule-mode-builder"));
@@ -432,7 +434,7 @@ public class JobBuilderComponentTests
         var h = NewContext(registered: Describe(typeof(Jbc164_PlainJob), nameof(Jbc164_PlainJob.RunNoArgs)));
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Enqueue));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Enqueue));
         SelectRegistered(cut, 0);
 
         SubmitButton(cut).Click();
@@ -450,7 +452,7 @@ public class JobBuilderComponentTests
         var h = NewContext(registered: BogusDescriptor());
         using var _ = h.Ctx;
 
-        var cut = h.Ctx.RenderComponent<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Enqueue));
+        var cut = h.Ctx.Render<JobBuilder>(p => p.Add(c => c.Mode, JobBuilderMode.Enqueue));
         SelectRegistered(cut, 0);
 
         SubmitButton(cut).Click();

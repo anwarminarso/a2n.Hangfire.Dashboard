@@ -167,7 +167,7 @@ public class PreservationPropertyTests
         SetupMainLayoutServices(ctx, options);
 
         // Act - MainLayout inherits LayoutComponentBase, render without ChildContent
-        var cut = ctx.RenderComponent<MainLayout>();
+        var cut = ctx.Render<MainLayout>();
 
         // Assert - no "Back to Site" link should exist in the header
         var header = cut.Find("header.navbar");
@@ -194,7 +194,7 @@ public class PreservationPropertyTests
         SetupMainLayoutServices(ctx, options);
 
         // Act
-        var cut = ctx.RenderComponent<MainLayout>();
+        var cut = ctx.Render<MainLayout>();
 
         // Assert - on fixed code, "Back to Site" link exists when AppPath is set
         var header = cut.Find("header.navbar");
@@ -221,7 +221,7 @@ public class PreservationPropertyTests
         using var ctx = new Bunit.TestContext();
         SetupMainLayoutServices(ctx, options);
 
-        var cut = ctx.RenderComponent<MainLayout>();
+        var cut = ctx.Render<MainLayout>();
 
         // The header should not contain any anchor with "Back to Site" text
         var markup = cut.Find("header.navbar").InnerHtml;
@@ -254,7 +254,7 @@ public class PreservationPropertyTests
         jsInterop.Setup<string>("themeManager.get").SetResult(theme);
 
         // Act
-        var cut = ctx.RenderComponent<a2n.Hangfire.Dashboard.Components.Shared.ThemeToggle>();
+        var cut = ctx.Render<a2n.Hangfire.Dashboard.Components.Shared.ThemeToggle>();
 
         // Assert - the component renders a btn-group with 3 buttons
         var btnGroup = cut.Find(".btn-group");
@@ -288,7 +288,7 @@ public class PreservationPropertyTests
                 ctx.JSInterop.Mode = JSRuntimeMode.Loose;
                 ctx.JSInterop.Setup<string>("themeManager.get").SetResult(theme);
 
-                var cut = ctx.RenderComponent<a2n.Hangfire.Dashboard.Components.Shared.ThemeToggle>();
+                var cut = ctx.Render<a2n.Hangfire.Dashboard.Components.Shared.ThemeToggle>();
                 var buttons = cut.FindAll(".btn-group button");
 
                 return (buttons.Count == 3)
@@ -345,7 +345,7 @@ public class PreservationPropertyTests
         SetupHomePageServices(ctx);
 
         // Act
-        var cut = ctx.RenderComponent<Home>();
+        var cut = ctx.Render<Home>();
 
         // Wait for async initialization to complete (stats loaded → toggle button appears)
         cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TestTimeouts.RenderWait);
@@ -380,7 +380,7 @@ public class PreservationPropertyTests
         SetupHomePageServices(ctx);
 
         // Act
-        var cut = ctx.RenderComponent<Home>();
+        var cut = ctx.Render<Home>();
 
         // Wait for async initialization to complete (stats loaded → toggle button appears)
         cut.WaitForState(() => cut.Markup.Contains("Detailed metrics"), TestTimeouts.RenderWait);
@@ -445,7 +445,7 @@ public class PreservationPropertyTests
         SetupMainLayoutServices(ctx, options);
 
         // Act - render without ChildContent (MainLayout uses @Body from LayoutComponentBase)
-        var cut = ctx.RenderComponent<MainLayout>();
+        var cut = ctx.Render<MainLayout>();
 
         // Assert - h1 exists with navbar-text class and displays title
         var h1 = cut.Find("h1.navbar-text");
@@ -470,7 +470,7 @@ public class PreservationPropertyTests
         SetupMainLayoutServices(ctx, options);
 
         // Act
-        var cut = ctx.RenderComponent<MainLayout>();
+        var cut = ctx.Render<MainLayout>();
 
         // Assert - ThemeToggle btn-group is present in header
         var header = cut.Find("header.navbar");

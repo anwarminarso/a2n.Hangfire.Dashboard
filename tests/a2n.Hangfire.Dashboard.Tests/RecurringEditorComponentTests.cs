@@ -94,11 +94,13 @@ public class RecurringEditorComponentTests
             IsCustomMethod: false);
 
     /// <summary>Locates the Parameter Builder's "JSON" mode toggle button.</summary>
-    private static AngleSharp.Dom.IElement JsonModeButton(IRenderedFragment cut)
+    private static AngleSharp.Dom.IElement JsonModeButton<TComponent>(IRenderedComponent<TComponent> cut)
+        where TComponent : IComponent
         => cut.FindAll("button").Single(b => b.TextContent.Trim() == "JSON");
 
     /// <summary>The Parameter Builder's editable JSON textarea (only present in JSON mode).</summary>
-    private static AngleSharp.Dom.IElement ParameterJsonTextarea(IRenderedFragment cut)
+    private static AngleSharp.Dom.IElement ParameterJsonTextarea<TComponent>(IRenderedComponent<TComponent> cut)
+        where TComponent : IComponent
         => cut.FindAll("textarea.form-control").Single();
 
     // --- Req 2.1 — Parameter_JSON input capacity (>= 10,000 chars) -------------------------
@@ -116,7 +118,7 @@ public class RecurringEditorComponentTests
             parameterJson: "[\"hello\", 7]"));
         Assert.True(seed.Success, seed.Error);
 
-        var cut = ctx.RenderComponent<RecurringEditor>(p => p
+        var cut = ctx.Render<RecurringEditor>(p => p
             .Add(c => c.JobId, "recurring-editor-capacity"));
 
         // Switch the Parameter Builder to JSON mode so its editable textarea is rendered.
@@ -144,7 +146,7 @@ public class RecurringEditorComponentTests
             parameterJson: "[\"hello\", 7]"));
         Assert.True(seed.Success, seed.Error);
 
-        var cut = ctx.RenderComponent<RecurringEditor>(p => p
+        var cut = ctx.Render<RecurringEditor>(p => p
             .Add(c => c.JobId, "recurring-editor-capacity-retain"));
 
         JsonModeButton(cut).Click();
@@ -182,7 +184,7 @@ public class RecurringEditorComponentTests
             timeZoneId: tz.Id));
         Assert.True(seed.Success, seed.Error);
 
-        var cut = ctx.RenderComponent<RecurringEditor>(p => p
+        var cut = ctx.Render<RecurringEditor>(p => p
             .Add(c => c.JobId, "recurring-editor-populate"));
 
         // Job ID (bound, disabled in edit) reflects the existing id (Req 3.3).
@@ -214,7 +216,7 @@ public class RecurringEditorComponentTests
             parameterJson: "[\"hello\", 7]"));
         Assert.True(seed.Success, seed.Error);
 
-        var cut = ctx.RenderComponent<RecurringEditor>(p => p
+        var cut = ctx.Render<RecurringEditor>(p => p
             .Add(c => c.JobId, "recurring-editor-args"));
 
         // Switch to JSON mode to read the canonical Parameter_JSON the form pre-filled from Args.
@@ -240,7 +242,7 @@ public class RecurringEditorComponentTests
             parameterJson: "[]"));
         Assert.True(seed.Success, seed.Error);
 
-        var cut = ctx.RenderComponent<RecurringEditor>(p => p
+        var cut = ctx.Render<RecurringEditor>(p => p
             .Add(c => c.JobId, "recurring-editor-noargs"));
 
         // The method is pre-selected; a zero-parameter method shows the "takes no parameters" form.
@@ -274,7 +276,7 @@ public class RecurringEditorComponentTests
 
         var nav = ctx.Services.GetRequiredService<NavigationManager>();
 
-        var cut = ctx.RenderComponent<RecurringEditor>(p => p
+        var cut = ctx.Render<RecurringEditor>(p => p
             .Add(c => c.JobId, "recurring-editor-neverfire"));
 
         // The schedule shows the never-fire cron, pre-filled in Manual mode.

@@ -139,7 +139,7 @@ public class FormJsonRoundTripProperties
             var method = BuildMethod(specs);
 
             ParameterBuilder.ParameterState last = null;
-            var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+            var cut = ctx.Render<ParameterBuilder>(p => p
                 .Add(x => x.SelectedMethod, method)
                 .Add(x => x.OnParametersChanged, (ParameterBuilder.ParameterState s) => last = s));
 

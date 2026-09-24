@@ -74,7 +74,7 @@ public class HeatmapPagePopulatedTests
 
     private static IRenderedComponent<HeatmapPage> RenderLoaded(TestContext ctx)
     {
-        var cut = ctx.RenderComponent<HeatmapPage>();
+        var cut = ctx.Render<HeatmapPage>();
         // The page loads its data asynchronously in OnInitializedAsync; wait for the populated render.
         cut.WaitForAssertion(
             () => Assert.Contains("populated cell", cut.Markup),

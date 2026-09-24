@@ -70,7 +70,7 @@ public class GridSortingTests
         ctx.Services.AddSingleton(svc);
         ctx.Services.AddSingleton(options);
 
-        var cut = ctx.RenderComponent<RecurringPage>();
+        var cut = ctx.Render<RecurringPage>();
         cut.WaitForState(() => cut.Markup.Contains("Stopped Jobs"), TestTimeouts.RenderWait);
 
         string[] StoppedIds() =>
@@ -100,7 +100,7 @@ public class GridSortingTests
         ctx.Services.AddSingleton(options);
         ctx.Services.AddSingleton(new HangfireMonitorService(storage, null, options, new JobMethodResolver()));
 
-        var cut = ctx.RenderComponent<ServersPage>();
+        var cut = ctx.Render<ServersPage>();
         cut.WaitForState(() => cut.FindAll("tbody tr").Count == 3, TestTimeouts.RenderWait);
 
         string[] Workers() => cut.FindAll("tbody tr td:nth-child(2)").Select(e => e.TextContent.Trim()).ToArray();
@@ -140,7 +140,7 @@ public class GridSortingTests
         ctx.Services.AddSingleton<QueueOperationsStateCache>();
         ctx.Services.AddSingleton(new HangfireMonitorService(storage, null, options, new JobMethodResolver()));
 
-        var cut = ctx.RenderComponent<QueuesPage>();
+        var cut = ctx.Render<QueuesPage>();
         cut.WaitForState(() => cut.FindAll(".hf-queue-name code").Count == 3, TestTimeouts.RenderWait);
 
         string[] Names() => cut.FindAll(".hf-queue-name code").Select(e => e.TextContent.Trim()).ToArray();
@@ -222,7 +222,7 @@ public class GridSortingTests
             new a2n.Hangfire.Dashboard.Models.RecurringJobSpec("job-c", "0 7 * * *", null, "default", TimeSpan.Zero, false),
         };
 
-        var cut = ctx.RenderComponent<a2n.Hangfire.Dashboard.Components.Pages.Heatmap.RecurringJobTable>(p => p
+        var cut = ctx.Render<a2n.Hangfire.Dashboard.Components.Pages.Heatmap.RecurringJobTable>(p => p
             .Add(c => c.Jobs, (System.Collections.Generic.IReadOnlyList<a2n.Hangfire.Dashboard.Models.RecurringJobSpec>)jobs));
 
         string[] Ids() => cut.FindAll("tbody tr td:nth-child(1) .hf-job-name").Select(e => e.TextContent.Trim()).ToArray();

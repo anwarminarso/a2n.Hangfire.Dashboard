@@ -122,7 +122,7 @@ public class InvalidJsonBlocksFormProperties
 
             var method = OneRequiredIntMethod();
 
-            var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+            var cut = ctx.Render<ParameterBuilder>(p => p
                 .Add(x => x.SelectedMethod, method));
 
             // The toggle buttons live in a btn-group: [0] = Form, [1] = JSON.
@@ -181,7 +181,7 @@ public class InvalidJsonBlocksFormProperties
         var method = OneRequiredIntMethod();
         ParameterBuilder.ParameterState last = null;
 
-        var cut = ctx.RenderComponent<ParameterBuilder>(p => p
+        var cut = ctx.Render<ParameterBuilder>(p => p
             .Add(x => x.SelectedMethod, method)
             .Add(x => x.OnParametersChanged, (ParameterBuilder.ParameterState s) => last = s));
 

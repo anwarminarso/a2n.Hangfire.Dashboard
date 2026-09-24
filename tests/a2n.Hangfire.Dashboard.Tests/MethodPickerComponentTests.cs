@@ -70,7 +70,7 @@ public class MethodPickerComponentTests
     {
         using var ctx = NewContext(ResolverWithRegistered());
 
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, true));
 
         var registered = cut.Find("#method-mode-registered");
@@ -97,7 +97,7 @@ public class MethodPickerComponentTests
         using var ctx = NewContext(ResolverWithRegistered(
             Descriptor("MyApp.Jobs.OrderJobs", "ProcessOrder", "Process order")));
 
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, false));
 
         // The Registered/Custom toggle is not presented at all when custom is disabled (Req 4.4, 6.1).
@@ -114,7 +114,7 @@ public class MethodPickerComponentTests
     {
         using var ctx = NewContext(ResolverWithRegistered());
 
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, true));
 
         var custom = cut.Find("#method-mode-custom");
@@ -136,7 +136,7 @@ public class MethodPickerComponentTests
         };
         using var ctx = NewContext(ResolverWithRegistered(methods));
 
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, true));
 
         // Choose the Registered mode, then open the combobox by focusing the search input.
@@ -164,7 +164,7 @@ public class MethodPickerComponentTests
         };
         using var ctx = NewContext(ResolverWithRegistered(methods));
 
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, false));
 
         var input = cut.Find("#registered-method-filter");
@@ -190,7 +190,7 @@ public class MethodPickerComponentTests
         };
         using var ctx = NewContext(ResolverWithRegistered(methods));
 
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, false));
 
         cut.Find("#registered-method-filter").Focus();
@@ -206,7 +206,7 @@ public class MethodPickerComponentTests
     {
         using var ctx = NewContext(ResolverWithRegistered());
 
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, true));
 
         cut.Find("#method-mode-registered").Change(true);
@@ -231,7 +231,7 @@ public class MethodPickerComponentTests
         using var ctx = NewContext(ResolverWithRegistered(methods));
 
         JobMethodDescriptor emitted = null;
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, true)
             .Add(c => c.OnMethodSelected, d => emitted = d));
 
@@ -256,7 +256,7 @@ public class MethodPickerComponentTests
         using var ctx = NewContext(ResolverWithRegistered());
 
         JobMethodDescriptor emitted = null;
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, true)
             .Add(c => c.OnMethodSelected, d => emitted = d));
 
@@ -281,7 +281,7 @@ public class MethodPickerComponentTests
         using var ctx = NewContext(ResolverWithRegistered());
 
         JobMethodDescriptor emitted = null;
-        var cut = ctx.RenderComponent<MethodPicker>(p => p
+        var cut = ctx.Render<MethodPicker>(p => p
             .Add(c => c.CustomMethodEnabled, true)
             .Add(c => c.OnMethodSelected, d => emitted = d));
 

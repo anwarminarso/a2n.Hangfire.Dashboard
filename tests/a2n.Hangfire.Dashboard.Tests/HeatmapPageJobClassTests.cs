@@ -76,7 +76,7 @@ public class HeatmapPageJobClassTests
     {
         using var ctx = NewContext(provider: null, out _);
 
-        var cut = ctx.RenderComponent<HeatmapPage>();
+        var cut = ctx.Render<HeatmapPage>();
 
         var labels = JobClassButtons(cut).Select(b => b.TextContent.Trim()).ToArray();
         Assert.Equal(new[] { "Cron", "Ad-hoc", "Combined" }, labels);
@@ -88,7 +88,7 @@ public class HeatmapPageJobClassTests
         // Req 16.7 / 16.9: no provider → Ad-hoc and Combined disabled, default class is Cron.
         using var ctx = NewContext(provider: null, out _);
 
-        var cut = ctx.RenderComponent<HeatmapPage>();
+        var cut = ctx.Render<HeatmapPage>();
 
         Assert.True(IsActive(JobClassButton(cut, "Cron")));
         Assert.False(IsActive(JobClassButton(cut, "Ad-hoc")));
@@ -105,7 +105,7 @@ public class HeatmapPageJobClassTests
         // Req 16.7: without a provider the Historical source is unavailable, so the toggle is hidden.
         using var ctx = NewContext(provider: null, out _);
 
-        var cut = ctx.RenderComponent<HeatmapPage>();
+        var cut = ctx.Render<HeatmapPage>();
 
         Assert.Empty(cut.FindAll("[aria-label='Data source']"));
     }
@@ -117,7 +117,7 @@ public class HeatmapPageJobClassTests
         var provider = new Mock<IStorageMetricsProvider>().Object;
         using var ctx = NewContext(provider, out _);
 
-        var cut = ctx.RenderComponent<HeatmapPage>();
+        var cut = ctx.Render<HeatmapPage>();
 
         Assert.True(IsActive(JobClassButton(cut, "Combined")));
         Assert.False(IsActive(JobClassButton(cut, "Cron")));
@@ -131,7 +131,7 @@ public class HeatmapPageJobClassTests
         var provider = new Mock<IStorageMetricsProvider>().Object;
         using var ctx = NewContext(provider, out _);
 
-        var cut = ctx.RenderComponent<HeatmapPage>();
+        var cut = ctx.Render<HeatmapPage>();
 
         Assert.False(JobClassButton(cut, "Ad-hoc").HasAttribute("disabled"));
         Assert.False(JobClassButton(cut, "Combined").HasAttribute("disabled"));
@@ -147,7 +147,7 @@ public class HeatmapPageJobClassTests
         using var ctx = NewContext(provider, out var options);
         options.Heatmap.DefaultJobClass = "Ad-hoc";
 
-        var cut = ctx.RenderComponent<HeatmapPage>();
+        var cut = ctx.Render<HeatmapPage>();
 
         Assert.True(IsActive(JobClassButton(cut, "Ad-hoc")));
 

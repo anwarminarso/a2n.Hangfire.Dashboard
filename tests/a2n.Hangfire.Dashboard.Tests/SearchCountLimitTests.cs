@@ -93,7 +93,7 @@ public class SearchCountLimitTests
         ctx.Services.AddSingleton(new DashboardUIOptions());
         ctx.Services.AddSingleton(new SearchService(storage, new TagsDataReader(storage), provider.Object));
 
-        var cut = ctx.RenderComponent<SearchResults>();
+        var cut = ctx.Render<SearchResults>();
         cut.Find("input[placeholder^='Search by ID']").Input("SampleJobs");
         cut.FindAll("button").Single(b => b.TextContent.Contains("Search Jobs")).Click();
 

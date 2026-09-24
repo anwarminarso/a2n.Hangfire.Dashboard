@@ -104,7 +104,7 @@ public class FilterBadgeSyncTests
 
     private static IRenderedComponent<SearchResults> RenderWithPanelOpen(TestContext ctx)
     {
-        var cut = ctx.RenderComponent<SearchResults>();
+        var cut = ctx.Render<SearchResults>();
         cut.FindAll("button").First(b => b.TextContent.Contains("Advanced Filters")).Click();
         cut.WaitForState(() => cut.FindAll("#search-arguments").Count == 1, TestTimeouts.RenderWait);
         return cut;

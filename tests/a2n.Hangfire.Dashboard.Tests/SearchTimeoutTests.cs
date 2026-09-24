@@ -82,7 +82,7 @@ public class SearchTimeoutTests
     public void SearchPage_UsesConfiguredTimeout()
     {
         using var ctx = CreateContext(new DashboardUIOptions { SearchTimeoutSeconds = 2 });
-        var cut = ctx.RenderComponent<SearchResults>();
+        var cut = ctx.Render<SearchResults>();
 
         var providerToken = StartSearch(cut);
 
@@ -95,7 +95,7 @@ public class SearchTimeoutTests
     public void SearchPage_TimeoutDisabled_KeepsSearchingUntilCancelled()
     {
         using var ctx = CreateContext(new DashboardUIOptions { SearchTimeoutSeconds = 0 });
-        var cut = ctx.RenderComponent<SearchResults>();
+        var cut = ctx.Render<SearchResults>();
 
         var providerToken = StartSearch(cut);
 
@@ -111,14 +111,14 @@ public class SearchTimeoutTests
     }
 
     [Fact]
-    public void SearchPage_Dispose_CancelsRunningSearch()
+    public async Task SearchPage_Dispose_CancelsRunningSearch()
     {
         using var ctx = CreateContext(new DashboardUIOptions { SearchTimeoutSeconds = 0 });
-        var cut = ctx.RenderComponent<SearchResults>();
+        var cut = ctx.Render<SearchResults>();
 
         var providerToken = StartSearch(cut);
 
-        ctx.DisposeComponents();
+        await ctx.DisposeComponentsAsync();
 
         Assert.True(
             SpinWait.SpinUntil(() => providerToken.IsCancellationRequested, TestTimeouts.RenderWait),

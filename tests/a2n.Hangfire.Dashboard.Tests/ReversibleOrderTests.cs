@@ -130,7 +130,7 @@ public class ReversibleOrderTests
         var storageOrder = monitoring.SucceededJobs(0, 25).Select(j => j.Key).ToArray();
         Assert.Equal(25, storageOrder.Length);
 
-        var cut = ctx.RenderComponent<SucceededPage>();
+        var cut = ctx.Render<SucceededPage>();
         cut.WaitForState(() => RowIds(cut).Length == 20, TestTimeouts.RenderWait);
         Assert.Equal(storageOrder.Take(20), RowIds(cut));
 

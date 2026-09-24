@@ -56,7 +56,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement: true, isReadOnly: false);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, true)
             .Add(c => c.Result, ResultWith(Job())));
 
@@ -70,7 +70,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement: false, isReadOnly: false);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, true)
             .Add(c => c.Result, ResultWith(Job())));
 
@@ -84,7 +84,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement: true, isReadOnly: true);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, true)
             .Add(c => c.Result, ResultWith(Job())));
 
@@ -97,7 +97,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement: false, isReadOnly: true);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, true)
             .Add(c => c.Result, ResultWith(Job())));
 
@@ -116,7 +116,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement, isReadOnly);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, true)
             .Add(c => c.Result, ResultWith(Job())));
 
@@ -131,7 +131,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement: true, isReadOnly: false);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, true)
             .Add(c => c.Result, new DrillDownResult(Array.Empty<DrillDownJob>(), null)));
 
@@ -145,7 +145,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement: true, isReadOnly: false);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, true)
             .Add(c => c.Result, (DrillDownResult)null));
 
@@ -157,7 +157,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement: true, isReadOnly: false);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, false)
             .Add(c => c.Result, ResultWith(Job())));
 
@@ -172,7 +172,7 @@ public class DrillDownDrawerTests
     {
         using var ctx = NewContext(enableJobManagement: true, isReadOnly: false);
 
-        var cut = ctx.RenderComponent<DrillDownDrawer>(p => p
+        var cut = ctx.Render<DrillDownDrawer>(p => p
             .Add(c => c.Visible, true)
             .Add(c => c.Result, new DrillDownResult(Array.Empty<DrillDownJob>(), "boom: query failed")));
 

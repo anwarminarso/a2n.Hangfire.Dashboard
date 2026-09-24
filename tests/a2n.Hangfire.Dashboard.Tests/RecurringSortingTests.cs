@@ -218,7 +218,7 @@ public class RecurringSortingTests
 
     private static IRenderedComponent<RecurringPage> RenderPage(TestContext ctx)
     {
-        var cut = ctx.RenderComponent<RecurringPage>();
+        var cut = ctx.Render<RecurringPage>();
         cut.WaitForState(() => cut.FindAll("#recurring-filter").Count > 0, TestTimeouts.RenderWait);
         return cut;
     }
