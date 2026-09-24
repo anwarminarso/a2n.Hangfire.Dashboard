@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased — Job arguments display, argument search, configurable search timeout, Recurring Jobs sorting
+## 2.5.5 — Job arguments, argument search, configurable search timeout, sortable grids
 
-> Two gaps against the original Hangfire dashboard: job arguments were never shown, and there was no way to search by an argument value. Also removes the hardcoded 5-second search timeout ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)) and adds column sorting to the Recurring Jobs grid ([#41](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/41)). No public API removals; no migration.
+> **Patch release.** Closes the two gaps against the original Hangfire dashboard — job arguments were never shown, and there was no way to search by an argument value ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42)) — and removes the hardcoded 5-second search timeout ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)). Also adds column sorting across the in-memory grids ([#41](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/41)) and a newest/oldest toggle on the storage-paged job lists, fixes the search badge that didn't clear its filter input ([#44](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/44)), and stops search from reading the whole `Job` table just to count matches ([#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45)). Adds `DashboardUIOptions.SearchTimeoutSeconds`; no public API removals; no migration.
 
 ### Added
 

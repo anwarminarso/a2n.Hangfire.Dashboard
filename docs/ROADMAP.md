@@ -409,6 +409,18 @@ The rollup adapter shipped in v2.5.0 read back several of its own aggregates inc
 
 ---
 
+## v2.5.5 — Job arguments, argument search, configurable search timeout, sortable grids ✅
+
+**Goal**: Show and search job arguments, make search usable on large instances, and let the grids be ordered. No migration.
+
+- ✅ **Job arguments** ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42)) — Job Details renders the method call with type-aware arguments, including jobs whose assembly the dashboard doesn't reference, and every list row shows a compact argument summary. `args:value` and an Arguments filter match the stored argument payload only, in the SQL Server and PostgreSQL adapters with a generic-provider fallback.
+- ✅ **Configurable search timeout** ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)) — the hardcoded 5 seconds is `DashboardUIOptions.SearchTimeoutSeconds` (default 30; `0` defers to the storage command timeout). A running search can be cancelled, and a cancelled SQL Server command is reported as a timeout rather than a storage error.
+- ✅ **Sortable grids** ([#41](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/41)) — the Recurring Jobs columns sort across the whole list, and the same headers cover Stopped Jobs, Servers, Queues, Throttling, the Analytics tables, the Heatmap job table, and the Home servers table. The per-state job lists, which Hangfire pages without a sort parameter, get a newest/oldest toggle that reads the matching page from the other end of the storage list.
+- ✅ **Search badge sync** ([#44](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/44)) — clearing the `args:` or content badge clears the matching filter-panel input, and the value stays cleared.
+- ✅ **Search cost** ([#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45)) — pages come newest first by primary key, and the total is counted up to 1,000 matches (shown as **1,000+** beyond that). The PostgreSQL argument predicate can use an optional `pg_trgm` index; the README documents it.
+
+---
+
 ## v2.6 — Integrations (Planned)
 
 **Goal**: Plug the dashboard into the modern observability and automation stack.
@@ -440,7 +452,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 - [ ] **Multi-instance federation** — dashboard switcher for dev/staging/prod or sharded Hangfire deployments. Storage adapter is already modular, so the architecture is ready when demand appears.
 - [ ] **Replay with modified arguments** — failed-job rerun with edited arguments (powerful but easy to misuse without RBAC; gate behind the audit log shipped in v2.3 Operations).
 - [ ] **Failure clustering / fingerprint** — group Failed page by exception fingerprint (Sentry-style). Significant debug-experience improvement. A contributor offered to build it (see [#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42)); design issue requested first.
-- [x] **Search by job argument value** — index `Job.Arguments` for support-case lookups (`customerId == "C-12345"`). Requires storage adapter changes per provider. ✅ **Done, unreleased** ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42) — `args:` search and an Arguments filter, matched against the stored argument payload in the SQL Server and PostgreSQL adapters with a generic-provider fallback; argument values also shown on Job Details and list rows). No index yet, so it scans the whole table — see [#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45).
+- [x] **Search by job argument value** — index `Job.Arguments` for support-case lookups (`customerId == "C-12345"`). Requires storage adapter changes per provider. ✅ **Done in v2.5.5** ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42) — `args:` search and an Arguments filter, matched against the stored argument payload in the SQL Server and PostgreSQL adapters with a generic-provider fallback; argument values also shown on Job Details and list rows). There is no index by default; [#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45) caps the count at 1,000 and documents an optional PostgreSQL `pg_trgm` index.
 - [x] **Visual cron builder** — interactive recurring-job editor instead of plain cron string input. ✅ **Done in v2.4** (`ScheduleBuilder` — field-by-field Every/Specific/Range/Step + manual input with human-readable description and next-run preview).
 - [ ] **Dynamic job chaining / visual chain builder** ([#15](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/15)) — operator-managed continuation/fan-out so downstream jobs can be added without a redeploy. **Out of scope** for the dashboard: building, persisting, and resolving chain definitions at runtime is a Hangfire core concern that sits below the dashboard layer. Recorded as a discussion item only.
 - [ ] **Browser push notifications** — explicitly **out of scope**. Ops teams don't monitor via browser tabs; webhook + email cover the use case.
@@ -481,6 +493,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.5.1 | **Redis / rollup analytics fixes**: heatmap estimated duration stuck at `1m` (#27), empty Duration / Queue latency / State timing panels (#26), Analytics ▸ Recurring hanging on large deployments plus blank last-results strip (#25); also the nav group crash fix (#23) | ✅ Done |
 | v2.5.2 | **Rollup completeness**: the collector dropped executions beyond its per-poll cap, so bursts above ~2 000 completions per minute were sampled rather than aggregated on non-SQL storages (#29) | ✅ Done |
 | v2.5.3 | **Throttling visibility, DST-correct heatmap, storage portability**: Throttling pages for semaphores / mutexes / rate-limit windows with orphan detection (#30, #31 — Detach deferred); heatmap window now seven *local* days, fixing silently dropped cells across DST transitions; extended-storage-API guards so third-party storages no longer fail the dashboard shell; first CI workflow | ✅ Done |
+| v2.5.5 | **Job arguments, search, and sorting**: arguments on Job Details and list rows plus `args:` search (#42); configurable search timeout with Cancel (#43); sortable in-memory grids and a newest/oldest toggle on the job lists (#41); search badge clears its filter input (#44); search counts at most 1,000 matches and pages by primary key (#45) | ✅ Done |
 | v2.5.4 | **Recurring Jobs fixes**: page-size selector now paginates both the active and Stopped tables, with page-scoped "select all" and offset clamping (#37); Id / Last Execution link to the latest execution's details (#38); `Dictionary<K,V>` / `List<T>` arguments survive the JSON ▸ Form switch (#39); blank required parameters no longer block the view toggle, only saving | ✅ Done |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
