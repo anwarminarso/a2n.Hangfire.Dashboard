@@ -241,5 +241,11 @@ internal sealed class FakeProcessingState : Hangfire.States.IState
     public string Reason => null;
     public bool IsFinal => false;
     public bool IgnoreJobLoadException => false;
-    public Dictionary<string, string> SerializeData() => new() { ["ServerId"] = _serverId, ["WorkerId"] = "1" };
+    // Same keys as ProcessingState: Hangfire.PostgreSql's ProcessingJobs throws when StartedAt is missing.
+    public Dictionary<string, string> SerializeData() => new()
+    {
+        ["StartedAt"] = Hangfire.Common.JobHelper.SerializeDateTime(DateTime.UtcNow),
+        ["ServerId"] = _serverId,
+        ["WorkerId"] = "1",
+    };
 }
