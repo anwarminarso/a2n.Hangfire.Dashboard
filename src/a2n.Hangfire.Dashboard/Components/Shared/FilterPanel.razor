@@ -386,6 +386,13 @@
     private bool _searchConsoleOutput = false;
     private bool _contentQueryInitialized = false;
 
+    // The text-search values this panel last sent to the parent. The request sent up is not the
+    // raw input (arguments text is trimmed; content text under 3 characters is sent as null), so
+    // copying it back on every render would rewrite text still being typed. A parent value that
+    // differs from what was sent is an outside change, such as a cleared badge (Issue #44).
+    private string _sentArgumentsQuery;
+    private string _sentContentQuery;
+
     protected override void OnParametersSet()
     {
         _tagsError = TagsError;
@@ -402,19 +409,25 @@
             _selectedTags = new HashSet<string>(CurrentRequest.Tags ?? new List<string>());
             _selectedRecurringJobId = CurrentRequest.RecurringJobId ?? "";
             _recurringJobSearchText = _selectedRecurringJobId;
-            // Only sync arguments query from parent on initial load (not on every re-render)
-            if (!_argumentsQueryInitialized)
+            if (!_argumentsQueryInitialized || CurrentRequest.ArgumentsQuery != _sentArgumentsQuery)
             {
                 _argumentsQuery = CurrentRequest.ArgumentsQuery ?? "";
+                _sentArgumentsQuery = CurrentRequest.ArgumentsQuery;
                 _argumentsQueryInitialized = true;
             }
-            // Only sync content query from parent on initial load (not on every re-render)
             if (!_contentQueryInitialized)
             {
                 _contentQuery = CurrentRequest.ContentQuery ?? "";
+                _sentContentQuery = CurrentRequest.ContentQuery;
                 _searchStackTrace = CurrentRequest.SearchStackTrace;
                 _searchConsoleOutput = CurrentRequest.SearchConsoleOutput;
                 _contentQueryInitialized = true;
+            }
+            else if (CurrentRequest.ContentQuery != _sentContentQuery)
+            {
+                // Clearing the content badge clears the text; the scope checkboxes stay as chosen.
+                _contentQuery = CurrentRequest.ContentQuery ?? "";
+                _sentContentQuery = CurrentRequest.ContentQuery;
             }
         }
     }
@@ -686,6 +699,8 @@
             SearchConsoleOutput = _searchConsoleOutput
         };
 
+        _sentArgumentsQuery = request.ArgumentsQuery;
+        _sentContentQuery = request.ContentQuery;
         OnFilterChanged.InvokeAsync(request);
     }
 
