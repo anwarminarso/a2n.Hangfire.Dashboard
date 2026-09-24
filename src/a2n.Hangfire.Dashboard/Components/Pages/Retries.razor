@@ -42,7 +42,8 @@ else
                             <th>Job</th>
                             <th>Reason</th>
                             <th class="text-end">Retry</th>
-                            <th class="text-end">Created</th>
+                            <SortableHeader Label="Created" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
+                                            Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
                         </tr>
                     </thead>
                     <tbody>
@@ -90,6 +91,7 @@ else
 
 @code {
     private IReadOnlyList<string> _jobIds;
+    private readonly ReversibleOrder _order = new();
     private Dictionary<string, (string jobName, string jobArgs, string state, string reason, DateTime? retryAt, DateTime? createdAt)> _jobInfo = new();
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
@@ -122,7 +124,8 @@ else
         await Task.Run(() =>
         {
             _totalCount = Monitor.GetSetCount("retries");
-            _jobIds = Monitor.GetSetJobIds("retries", _from, _pageSize);
+            _jobIds = _order.FetchIds((from, count) => Monitor.GetSetJobIds("retries", from, count),
+                _totalCount, _from, _pageSize);
             _jobInfo.Clear();
             if (_jobIds is not null)
             {
@@ -152,8 +155,21 @@ else
 
                     _jobInfo[jobId] = (jobName, jobArgs, state, reason, retryAt, createdAt);
                 }
+
+                // Hangfire adds to the retries set without a time score, so the set follows job
+                // creation order; the Created column is the one the toggle describes.
+                _order.Observe(_jobIds.Select(id => _jobInfo[id].createdAt));
             }
         });
+    }
+
+    private async Task ToggleOrder()
+    {
+        _order.Toggle();
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
     }
 
     private async Task HandlePageChanged((int From, int PageSize) args)

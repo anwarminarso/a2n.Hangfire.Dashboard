@@ -40,7 +40,8 @@
                                     <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" />
                                 </th>
                                 <th>Id</th>
-                                <th>Enqueue</th>
+                                <SortableHeader Label="Enqueue" IsActive="@_order.NewestFirst.HasValue"
+                                                Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
                                 <th>Job</th>
                                 <th class="text-end">Scheduled</th>
                             </tr>
@@ -87,6 +88,7 @@
 @code {
     private JobList<ScheduledJobDto> _jobs;
     private long _totalCount;
+    private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
@@ -104,7 +106,7 @@
                 var newCount = Monitor.GetScheduledCount();
                 if (newCount != _totalCount)
                 {
-                    var jobs = Monitor.GetScheduledJobs(_from, _pageSize);
+                    var jobs = FetchPage(newCount);
                     await InvokeAsync(() =>
                     {
                         _totalCount = newCount;
@@ -122,8 +124,22 @@
         await Task.Run(() =>
         {
             _totalCount = Monitor.GetScheduledCount();
-            _jobs = Monitor.GetScheduledJobs(_from, _pageSize);
+            _jobs = FetchPage(_totalCount);
         });
+    }
+
+    // Storages keep the scheduled set ordered by the time a job will be enqueued, so that is the
+    // column the order toggle belongs to.
+    private JobList<ScheduledJobDto> FetchPage(long total) =>
+        _order.Fetch(Monitor.GetScheduledJobs, total, _from, _pageSize, j => j.EnqueueAt);
+
+    private async Task ToggleOrder()
+    {
+        _order.Toggle();
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
     }
 
     private async Task HandlePageChanged((int From, int PageSize) args)

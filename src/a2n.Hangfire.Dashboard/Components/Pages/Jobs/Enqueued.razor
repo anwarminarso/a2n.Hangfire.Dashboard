@@ -79,7 +79,8 @@ else
                                     <th>Id</th>
                                     <th>State</th>
                                     <th>Job</th>
-                                    <th class="text-end">Enqueued</th>
+                                    <SortableHeader Label="Enqueued" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
+                                                    Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
                                 </tr>
                             </thead>
                             <tbody>
@@ -123,6 +124,7 @@ else
 
     private IList<QueueWithTopEnqueuedJobsDto> _queues;
     private JobList<EnqueuedJobDto> _jobs;
+    private readonly ReversibleOrder _order = new();
     private string _activeQueue = "default";
     private long _totalCount;
     private long _fetchedCount;
@@ -151,7 +153,7 @@ else
                 var queues = Monitor.GetQueues();
                 var totalCount = Monitor.GetEnqueuedCount(_activeQueue);
                 var fetchedCount = Monitor.GetFetchedCount(_activeQueue);
-                var jobs = Monitor.GetEnqueuedJobs(_activeQueue, _from, _pageSize);
+                var jobs = FetchPage(totalCount);
                 await InvokeAsync(() =>
                 {
                     _queues = queues;
@@ -173,8 +175,21 @@ else
             _activeQueue = QueueName ?? _queues.FirstOrDefault()?.Name ?? "default";
             _totalCount = Monitor.GetEnqueuedCount(_activeQueue);
             _fetchedCount = Monitor.GetFetchedCount(_activeQueue);
-            _jobs = Monitor.GetEnqueuedJobs(_activeQueue, _from, _pageSize);
+            _jobs = FetchPage(_totalCount);
         });
+    }
+
+    private JobList<EnqueuedJobDto> FetchPage(long total) =>
+        _order.Fetch((from, count) => Monitor.GetEnqueuedJobs(_activeQueue, from, count),
+            total, _from, _pageSize, j => j.EnqueuedAt);
+
+    private async Task ToggleOrder()
+    {
+        _order.Toggle();
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
     }
 
     private async Task HandlePageChanged((int From, int PageSize) args)
