@@ -21,15 +21,19 @@ else
                 <table class="table table-hover table-sm mb-0">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Workers</th>
+                            <SortableHeader Label="Name" IsActive="@_sort.IsActive(ServerSortColumn.Name)"
+                                            Descending="@_sort.Descending" OnSort="() => _sort.Toggle(ServerSortColumn.Name)" />
+                            <SortableHeader Label="Workers" IsActive="@_sort.IsActive(ServerSortColumn.Workers)"
+                                            Descending="@_sort.Descending" OnSort="() => _sort.Toggle(ServerSortColumn.Workers)" />
                             <th>Queues</th>
-                            <th>Started</th>
-                            <th>Heartbeat</th>
+                            <SortableHeader Label="Started" IsActive="@_sort.IsActive(ServerSortColumn.Started)"
+                                            Descending="@_sort.Descending" OnSort="() => _sort.Toggle(ServerSortColumn.Started)" />
+                            <SortableHeader Label="Heartbeat" IsActive="@_sort.IsActive(ServerSortColumn.Heartbeat)"
+                                            Descending="@_sort.Descending" OnSort="() => _sort.Toggle(ServerSortColumn.Heartbeat)" />
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var server in _servers)
+                        @foreach (var server in SortedServers)
                         {
                             <tr>
                                 <td>
@@ -72,6 +76,31 @@ else
 
 @code {
     private IList<ServerDto> _servers;
+
+    private enum ServerSortColumn { None, Name, Workers, Started, Heartbeat }
+
+    private readonly GridSortState<ServerSortColumn> _sort = new();
+
+    private IEnumerable<ServerDto> SortedServers
+    {
+        get
+        {
+            var descending = _sort.Descending;
+            IOrderedEnumerable<ServerDto> ordered = _sort.Column switch
+            {
+                ServerSortColumn.Name =>
+                    GridSort.By(_servers, s => s.Name, s => !string.IsNullOrEmpty(s.Name), StringComparer.OrdinalIgnoreCase, descending),
+                ServerSortColumn.Workers =>
+                    GridSort.By(_servers, s => s.WorkersCount, _ => true, Comparer<int>.Default, descending),
+                ServerSortColumn.Started =>
+                    GridSort.By(_servers, s => s.StartedAt, _ => true, Comparer<DateTime>.Default, descending),
+                ServerSortColumn.Heartbeat =>
+                    GridSort.By(_servers, s => s.Heartbeat, s => s.Heartbeat.HasValue, Comparer<DateTime?>.Default, descending),
+                _ => null
+            };
+            return ordered?.ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase) ?? (IEnumerable<ServerDto>)_servers;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
