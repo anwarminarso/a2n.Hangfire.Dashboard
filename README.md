@@ -311,6 +311,32 @@ Reads the same storage format as [Hangfire.Console](https://github.com/pieceofsu
 
 ---
 
+## Search on Large Instances
+
+Name search and argument search (`args:`) are substring matches (`LIKE '%value%'` on SQL Server, `ILIKE '%value%'` on PostgreSQL). An ordinary index can't serve a pattern with a leading wildcard, so on a large `Job` table the cost of a search depends on how common the value is:
+
+- **Common values are cheap.** Results come newest first by the job's primary key, so the database can stop as soon as a page is full. The total is counted up to 1,000 matches; beyond that the page shows **1,000+**, and only the first 1,000 can be paged through.
+- **Rare values read the whole table.** Finding a handful of matches means checking every row. Adding a **state** or **date** filter narrows the rows that have to be checked.
+- **Time limit.** A search is cancelled after `DashboardUIOptions.SearchTimeoutSeconds` (default 30; `0` leaves it to the storage's `Command Timeout`), and a running search can be cancelled from the page.
+
+### Optional: trigram indexes on PostgreSQL
+
+On PostgreSQL, [`pg_trgm`](https://www.postgresql.org/docs/current/pgtrgm.html) GIN indexes let `ILIKE '%value%'` use an index, which makes rare-value searches fast too. The dashboard doesn't create them. They are an opt-in for your DBA, since they take disk space and add a little write cost to every job insert. With the default `hangfire` schema:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Argument search (args:)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_hangfire_job_arguments_trgm
+    ON hangfire.job USING gin ((arguments::text) gin_trgm_ops);
+
+-- Name search (type and method name)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_hangfire_job_invocationdata_trgm
+    ON hangfire.job USING gin ((invocationdata::text) gin_trgm_ops);
+```
+
+`CONCURRENTLY` builds the index without blocking job processing, but it can't run inside a transaction. Trigram indexes only help once the searched value is at least 3 characters long. SQL Server has no equivalent for `LIKE '%value%'` short of Full-Text Search, which the dashboard doesn't use.
+
 ## Job Builder
 
 The Job Builder lets operators construct, schedule, and enqueue Hangfire jobs **with their arguments** from the dashboard — no code change or redeploy. It powers two places:

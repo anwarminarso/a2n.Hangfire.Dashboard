@@ -292,7 +292,8 @@ public class SearchService
     {
         var result = new SearchResult
         {
-            TotalCount = (int)Math.Min(pagedResult.TotalCount, int.MaxValue)
+            TotalCount = (int)Math.Min(pagedResult.TotalCount, int.MaxValue),
+            TotalCountIsLowerBound = pagedResult.TotalCountIsLowerBound
         };
 
         foreach (var dto in pagedResult.Items)

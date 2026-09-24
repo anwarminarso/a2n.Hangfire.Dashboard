@@ -102,24 +102,34 @@ s.data::json ->> 'ExceptionMessage' AS ""ExceptionMessage""";
             contentJoin = "INNER JOIN matched_jobs mj ON mj.id = j.id";
         }
 
+        // A substring match can't use a B-tree index, so an uncapped COUNT(*) reads the whole job
+        // table. Counting one past the limit stops once the limit is exceeded and still tells
+        // "more" apart.
         var countSql = $@"{ctePart}
-SELECT COUNT(*)
-FROM {_jobTable} j
-{stateJoin}
-{contentJoin}
-{whereClause}";
+SELECT COUNT(*) FROM (
+    SELECT j.id
+    FROM {_jobTable} j
+    {stateJoin}
+    {contentJoin}
+    {whereClause}
+    LIMIT @CountLimitPlusOne
+) counted";
 
+        // Ordered by the primary key rather than createdat: ids increase with creation time, and
+        // walking the key newest-first lets the page stop after @PageSize matches instead of
+        // sorting every match.
         var querySql = $@"{ctePart}
 SELECT {JobColumns}
 FROM {_jobTable} j
 {stateJoin}
 {contentJoin}
 {whereClause}
-ORDER BY j.createdat DESC
+ORDER BY j.id DESC
 LIMIT @PageSize OFFSET @Offset";
 
         parameters.Add("PageSize", pageSize);
         parameters.Add("Offset", offset);
+        parameters.Add("CountLimitPlusOne", JobFilterCriteria.CountLimit + 1);
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
@@ -131,11 +141,13 @@ LIMIT @PageSize OFFSET @Offset";
             new CommandDefinition(querySql, parameters, cancellationToken: ct));
 
         var items = rows.Select(MapToJobSummary).ToList();
+        var countIsLowerBound = totalCount > JobFilterCriteria.CountLimit;
 
         return new PagedResult<JobSummaryDto>
         {
             Items = items,
-            TotalCount = totalCount,
+            TotalCount = countIsLowerBound ? JobFilterCriteria.CountLimit : totalCount,
+            TotalCountIsLowerBound = countIsLowerBound,
             Page = page,
             PageSize = pageSize
         };

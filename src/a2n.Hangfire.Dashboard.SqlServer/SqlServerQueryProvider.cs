@@ -84,26 +84,41 @@ JSON_VALUE(s.[Data], '$.ExceptionMessage') AS ExceptionMessage";
             contentJoin = $"INNER JOIN (\n{contentCte}\n) mj ON mj.Id = j.Id";
         }
 
+        // A substring match can't use an index, so an uncapped COUNT(*) reads the whole Job table.
+        // Counting one past the limit stops once the limit is exceeded and still tells "more" apart.
         var countSql = $@"
-SELECT COUNT(*)
-FROM {jobTable} j
-{stateJoin}
-{contentJoin}
-{whereClause};";
+SELECT COUNT(*) FROM (
+    SELECT TOP (@CountLimitPlusOne) j.Id
+    FROM {jobTable} j
+    {stateJoin}
+    {contentJoin}
+    {whereClause}
+) counted;";
 
+        // Ordered by the clustered primary key rather than CreatedAt: ids increase with creation
+        // time, and walking the key newest-first lets the page stop after @PageSize matches instead
+        // of sorting every match.
         var querySql = $@"
 SELECT {JobColumns}
 FROM {jobTable} j
 {stateJoin}
 {contentJoin}
 {whereClause}
-ORDER BY j.CreatedAt DESC
+ORDER BY j.Id DESC
 OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
         parameters.Add("Offset", offset);
         parameters.Add("PageSize", pageSize);
+        parameters.Add("CountLimitPlusOne", JobFilterCriteria.CountLimit + 1);
 
-        return await ExecutePagedAsync(countSql, querySql, parameters, page, pageSize, ct);
+        var result = await ExecutePagedAsync(countSql, querySql, parameters, page, pageSize, ct);
+        if (result.TotalCount > JobFilterCriteria.CountLimit)
+        {
+            result.TotalCount = JobFilterCriteria.CountLimit;
+            result.TotalCountIsLowerBound = true;
+        }
+
+        return result;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

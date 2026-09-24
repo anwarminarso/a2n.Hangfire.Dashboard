@@ -21,6 +21,12 @@ public class PagedResult<T>
     public long TotalCount { get; set; }
 
     /// <summary>
+    /// True when counting stopped at a limit, so <see cref="TotalCount"/> is a lower bound: there
+    /// are at least that many items, possibly more. See <see cref="JobFilterCriteria.CountLimit"/>.
+    /// </summary>
+    public bool TotalCountIsLowerBound { get; set; }
+
+    /// <summary>
     /// Current page number (1-based).
     /// </summary>
     public int Page { get; set; }
@@ -129,6 +135,13 @@ public class JobSummaryDto
 /// </summary>
 public class JobFilterCriteria
 {
+    /// <summary>
+    /// Search results are counted up to this many matches. Counting every match of a substring
+    /// search means reading the whole job table, so beyond this the total is reported as a lower
+    /// bound (<see cref="PagedResult{T}.TotalCountIsLowerBound"/>) and the pager stops there.
+    /// </summary>
+    public const int CountLimit = 1000;
+
     // ─── Basic Filters ───────────────────────────────────────────────
 
     /// <summary>
