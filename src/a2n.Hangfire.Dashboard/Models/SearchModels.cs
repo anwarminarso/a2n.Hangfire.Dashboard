@@ -96,7 +96,6 @@ public class FilterPreset
     public List<string> Tags { get; set; } = new();
     public string Queue { get; set; }
     public string RecurringJobId { get; set; }
-    public string ArgumentsQuery { get; set; }
     public string ContentQuery { get; set; }
     public bool SearchStackTrace { get; set; } = false;
     public bool SearchConsoleOutput { get; set; } = false;

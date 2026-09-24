@@ -31,7 +31,7 @@ public static class JobArgumentsRenderer
     /// Arguments serialized to more than this many characters are replaced with a placeholder
     /// instead of being rendered. Mirrors <c>JobMethodCallRenderer.MaxArgumentToRenderSize</c>.
     /// </summary>
-    public static int MaxArgumentToRenderSize { get; set; } = 4096;
+    public const int MaxArgumentToRenderSize = 4096;
 
     /// <summary>
     /// Once the rendered arguments exceed this combined length, each argument is placed on its own
@@ -40,6 +40,7 @@ public static class JobArgumentsRenderer
     private const int SplitStringMinLength = 100;
 
     private static readonly Regex GenericArityPattern = new(@"`\d+", RegexOptions.Compiled);
+    private static readonly Regex WhitespacePattern = new(@"\s+", RegexOptions.Compiled);
     private static readonly string[] EmptyArguments = Array.Empty<string>();
 
     // ─── Public API ────────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ public static class JobArgumentsRenderer
             return "";
 
         // Collapse newlines/tabs so multi-line JSON payloads stay on a single row.
-        var text = Regex.Replace(argumentsText, @"\s+", " ").Trim();
+        var text = WhitespacePattern.Replace(argumentsText, " ").Trim();
 
         if (maxLength > 0 && text.Length > maxLength)
             text = text[..maxLength] + "…";
