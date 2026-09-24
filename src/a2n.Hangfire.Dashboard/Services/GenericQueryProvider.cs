@@ -52,10 +52,15 @@ public class GenericQueryProvider : IStorageQueryProvider
                 new ScanFilter(criteria.JobNamePattern, criteria.ArgumentsPattern), candidates, ct);
         }
 
+        // Scanning stops at SafetyCap candidates, so reaching it means there may be more matches.
+        var hitScanCap = candidates.Count >= SafetyCap;
+
         // Apply client-side filters
         var filtered = ApplyFilters(candidates, criteria, ct);
 
-        return Task.FromResult(SortAndPaginate(filtered, page, pageSize));
+        var result = SortAndPaginate(filtered, page, pageSize);
+        result.TotalCountIsLowerBound = hitScanCap;
+        return Task.FromResult(result);
     }
 
     /// <inheritdoc />

@@ -47,10 +47,12 @@ internal static class PgHelper
     /// Matching it instead of the whole payload keeps an argument search off type and method names.
     ///
     /// The cast is required: the column is <c>jsonb</c> on a current Hangfire schema (and <c>text</c>
-    /// on an older one), and jsonb supports neither ILIKE nor COALESCE with a text literal.
+    /// on an older one), and jsonb doesn't support ILIKE. There is deliberately no COALESCE: a null
+    /// column makes the ILIKE null, which a WHERE clause already treats as no match, and the bare
+    /// expression is what lets an optional <c>(arguments::text) gin_trgm_ops</c> index be used.
     /// </summary>
     public static string JobArgumentsSql(string jobAlias = "j")
-        => $"COALESCE({jobAlias}.arguments::text, '')";
+        => $"{jobAlias}.arguments::text";
 
     /// <summary>
     /// Escapes ILIKE pattern special characters: %, _, \

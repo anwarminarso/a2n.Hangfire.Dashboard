@@ -42,6 +42,10 @@ public class SearchResult
 {
     public List<SearchResultItem> Items { get; set; } = new();
     public long TotalCount { get; set; }
+
+    /// <summary>True when there are more matches than <see cref="TotalCount"/> (counting stopped at a limit).</summary>
+    public bool TotalCountIsLowerBound { get; set; }
+
     public TimeSpan Elapsed { get; set; }
     public bool TimedOut { get; set; }
     public bool HasError { get; set; }

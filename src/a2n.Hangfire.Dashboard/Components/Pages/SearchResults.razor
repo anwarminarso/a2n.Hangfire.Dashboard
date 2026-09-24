@@ -216,7 +216,7 @@ else if (_result is not null)
     @* Summary line — read-only badges (no × buttons) *@
     <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
         <span class="text-body-secondary">
-            <strong>@_result.TotalCount</strong> result@(_result.TotalCount != 1 ? "s" : "") found
+            <strong>@TotalLabel</strong> result@(_result.TotalCount != 1 ? "s" : "") found
         </span>
         @if (!string.IsNullOrWhiteSpace(_lastSearchedQuery))
         {
@@ -291,7 +291,11 @@ else if (_result is not null)
         @* Top toolbar: page size selector *@
         <div id="search-results" class="d-flex justify-content-between align-items-center mb-2">
             <small class="text-body-secondary">
-                Showing @(_from + 1)–@Math.Min(_from + _pageSize, _result.TotalCount) of @_result.TotalCount
+                Showing @(_from + 1)–@Math.Min(_from + _pageSize, _result.TotalCount) of @TotalLabel
+                @if (_result.TotalCountIsLowerBound)
+                {
+                    <span class="ms-1">· only the first @_result.TotalCount.ToString("N0") matches can be paged through; narrow the search to reach the rest</span>
+                }
             </small>
             <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
         </div>
@@ -637,6 +641,9 @@ else if (_result is not null)
         _isLoading = false;
         StateHasChanged();
     }
+
+    private string TotalLabel =>
+        _result is null ? "" : _result.TotalCount.ToString("N0") + (_result.TotalCountIsLowerBound ? "+" : "");
 
     private void CancelSearch()
     {
