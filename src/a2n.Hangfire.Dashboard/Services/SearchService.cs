@@ -89,6 +89,13 @@ public class SearchService
             sw.Stop();
             return new SearchResult { TimedOut = true, Elapsed = sw.Elapsed };
         }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // SqlClient reports a cancelled command as a SqlException ("Operation cancelled by
+            // user") rather than an OperationCanceledException.
+            sw.Stop();
+            return new SearchResult { TimedOut = true, Elapsed = sw.Elapsed };
+        }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Search failed for mode {Mode} with query '{Query}'", mode, normalizedQuery);

@@ -1,7 +1,9 @@
 @page "/search"
 @using a2n.Hangfire.Dashboard.Models
 @using a2n.Hangfire.Dashboard.Services
+@implements IDisposable
 @inject SearchService SearchService
+@inject DashboardUIOptions Options
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -164,6 +166,19 @@ else if (_isLoading)
             <span class="visually-hidden">Searching...</span>
         </div>
         <span class="text-muted">Searching...</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-2" @onclick="CancelSearch">
+            <i class="bi bi-x-lg"></i> Cancel
+        </button>
+    </div>
+}
+else if (_searchCancelled)
+{
+    <div class="card">
+        <div class="card-body text-center py-4">
+            <i class="bi bi-slash-circle fs-2 text-muted"></i>
+            <h5 class="mt-2">Search Cancelled</h5>
+            <p class="text-muted mb-0">Adjust your criteria and click <strong>Search Jobs</strong> to try again.</p>
+        </div>
     </div>
 }
 else if (_result is not null && _result.TimedOut)
@@ -173,8 +188,16 @@ else if (_result is not null && _result.TimedOut)
             <i class="bi bi-clock-history fs-2 text-warning"></i>
             <h5 class="mt-2">Search Timed Out</h5>
             <p class="text-muted mb-0">
-                The search took too long to complete. Try narrowing your search criteria.
+                The search took too long to complete. Try narrowing your search criteria, for example
+                with a state or date range.
             </p>
+            @if (Options.SearchTimeoutSeconds > 0)
+            {
+                <p class="small text-muted mt-2 mb-0">
+                    Searches are limited to @Options.SearchTimeoutSeconds seconds. An administrator can
+                    change this with <code>DashboardUIOptions.SearchTimeoutSeconds</code>.
+                </p>
+            }
         </div>
     </div>
 }
@@ -367,6 +390,8 @@ else if (_result is not null)
     private SearchResult _result;
     private bool _isLoading;
     private bool _hasSearched;
+    private bool _searchCancelled;
+    private CancellationTokenSource _searchCts;
     private int _from;
     private int _pageSize = 20;
     private string _searchQuery = "";
@@ -524,16 +549,26 @@ else if (_result is not null)
 
     private async Task ExecuteSearch()
     {
+        // Starting a new search (or paging) abandons any search still in flight.
+        _searchCts?.Cancel();
+
+        using var cts = new CancellationTokenSource();
+        if (Options.SearchTimeoutSeconds > 0)
+            cts.CancelAfter(TimeSpan.FromSeconds(Options.SearchTimeoutSeconds));
+        _searchCts = cts;
+
         _isLoading = true;
+        _searchCancelled = false;
         _result = null;
         _validationErrors.Clear();
         StateHasChanged();
 
+        SearchResult result;
+        SearchRequest request = null;
+
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-
-            var request = new SearchRequest
+            request = new SearchRequest
             {
                 Query = _searchQuery?.Trim() ?? "",
                 From = _from,
@@ -553,8 +588,32 @@ else if (_result is not null)
                 SearchStackTrace = _currentFilterRequest.SearchStackTrace,
             };
 
-            _result = await SearchService.SearchAsync(request, cts.Token);
+            result = await SearchService.SearchAsync(request, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            result = new SearchResult { TimedOut = true };
+            request = null;
+        }
+        catch (Exception)
+        {
+            result = new SearchResult
+            {
+                HasError = true,
+                ErrorMessage = "The search could not be completed."
+            };
+            request = null;
+        }
 
+        // A newer search, a cancel, or disposal has taken over the page state.
+        if (!ReferenceEquals(_searchCts, cts))
+            return;
+
+        _searchCts = null;
+        _result = result;
+
+        if (request is not null)
+        {
             // Snapshot the searched parameters for read-only display in results
             _lastSearchedQuery = _searchQuery?.Trim() ?? "";
             _lastSearchedRequest = new SearchRequest
@@ -574,23 +633,27 @@ else if (_result is not null)
                 SearchStackTrace = request.SearchStackTrace,
             };
         }
-        catch (OperationCanceledException)
-        {
-            _result = new SearchResult { TimedOut = true };
-        }
-        catch (Exception)
-        {
-            _result = new SearchResult
-            {
-                HasError = true,
-                ErrorMessage = "The search could not be completed."
-            };
-        }
-        finally
-        {
-            _isLoading = false;
-            StateHasChanged();
-        }
+
+        _isLoading = false;
+        StateHasChanged();
+    }
+
+    private void CancelSearch()
+    {
+        if (_searchCts is null)
+            return;
+
+        _searchCts.Cancel();
+        _searchCts = null;
+        _isLoading = false;
+        _searchCancelled = true;
+        _result = null;
+    }
+
+    public void Dispose()
+    {
+        _searchCts?.Cancel();
+        _searchCts = null;
     }
 
     private void HandleFilterChanged(SearchRequest updatedRequest)
