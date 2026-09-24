@@ -47,16 +47,21 @@ else
                 <table class="table table-hover table-sm mb-0 align-middle">
                     <thead>
                         <tr>
-                            <th>Id</th>
+                            <SortableHeader Label="Id" IsActive="@_sort.IsActive(RowSort.Id)" Descending="@_sort.Descending"
+                                            OnSort="() => _sort.Toggle(RowSort.Id)" />
                             <th>Cron</th>
-                            <th>Queue</th>
-                            <th>Time Zone</th>
-                            <th class="text-end">Est. Duration</th>
-                            <th class="text-end">Window Cells</th>
+                            <SortableHeader Label="Queue" IsActive="@_sort.IsActive(RowSort.Queue)" Descending="@_sort.Descending"
+                                            OnSort="() => _sort.Toggle(RowSort.Queue)" />
+                            <SortableHeader Label="Time Zone" IsActive="@_sort.IsActive(RowSort.TimeZone)" Descending="@_sort.Descending"
+                                            OnSort="() => _sort.Toggle(RowSort.TimeZone)" />
+                            <SortableHeader Label="Est. Duration" CssClass="text-end" IsActive="@_sort.IsActive(RowSort.Duration)"
+                                            Descending="@_sort.Descending" OnSort="() => _sort.Toggle(RowSort.Duration)" />
+                            <SortableHeader Label="Window Cells" CssClass="text-end" IsActive="@_sort.IsActive(RowSort.Cells)"
+                                            Descending="@_sort.Descending" OnSort="() => _sort.Toggle(RowSort.Cells)" />
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var row in Rows)
+                        @foreach (var row in SortedRows)
                         {
                             <tr>
                                 <td>

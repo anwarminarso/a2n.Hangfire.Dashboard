@@ -19,6 +19,39 @@ internal static class GridSort
             ? missingLast.ThenByDescending(key, comparer)
             : missingLast.ThenBy(key, comparer);
     }
+
+    /// <summary>
+    /// Sorts <paramref name="items"/> by the key <paramref name="keyFor"/> returns for the active
+    /// column. A <c>null</c> selector (e.g. for the <c>None</c> column) keeps the original order; a
+    /// <c>null</c> key value counts as missing. Strings compare case-insensitively.
+    /// </summary>
+    public static IEnumerable<T> Apply<T, TColumn>(
+        IEnumerable<T> items,
+        GridSortState<TColumn> state,
+        Func<TColumn, Func<T, object>> keyFor,
+        Func<T, string> tieBreak = null)
+        where TColumn : struct, Enum
+    {
+        if (items is null)
+            return Enumerable.Empty<T>();
+
+        var key = keyFor(state.Column);
+        if (key is null)
+            return items;
+
+        var ordered = By(items, key, item => key(item) is not null, ValueComparer.Instance, state.Descending);
+        return tieBreak is null ? ordered : ordered.ThenBy(tieBreak, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class ValueComparer : IComparer<object>
+    {
+        public static readonly ValueComparer Instance = new();
+
+        public int Compare(object x, object y) =>
+            x is string a && y is string b
+                ? StringComparer.OrdinalIgnoreCase.Compare(a, b)
+                : Comparer<object>.Default.Compare(x, y);
+    }
 }
 
 /// <summary>

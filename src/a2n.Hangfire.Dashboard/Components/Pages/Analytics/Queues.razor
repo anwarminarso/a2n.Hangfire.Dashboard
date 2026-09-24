@@ -64,15 +64,20 @@
                                 <table class="table table-hover table-sm mb-0">
                                     <thead>
                                         <tr>
-                                            <th>Queue Name</th>
-                                            <th class="text-end">Enqueued</th>
-                                            <th class="text-end">Fetched</th>
-                                            <th class="text-end">Avg Wait</th>
-                                            <th style="min-width: 200px;">Throughput/hr</th>
+                                            <SortableHeader Label="Queue Name" IsActive="@_queueSort.IsActive(QueueSort.Name)"
+                                                            Descending="@_queueSort.Descending" OnSort="() => _queueSort.Toggle(QueueSort.Name)" />
+                                            <SortableHeader Label="Enqueued" CssClass="text-end" IsActive="@_queueSort.IsActive(QueueSort.Enqueued)"
+                                                            Descending="@_queueSort.Descending" OnSort="() => _queueSort.Toggle(QueueSort.Enqueued)" />
+                                            <SortableHeader Label="Fetched" CssClass="text-end" IsActive="@_queueSort.IsActive(QueueSort.Fetched)"
+                                                            Descending="@_queueSort.Descending" OnSort="() => _queueSort.Toggle(QueueSort.Fetched)" />
+                                            <SortableHeader Label="Avg Wait" CssClass="text-end" IsActive="@_queueSort.IsActive(QueueSort.AvgWait)"
+                                                            Descending="@_queueSort.Descending" OnSort="() => _queueSort.Toggle(QueueSort.AvgWait)" />
+                                            <SortableHeader Label="Throughput/hr" Style="min-width: 200px;" IsActive="@_queueSort.IsActive(QueueSort.Throughput)"
+                                                            Descending="@_queueSort.Descending" OnSort="() => _queueSort.Toggle(QueueSort.Throughput)" />
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var row in _queueStatusRows)
+                                        @foreach (var row in SortedQueueStatusRows)
                                         {
                                             <tr>
                                                 <td><code>@row.QueueName</code></td>
@@ -123,14 +128,18 @@
                                 <table class="table table-hover table-sm mb-0">
                                     <thead>
                                         <tr>
-                                            <th>Server Name</th>
-                                            <th class="text-end">Total Workers</th>
-                                            <th class="text-end">Busy Workers</th>
-                                            <th style="min-width: 200px;">Utilization %</th>
+                                            <SortableHeader Label="Server Name" IsActive="@_serverSort.IsActive(ServerSort.Name)"
+                                                            Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Name)" />
+                                            <SortableHeader Label="Total Workers" CssClass="text-end" IsActive="@_serverSort.IsActive(ServerSort.Total)"
+                                                            Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Total)" />
+                                            <SortableHeader Label="Busy Workers" CssClass="text-end" IsActive="@_serverSort.IsActive(ServerSort.Busy)"
+                                                            Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Busy)" />
+                                            <SortableHeader Label="Utilization %" Style="min-width: 200px;" IsActive="@_serverSort.IsActive(ServerSort.Utilization)"
+                                                            Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Utilization)" />
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var server in _serverUtilizationSnapshot.Data)
+                                        @foreach (var server in SortedServerUtilization)
                                         {
                                             <tr>
                                                 <td><code>@server.ServerName</code></td>
@@ -177,6 +186,31 @@
 
     // Server utilization data
     private SnapshotResult<IReadOnlyList<ServerUtilizationDto>> _serverUtilizationSnapshot;
+
+    private enum QueueSort { None, Name, Enqueued, Fetched, AvgWait, Throughput }
+    private enum ServerSort { None, Name, Total, Busy, Utilization }
+
+    private readonly GridSortState<QueueSort> _queueSort = new();
+    private readonly GridSortState<ServerSort> _serverSort = new();
+
+    private IEnumerable<QueueStatusRow> SortedQueueStatusRows => GridSort.Apply(_queueStatusRows, _queueSort, column => column switch
+    {
+        QueueSort.Name => r => r.QueueName,
+        QueueSort.Enqueued => r => r.EnqueuedCount,
+        QueueSort.Fetched => r => r.FetchedCount,
+        QueueSort.AvgWait => r => r.AvgWaitMs,
+        QueueSort.Throughput => r => r.ThroughputPerHour,
+        _ => null
+    }, r => r.QueueName);
+
+    private IEnumerable<ServerUtilizationDto> SortedServerUtilization => GridSort.Apply(_serverUtilizationSnapshot?.Data, _serverSort, column => column switch
+    {
+        ServerSort.Name => s => s.ServerName,
+        ServerSort.Total => s => s.TotalWorkers,
+        ServerSort.Busy => s => s.BusyWorkers,
+        ServerSort.Utilization => s => s.UtilizationPercent,
+        _ => null
+    }, s => s.ServerName);
 
     protected override async Task OnInitializedAsync()
     {

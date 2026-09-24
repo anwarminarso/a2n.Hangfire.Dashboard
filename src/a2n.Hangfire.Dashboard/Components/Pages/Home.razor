@@ -177,15 +177,19 @@ else if (_statsExpanded)
                 <table class="table table-hover table-sm mb-0">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Workers</th>
+                            <SortableHeader Label="Name" IsActive="@_serverSort.IsActive(ServerSort.Name)"
+                                            Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Name)" />
+                            <SortableHeader Label="Workers" IsActive="@_serverSort.IsActive(ServerSort.Workers)"
+                                            Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Workers)" />
                             <th>Queues</th>
-                            <th>Started</th>
-                            <th>Heartbeat</th>
+                            <SortableHeader Label="Started" IsActive="@_serverSort.IsActive(ServerSort.Started)"
+                                            Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Started)" />
+                            <SortableHeader Label="Heartbeat" IsActive="@_serverSort.IsActive(ServerSort.Heartbeat)"
+                                            Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Heartbeat)" />
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var server in _servers)
+                        @foreach (var server in SortedServers)
                         {
                             <tr>
                                 <td><ServerLabel FullId="@server.Name" /></td>
@@ -211,6 +215,19 @@ else if (_statsExpanded)
 @code {
     private StatisticsDto _stats;
     private IList<ServerDto> _servers;
+
+    private enum ServerSort { None, Name, Workers, Started, Heartbeat }
+
+    private readonly GridSortState<ServerSort> _serverSort = new();
+
+    private IEnumerable<ServerDto> SortedServers => GridSort.Apply(_servers, _serverSort, column => column switch
+    {
+        ServerSort.Name => s => s.Name,
+        ServerSort.Workers => s => s.WorkersCount,
+        ServerSort.Started => s => s.StartedAt,
+        ServerSort.Heartbeat => s => s.Heartbeat,
+        _ => null
+    }, s => s.Name);
     private HubConnection _hubConnection;
     private Timer _refreshTimer;
     private long _prevSucceeded;
