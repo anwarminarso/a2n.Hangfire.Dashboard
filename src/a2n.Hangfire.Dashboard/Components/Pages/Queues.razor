@@ -126,8 +126,26 @@ else
         }
     </div>
 
+    @if (_rows.Count > 1)
+    {
+    <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+        <label class="small text-body-secondary mb-0" for="queue-sort">Sort by</label>
+        <select id="queue-sort" class="form-select form-select-sm w-auto" @onchange="OnSortColumnChanged">
+            <option value="@QueueSortColumn.Name" selected="@(_sortColumn == QueueSortColumn.Name)">Name</option>
+            <option value="@QueueSortColumn.Enqueued" selected="@(_sortColumn == QueueSortColumn.Enqueued)">Enqueued</option>
+            <option value="@QueueSortColumn.Fetched" selected="@(_sortColumn == QueueSortColumn.Fetched)">Fetched</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="queue-sort-direction"
+                @onclick="() => _sortDescending = !_sortDescending"
+                title="@(_sortDescending ? "Descending — click for ascending" : "Ascending — click for descending")"
+                aria-label="@(_sortDescending ? "Sorted descending" : "Sorted ascending")">
+            <i class="bi @(_sortDescending ? "bi-sort-down" : "bi-sort-up")" aria-hidden="true"></i>
+        </button>
+    </div>
+    }
+
     <div class="hf-queue-grid @(maintenance ? "hf-queue-grid--maintenance" : "")">
-        @foreach (var q in _rows)
+        @foreach (var q in SortedRows)
         {
             var paused = _state.PausedQueues.Contains(q.Name);
             var status = maintenance ? "maintenance" : paused ? "paused" : "active";
@@ -261,6 +279,29 @@ else
         public string Name { get; init; }
         public long? Length { get; init; }
         public long? Fetched { get; init; }
+    }
+
+    private enum QueueSortColumn { Name, Enqueued, Fetched }
+
+    private QueueSortColumn _sortColumn = QueueSortColumn.Name;
+    private bool _sortDescending;
+
+    // Queues whose count couldn't be read ("—") go last, whichever the direction.
+    private IEnumerable<QueueRow> SortedRows =>
+        (_sortColumn switch
+        {
+            QueueSortColumn.Enqueued =>
+                GridSort.By(_rows, r => r.Length, r => r.Length.HasValue, Comparer<long?>.Default, _sortDescending),
+            QueueSortColumn.Fetched =>
+                GridSort.By(_rows, r => r.Fetched, r => r.Fetched.HasValue, Comparer<long?>.Default, _sortDescending),
+            _ =>
+                GridSort.By(_rows, r => r.Name, _ => true, StringComparer.OrdinalIgnoreCase, _sortDescending),
+        }).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase);
+
+    private void OnSortColumnChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<QueueSortColumn>(e.Value?.ToString(), out var column))
+            _sortColumn = column;
     }
 
     // For queues not returned by IMonitoringApi.Queues() (idle queues known only from server config

@@ -67,11 +67,17 @@ else
                     <table class="table table-hover table-sm mb-0">
                         <thead>
                             <tr>
-                                <th>Id</th>
+                                <SortableHeader Label="Id" IsActive="@_stoppedSort.IsActive(StoppedJobSortColumn.Id)"
+                                                Descending="@_stoppedSort.Descending"
+                                                OnSort="() => SortStoppedBy(StoppedJobSortColumn.Id)" />
                                 <th>Cron</th>
                                 <th>Time Zone</th>
-                                <th>Job</th>
-                                <th>Stopped At</th>
+                                <SortableHeader Label="Job" IsActive="@_stoppedSort.IsActive(StoppedJobSortColumn.Job)"
+                                                Descending="@_stoppedSort.Descending"
+                                                OnSort="() => SortStoppedBy(StoppedJobSortColumn.Job)" />
+                                <SortableHeader Label="Stopped At" IsActive="@_stoppedSort.IsActive(StoppedJobSortColumn.StoppedAt)"
+                                                Descending="@_stoppedSort.Descending"
+                                                OnSort="() => SortStoppedBy(StoppedJobSortColumn.StoppedAt)" />
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -119,20 +125,20 @@ else
                         <thead>
                             <tr>
                                 <th style="width: 2rem;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" /></th>
-                                <SortableHeader Label="Id" IsActive="@(_sortColumn == RecurringJobSortColumn.Id)" Descending="@_sortDescending"
+                                <SortableHeader Label="Id" IsActive="@_sort.IsActive(RecurringJobSortColumn.Id)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.Id)" />
                                 <th>Cron</th>
                                 <th>Time Zone</th>
-                                <SortableHeader Label="Job" IsActive="@(_sortColumn == RecurringJobSortColumn.Job)" Descending="@_sortDescending"
+                                <SortableHeader Label="Job" IsActive="@_sort.IsActive(RecurringJobSortColumn.Job)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.Job)" />
                                 <SortableHeader Label="Next Execution" CssClass="text-end"
-                                                IsActive="@(_sortColumn == RecurringJobSortColumn.NextExecution)" Descending="@_sortDescending"
+                                                IsActive="@_sort.IsActive(RecurringJobSortColumn.NextExecution)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.NextExecution)" />
                                 <SortableHeader Label="Last Execution" CssClass="text-end"
-                                                IsActive="@(_sortColumn == RecurringJobSortColumn.LastExecution)" Descending="@_sortDescending"
+                                                IsActive="@_sort.IsActive(RecurringJobSortColumn.LastExecution)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.LastExecution)" />
                                 <SortableHeader Label="Created" CssClass="text-end"
-                                                IsActive="@(_sortColumn == RecurringJobSortColumn.Created)" Descending="@_sortDescending"
+                                                IsActive="@_sort.IsActive(RecurringJobSortColumn.Created)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.Created)" />
                                 @if (Options.EnableJobManagement)
                                 {
@@ -278,34 +284,58 @@ else
 
     // Column sort (Issue #41). Applied to the whole filtered list before paging, so the order
     // spans every page rather than only the visible one.
-    private RecurringJobSortColumn _sortColumn = RecurringJobSortColumn.None;
-    private bool _sortDescending;
+    private readonly GridSortState<RecurringJobSortColumn> _sort = new();
 
     private IReadOnlyList<RecurringJobDto> SortedJobs =>
-        RecurringJobSorter.Sort(FilteredJobs, _sortColumn, _sortDescending);
+        RecurringJobSorter.Sort(FilteredJobs, _sort.Column, _sort.Descending);
 
     // The current page of active recurring jobs (Issue #37).
     private IReadOnlyList<RecurringJobDto> PagedJobs =>
         SortedJobs.Skip(_from).Take(_pageSize).ToList();
 
-    // First click on a column sorts ascending; clicking the active column flips the direction.
     private void SortBy(RecurringJobSortColumn column)
     {
-        if (_sortColumn == column)
-        {
-            _sortDescending = !_sortDescending;
-        }
-        else
-        {
-            _sortColumn = column;
-            _sortDescending = false;
-        }
+        _sort.Toggle(column);
 
         // The rows on each page change, so start from the first page with nothing selected, as
         // paging does.
         _from = 0;
         _selectedJobs.Clear();
         _selectAll = false;
+    }
+
+    private enum StoppedJobSortColumn { None, Id, Job, StoppedAt }
+
+    private readonly GridSortState<StoppedJobSortColumn> _stoppedSort = new();
+
+    private List<StoppedJobInfo> SortedStopped
+    {
+        get
+        {
+            var stopped = FilteredStopped;
+            if (_stoppedSort.Column == StoppedJobSortColumn.None || stopped.Count < 2)
+                return stopped;
+
+            var descending = _stoppedSort.Descending;
+            var ordered = _stoppedSort.Column switch
+            {
+                StoppedJobSortColumn.Id =>
+                    GridSort.By(stopped, s => s.Id, s => !string.IsNullOrEmpty(s.Id), StringComparer.OrdinalIgnoreCase, descending),
+                StoppedJobSortColumn.Job =>
+                    GridSort.By(stopped, StoppedJobName, _ => true, StringComparer.OrdinalIgnoreCase, descending),
+                _ =>
+                    GridSort.By(stopped, s => s.StoppedAt, s => s.StoppedAt.HasValue, Comparer<DateTime?>.Default, descending),
+            };
+            return ordered.ThenBy(s => s.Id, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+    }
+
+    private static string StoppedJobName(StoppedJobInfo stopped) => $"{stopped.TypeName}.{stopped.MethodName}";
+
+    private void SortStoppedBy(StoppedJobSortColumn column)
+    {
+        _stoppedSort.Toggle(column);
+        _stoppedFrom = 0;
     }
 
     // The stopped recurring jobs after applying the same filter (Issue #13).
@@ -316,9 +346,9 @@ else
                 .Where(s => Contains(s.Id) || Contains($"{s.TypeName}.{s.MethodName}"))
                 .ToList();
 
-    // The current page of stopped recurring jobs (Issue #37).
+    // The current page of stopped recurring jobs (Issue #37), after sorting.
     private List<StoppedJobInfo> PagedStopped =>
-        FilteredStopped.Skip(_stoppedFrom).Take(_pageSize).ToList();
+        SortedStopped.Skip(_stoppedFrom).Take(_pageSize).ToList();
 
     private bool MatchesFilter(RecurringJobDto job) =>
         Contains(job.Id) || Contains(GetJobName(job));

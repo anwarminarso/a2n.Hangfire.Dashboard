@@ -19,7 +19,8 @@ internal enum RecurringJobSortColumn
 /// <summary>
 /// Sorts the complete recurring job list for the Recurring Jobs grid. Jobs without a value for the
 /// sort column (no next execution, never run, unresolved job) are always placed last, whichever
-/// the direction, and ties are broken by job id so the order is stable across refreshes.
+/// the direction (see <see cref="GridSort"/>), and ties are broken by job id so the order is stable
+/// across refreshes.
 /// </summary>
 internal static class RecurringJobSorter
 {
@@ -32,15 +33,15 @@ internal static class RecurringJobSorter
         var ordered = column switch
         {
             RecurringJobSortColumn.Id =>
-                OrderBy(jobs, j => j.Id, j => !string.IsNullOrEmpty(j.Id), StringComparer.OrdinalIgnoreCase, descending),
+                GridSort.By(jobs, j => j.Id, j => !string.IsNullOrEmpty(j.Id), StringComparer.OrdinalIgnoreCase, descending),
             RecurringJobSortColumn.Job =>
-                OrderBy(jobs, GetJobName, j => j.Job is not null, StringComparer.OrdinalIgnoreCase, descending),
+                GridSort.By(jobs, GetJobName, j => j.Job is not null, StringComparer.OrdinalIgnoreCase, descending),
             RecurringJobSortColumn.NextExecution =>
-                OrderBy(jobs, j => j.NextExecution, j => j.NextExecution.HasValue, Comparer<DateTime?>.Default, descending),
+                GridSort.By(jobs, j => j.NextExecution, j => j.NextExecution.HasValue, Comparer<DateTime?>.Default, descending),
             RecurringJobSortColumn.LastExecution =>
-                OrderBy(jobs, j => j.LastExecution, j => j.LastExecution.HasValue, Comparer<DateTime?>.Default, descending),
+                GridSort.By(jobs, j => j.LastExecution, j => j.LastExecution.HasValue, Comparer<DateTime?>.Default, descending),
             RecurringJobSortColumn.Created =>
-                OrderBy(jobs, j => j.CreatedAt, j => j.CreatedAt.HasValue, Comparer<DateTime?>.Default, descending),
+                GridSort.By(jobs, j => j.CreatedAt, j => j.CreatedAt.HasValue, Comparer<DateTime?>.Default, descending),
             _ => throw new ArgumentOutOfRangeException(nameof(column), column, null)
         };
 
@@ -52,17 +53,4 @@ internal static class RecurringJobSorter
     /// </summary>
     public static string GetJobName(RecurringJobDto job) =>
         job?.Job is null ? "(unknown)" : JobNameHelper.GetDisplayName(job.Job, null);
-
-    private static IOrderedEnumerable<RecurringJobDto> OrderBy<TKey>(
-        IEnumerable<RecurringJobDto> jobs,
-        Func<RecurringJobDto, TKey> key,
-        Func<RecurringJobDto, bool> hasValue,
-        IComparer<TKey> comparer,
-        bool descending)
-    {
-        var missingLast = jobs.OrderBy(j => hasValue(j) ? 0 : 1);
-        return descending
-            ? missingLast.ThenByDescending(key, comparer)
-            : missingLast.ThenBy(key, comparer);
-    }
 }
