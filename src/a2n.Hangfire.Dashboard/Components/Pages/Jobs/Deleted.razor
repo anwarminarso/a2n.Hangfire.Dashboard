@@ -42,7 +42,8 @@
                                 {
                                     <th>Exception</th>
                                 }
-                                <th class="text-end">Deleted</th>
+                                <SortableHeader Label="Deleted" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
+                                                Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
                             </tr>
                         </thead>
                         <tbody>
@@ -107,6 +108,7 @@
 @code {
     private JobList<DeletedJobDto> _jobs;
     private long _totalCount;
+    private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
@@ -125,7 +127,7 @@
                 var newCount = Monitor.GetDeletedListCount();
                 if (newCount != _totalCount)
                 {
-                    var jobs = Monitor.GetDeletedJobs(_from, _pageSize);
+                    var jobs = FetchPage(newCount);
                     await InvokeAsync(() =>
                     {
                         _totalCount = newCount;
@@ -146,11 +148,23 @@
         await Task.Run(() =>
         {
             _totalCount = Monitor.GetDeletedListCount();
-            _jobs = Monitor.GetDeletedJobs(_from, _pageSize);
+            _jobs = FetchPage(_totalCount);
             _hasExceptionData = _jobs.Any(j => j.Value?.StateData != null &&
                 j.Value.StateData.ContainsKey("Exception") &&
                 !string.IsNullOrWhiteSpace(j.Value.StateData["Exception"]));
         });
+    }
+
+    private JobList<DeletedJobDto> FetchPage(long total) =>
+        _order.Fetch(Monitor.GetDeletedJobs, total, _from, _pageSize, j => j.DeletedAt);
+
+    private async Task ToggleOrder()
+    {
+        _order.Toggle();
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
     }
 
     private async Task HandlePageChanged((int From, int PageSize) args)

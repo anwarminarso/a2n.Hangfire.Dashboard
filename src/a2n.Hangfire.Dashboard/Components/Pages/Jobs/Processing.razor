@@ -43,7 +43,8 @@
                                 <th>Id</th>
                                 <th>Server</th>
                                 <th>Job</th>
-                                <th class="text-end">Started</th>
+                                <SortableHeader Label="Started" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
+                                                Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
                             </tr>
                         </thead>
                         <tbody>
@@ -117,6 +118,7 @@
 @code {
     private JobList<ProcessingJobDto> _jobs;
     private long _totalCount;
+    private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
@@ -138,7 +140,7 @@
                 var newCount = Monitor.GetProcessingCount();
                 if (newCount != _totalCount || newCount > 0)
                 {
-                    var jobs = Monitor.GetProcessingJobs(_from, _pageSize);
+                    var jobs = FetchPage(newCount);
                     var progress = GetProgressForJobs(jobs);
                     var servers = Monitor.GetServers();
                     await InvokeAsync(() =>
@@ -173,10 +175,22 @@
         await Task.Run(() =>
         {
             _totalCount = Monitor.GetProcessingCount();
-            _jobs = Monitor.GetProcessingJobs(_from, _pageSize);
+            _jobs = FetchPage(_totalCount);
             _jobProgress = GetProgressForJobs(_jobs);
             _servers = Monitor.GetServers();
         });
+    }
+
+    private JobList<ProcessingJobDto> FetchPage(long total) =>
+        _order.Fetch(Monitor.GetProcessingJobs, total, _from, _pageSize, j => j.StartedAt);
+
+    private async Task ToggleOrder()
+    {
+        _order.Toggle();
+        _from = 0;
+        _selectedJobs.Clear();
+        _selectAll = false;
+        await LoadData();
     }
 
     private Dictionary<string, double> GetProgressForJobs(JobList<ProcessingJobDto> jobs)
