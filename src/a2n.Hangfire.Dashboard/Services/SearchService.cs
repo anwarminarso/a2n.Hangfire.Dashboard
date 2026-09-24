@@ -184,6 +184,9 @@ public class SearchService
             Tags = request.Tags?.Count > 0 ? request.Tags : null,
             RecurringJobId = request.RecurringJobId,
 
+            // Argument search
+            ArgumentsPattern = request.ArgumentsQuery,
+
             // Content search
             ContentPattern = request.ContentQuery,
             SearchStackTrace = request.SearchStackTrace,
@@ -198,6 +201,10 @@ public class SearchService
                 break;
             case SearchMode.Exception:
                 criteria.ExceptionPattern = normalizedQuery;
+                break;
+            case SearchMode.Arguments when string.IsNullOrEmpty(criteria.ArgumentsPattern):
+                // "args:xxx" prefix sets the argument filter
+                criteria.ArgumentsPattern = normalizedQuery;
                 break;
             case SearchMode.Queue when string.IsNullOrEmpty(criteria.Queue):
                 // "queue:xxx" prefix sets the queue filter
@@ -309,6 +316,7 @@ public class SearchService
             SearchMode.Exception => SearchMatchSource.Exception,
             SearchMode.Queue => SearchMatchSource.Queue,
             SearchMode.Tag => SearchMatchSource.Tag,
+            SearchMode.Arguments => SearchMatchSource.Arguments,
             _ => SearchMatchSource.Name
         };
     }
@@ -344,6 +352,14 @@ public class SearchService
         {
             var value = trimmed["exception:".Length..].Trim();
             return string.IsNullOrWhiteSpace(value) ? (SearchMode.Auto, "") : (SearchMode.Exception, value);
+        }
+
+        // Check for "args:" prefix. Unlike name search this only looks at the serialized
+        // arguments, so a short value such as an id is still a meaningful query.
+        if (trimmed.StartsWith("args:", StringComparison.OrdinalIgnoreCase))
+        {
+            var value = trimmed["args:".Length..].Trim();
+            return string.IsNullOrWhiteSpace(value) ? (SearchMode.Auto, "") : (SearchMode.Arguments, value);
         }
 
         // All-digits → ID mode

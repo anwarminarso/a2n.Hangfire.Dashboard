@@ -309,6 +309,13 @@ LIMIT @Count";
             conditions.Add("j.invocationdata::text ILIKE @NamePattern");
             parameters.Add("NamePattern", "%" + PgHelper.EscapeILikePattern(criteria.JobNamePattern) + "%");
         }
+
+        // Arguments pattern (ILIKE on the arguments column only, never the type or method name)
+        if (!string.IsNullOrWhiteSpace(criteria.ArgumentsPattern))
+        {
+            conditions.Add($"{PgHelper.JobArgumentsSql()} ILIKE @ArgsPattern");
+            parameters.Add("ArgsPattern", "%" + PgHelper.EscapeILikePattern(criteria.ArgumentsPattern) + "%");
+        }
     }
 
     /// <summary>

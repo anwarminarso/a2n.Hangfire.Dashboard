@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Dapper;
 using Microsoft.Data.SqlClient;
 
@@ -14,6 +15,9 @@ namespace a2n.Hangfire.Dashboard.SqlServer.Tests.Fixtures;
 ///   - Processing: 15 jobs (IDs 61-75)
 ///   - Scheduled:  10 jobs (IDs 76-85)
 ///   - Enqueued:   15 jobs (IDs 86-100)
+///
+/// Arguments (Job.Arguments): "user-{id}@example.com" plus the id as a number; job 42 also carries a
+///   unique "needle-a1b2c3" marker, job 7 has a null in place of the e-mail. See <see cref="Arguments"/>.
 ///
 /// Queues: default, email, reports, payments, imports, notifications, critical
 /// Servers: server-1:1234, server-2:5678, server-3:9012, worker-a:3000, worker-b:4000
@@ -115,8 +119,15 @@ public static class TestDataSeeder
 
             await connection.ExecuteAsync($@"
                 INSERT INTO {jobTable} (Id, InvocationData, Arguments, CreatedAt, StateName)
-                VALUES (@Id, @InvocationData, '[]', @CreatedAt, @StateName)",
-                new { Id = id, InvocationData = invocationData, CreatedAt = createdAt, StateName = stateName });
+                VALUES (@Id, @InvocationData, @Arguments, @CreatedAt, @StateName)",
+                new
+                {
+                    Id = id,
+                    InvocationData = invocationData,
+                    Arguments = Arguments(id),
+                    CreatedAt = createdAt,
+                    StateName = stateName
+                });
         }
         await connection.ExecuteAsync($"SET IDENTITY_INSERT {jobTable} OFF");
 
@@ -290,6 +301,34 @@ public static class TestDataSeeder
 
     private static string InvocationData(string typeName, string methodName)
         => $"{{\"Type\":\"{typeName}, SampleApp\",\"Method\":\"{methodName}\",\"ParameterTypes\":\"[]\",\"Arguments\":\"[]\"}}";
+
+    /// <summary>
+    /// Serialized job arguments in Hangfire's stored form: a <c>string[]</c> whose elements are the
+    /// individually serialized values, so a string argument keeps its JSON quotes and a number does
+    /// not. Hangfire.SqlServer writes this to the <c>Job.Arguments</c> column and leaves the
+    /// <c>Arguments</c> property inside <c>InvocationData</c> null, which is what an argument search
+    /// has to match against.
+    ///
+    /// Deterministic layout:
+    ///   - every job: an e-mail-shaped string "user-{id}@example.com" and the id as a number
+    ///   - job 42:    additionally a unique "needle-a1b2c3" marker, for exact single-hit assertions
+    ///   - job 7:     a null in place of the e-mail (stored as a JSON null element)
+    /// No value overlaps a type or method name, so a test can assert that an argument search does
+    /// not match the job name.
+    /// </summary>
+    private static string Arguments(long id)
+    {
+        var email = JsonSerializer.Serialize($"user-{id}@example.com");
+
+        var values = id switch
+        {
+            42 => new[] { JsonSerializer.Serialize("needle-a1b2c3"), email, id.ToString() },
+            7 => new[] { null, id.ToString() },
+            _ => new[] { email, id.ToString() }
+        };
+
+        return JsonSerializer.Serialize(values);
+    }
 
     private static string StateData(double duration, double latency)
         => $"{{\"PerformanceDuration\":\"{duration}\",\"Latency\":\"{latency}\"}}";

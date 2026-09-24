@@ -151,7 +151,7 @@ else
                                     </td>
                                     <td><code class="font-monospace">@job.Cron</code></td>
                                     <td>@(job.TimeZoneId ?? "UTC")</td>
-                                    <td><span class="hf-job-name" title="@GetJobName(job)">@GetJobName(job)</span></td>
+                                    <td><JobNameDisplay Job="@job.Job" Name="@GetJobName(job)" /></td>
                                     <td class="text-end">
                                         @if (job.NextExecution.HasValue)
                                         {

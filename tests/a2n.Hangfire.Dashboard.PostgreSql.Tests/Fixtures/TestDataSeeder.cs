@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Dapper;
 using Npgsql;
 
@@ -24,6 +25,9 @@ namespace a2n.Hangfire.Dashboard.PostgreSql.Tests.Fixtures;
 ///   - DataImporter.ImportCsv, DataImporter.ImportJson
 ///   - NotificationService.SendPush, NotificationService.SendSms
 /// 
+/// Arguments (job.arguments): "user-{id}@example.com" plus the id as a number; job 42 also carries a
+///   unique "needle-a1b2c3" marker, job 7 has a null in place of the e-mail. See <see cref="Arguments"/>.
+///
 /// Queues: default, email, reports, payments, imports, notifications, critical
 /// Servers: server-1:1234, server-2:5678, server-3:9012, worker-a:3000, worker-b:4000
 /// Tags: email, report, critical, import, sample, payment, notification, bulk, urgent, daily
@@ -123,10 +127,13 @@ public static class TestDataSeeder
             var createdAt = GetCreatedAt(id);
             var invocationData = InvocationData(typeName, methodName);
             var escapedJson = invocationData.Replace("'", "''");
+            // Inlined rather than parameterized: both columns are jsonb on a current Hangfire schema
+            // and text on an older one, and an untyped literal is coerced to either.
+            var escapedArguments = Arguments(id).Replace("'", "''");
 
             await connection.ExecuteAsync($@"
                 INSERT INTO {jobTable} (id, invocationdata, arguments, createdat, statename)
-                VALUES (@Id, '{escapedJson}', '[]', @CreatedAt, @StateName)",
+                VALUES (@Id, '{escapedJson}', '{escapedArguments}', @CreatedAt, @StateName)",
                 new { Id = id, CreatedAt = createdAt, StateName = stateName });
         }
 
@@ -343,6 +350,34 @@ public static class TestDataSeeder
     private static string InvocationData(string typeName, string methodName)
     {
         return $"{{\"Type\":\"{typeName}, SampleApp\",\"Method\":\"{methodName}\",\"ParameterTypes\":\"[]\",\"Arguments\":\"[]\"}}";
+    }
+
+    /// <summary>
+    /// Serialized job arguments in Hangfire's stored form: a <c>string[]</c> whose elements are the
+    /// individually serialized values, so a string argument keeps its JSON quotes and a number does
+    /// not. Hangfire.PostgreSql writes this to the <c>job.arguments</c> column and leaves the
+    /// <c>Arguments</c> property inside <c>invocationdata</c> null, which is what an argument search
+    /// has to match against.
+    ///
+    /// Deterministic layout:
+    ///   - every job: an e-mail-shaped string "user-{id}@example.com" and the id as a number
+    ///   - job 42:    additionally a unique "needle-a1b2c3" marker, for exact single-hit assertions
+    ///   - job 7:     a null in place of the e-mail (stored as a JSON null element)
+    /// No value overlaps a type or method name, so a test can assert that an argument search does
+    /// not match the job name.
+    /// </summary>
+    private static string Arguments(long id)
+    {
+        var email = JsonSerializer.Serialize($"user-{id}@example.com");
+
+        var values = id switch
+        {
+            42 => new[] { JsonSerializer.Serialize("needle-a1b2c3"), email, id.ToString() },
+            7 => new[] { null, id.ToString() },
+            _ => new[] { email, id.ToString() }
+        };
+
+        return JsonSerializer.Serialize(values);
     }
 
     private static string StateData(double duration, double latency, string queue = null)

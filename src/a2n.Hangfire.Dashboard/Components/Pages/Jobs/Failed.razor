@@ -53,7 +53,7 @@ else
                                 </td>
                                 <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                 <td>
-                                    <div class="hf-job-name" title="@GetJobName(job.Value)">@GetJobName(job.Value)</div>
+                                    <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
                                     @if (!string.IsNullOrEmpty(job.Value?.Reason))
                                     {
                                         <div class="text-muted small">@TruncateReason(job.Value.Reason)</div>
@@ -209,11 +209,6 @@ else
         return $"#{id}";
     }
 
-    private static string GetJobName(FailedJobDto dto)
-    {
-        if (dto is null) return "(unknown)";
-        return Helpers.JobNameHelper.GetDisplayName(dto.Job, dto.InvocationData);
-    }
 
     private static string TruncateReason(string reason)
     {

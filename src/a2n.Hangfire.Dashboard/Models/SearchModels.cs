@@ -18,6 +18,9 @@ public class SearchRequest
     public string Queue { get; set; }
     public string RecurringJobId { get; set; }
 
+    // Argument search (matches the serialized job arguments only, not the type or method name)
+    public string ArgumentsQuery { get; set; }
+
     // Content search (searches inside job data — stack trace, console output)
     public string ContentQuery { get; set; }
     public bool SearchStackTrace { get; set; } = false;
@@ -31,7 +34,8 @@ public enum SearchMode
     Name,
     Queue,
     Tag,
-    Exception
+    Exception,
+    Arguments
 }
 
 public class SearchResult
@@ -66,6 +70,7 @@ public enum SearchMatchSource
     Queue,
     Tag,
     Exception,
+    Arguments,
     Content
 }
 

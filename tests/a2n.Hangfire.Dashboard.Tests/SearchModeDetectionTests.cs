@@ -66,6 +66,19 @@ public class SearchModeDetectionTests
     }
 
     [Theory]
+    [InlineData("args:user@example.com", SearchMode.Arguments, "user@example.com")]
+    [InlineData("Args:42", SearchMode.Arguments, "42")]
+    [InlineData("ARGS:8f2c1d", SearchMode.Arguments, "8f2c1d")]
+    [InlineData("args:  spaced  ", SearchMode.Arguments, "spaced")]
+    [InlineData("args:a", SearchMode.Arguments, "a")] // no minimum length — a short value is still specific
+    public void DetectSearchMode_ArgsPrefix_ReturnsArgumentsMode(string query, SearchMode expectedMode, string expectedNormalized)
+    {
+        var (mode, normalized) = SearchService.DetectSearchMode(query);
+        Assert.Equal(expectedMode, mode);
+        Assert.Equal(expectedNormalized, normalized);
+    }
+
+    [Theory]
     [InlineData("MyJobClass", SearchMode.Name, "MyJobClass")]
     [InlineData("SendEmail", SearchMode.Name, "SendEmail")]
     [InlineData("ab", SearchMode.Name, "ab")]
@@ -115,6 +128,8 @@ public class SearchModeDetectionTests
     [InlineData("tag:   ", SearchMode.Auto, "")]
     [InlineData("exception:", SearchMode.Auto, "")]
     [InlineData("exception:   ", SearchMode.Auto, "")]
+    [InlineData("args:", SearchMode.Auto, "")]
+    [InlineData("args:   ", SearchMode.Auto, "")]
     public void DetectSearchMode_PrefixWithEmptyValue_ReturnsAuto(string query, SearchMode expectedMode, string expectedNormalized)
     {
         var (mode, normalized) = SearchService.DetectSearchMode(query);
@@ -179,5 +194,26 @@ public class SearchModeDetectionTests
             var (mode, _) = SearchService.DetectSearchMode(prefix + "test");
             Assert.Equal(SearchMode.Exception, mode);
         }
+    }
+
+    [Fact]
+    public void DetectSearchMode_ArgsPrefixCaseInsensitive()
+    {
+        var variations = new[] { "args:", "Args:", "ARGS:", "aRgS:" };
+        foreach (var prefix in variations)
+        {
+            var (mode, _) = SearchService.DetectSearchMode(prefix + "test");
+            Assert.Equal(SearchMode.Arguments, mode);
+        }
+    }
+
+    [Fact]
+    public void DetectSearchMode_ArgsPrefixWithAllDigitValue_StaysArgumentsMode()
+    {
+        // Without the prefix "42" would be an ID lookup — the prefix must win so that
+        // numeric argument values remain searchable.
+        var (mode, normalized) = SearchService.DetectSearchMode("args:42");
+        Assert.Equal(SearchMode.Arguments, mode);
+        Assert.Equal("42", normalized);
     }
 }

@@ -365,6 +365,10 @@ header.navbar h1 { border: none; outline: none; }
 .hf-code-block .code-namespace { color: var(--bs-secondary-color); }
 .hf-code-block .code-type { color: var(--bs-info); }
 .hf-code-block .code-method { color: var(--bs-success); font-weight: 600; }
+.hf-code-block .code-string { color: var(--bs-warning-text-emphasis); }
+.hf-code-block .code-number { color: var(--bs-danger-text-emphasis); }
+/* Argument spans carry the parameter name as a native tooltip. */
+.hf-code-block span[title] { cursor: help; }
 
 /* ===== Stat Card — Left Border Accent ===== */
 .hf-stat-border-info { border-left: 4px solid var(--bs-info) !important; }
@@ -1235,6 +1239,22 @@ a.hf-st-link:hover .hf-st-link-icon {
 }
 @media (max-width: 991.98px) {
     .hf-job-name { max-width: 14rem; }
+}
+
+/* Argument summary rendered under a job name in list rows. Same width constraint as the job name so
+   a large payload can't widen the table; the full argument text is available via the title tooltip. */
+.hf-job-args {
+    display: block;
+    max-width: 22rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+}
+@media (max-width: 991.98px) {
+    .hf-job-args { max-width: 14rem; }
 }
 
 /* ===== Queue color badges (shared) ===== */

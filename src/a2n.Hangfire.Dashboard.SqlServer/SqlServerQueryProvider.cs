@@ -281,6 +281,12 @@ ORDER BY CAST(JSON_VALUE(s.[Data], '$.PerformanceDuration') AS BIGINT) DESC;";
             conditions.Add("j.InvocationData LIKE @NamePattern");
             parameters.Add("NamePattern", "%" + SqlHelper.EscapeLikePattern(criteria.JobNamePattern) + "%");
         }
+
+        if (!string.IsNullOrWhiteSpace(criteria.ArgumentsPattern))
+        {
+            conditions.Add($"{SqlHelper.JobArgumentsSql()} LIKE @ArgsPattern");
+            parameters.Add("ArgsPattern", "%" + SqlHelper.EscapeLikePattern(criteria.ArgumentsPattern) + "%");
+        }
     }
 
     private void BuildStateDataFilters(JobFilterCriteria criteria, List<string> conditions,

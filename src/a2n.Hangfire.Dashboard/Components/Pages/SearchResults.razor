@@ -16,7 +16,7 @@
     <div class="card-body py-2">
         <input type="text"
                class="form-control"
-               placeholder="Search by ID, name, queue (queue:name), tag (tag:name), exception (exception:text)..."
+               placeholder="Search by ID, name, queue (queue:name), tag (tag:name), exception (exception:text), arguments (args:text)..."
                maxlength="200"
                @bind="_searchQuery"
                @bind:event="oninput"
@@ -112,6 +112,14 @@
                         @onclick="ClearRecurringJobParam" aria-label="Clear recurring job filter"></button>
             </span>
         }
+        @if (!string.IsNullOrEmpty(_currentFilterRequest.ArgumentsQuery))
+        {
+            <span class="badge text-bg-light border d-inline-flex align-items-center gap-1">
+                <i class="bi bi-braces"></i> args: @_currentFilterRequest.ArgumentsQuery
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearArgumentsQueryParam" aria-label="Clear arguments search"></button>
+            </span>
+        }
         @if (!string.IsNullOrEmpty(_currentFilterRequest.ContentQuery))
         {
             <span class="badge bg-warning text-dark d-inline-flex align-items-center gap-1">
@@ -144,7 +152,7 @@
             <p class="mt-3 mb-0 text-muted">Enter a search term or apply filters, then click <strong>Search Jobs</strong>.</p>
             <p class="small text-muted mt-1">
                 Supports: job ID, name, <code>queue:name</code>, <code>tag:name</code>,
-                <code>exception:text</code>
+                <code>exception:text</code>, <code>args:text</code>
             </p>
         </div>
     </div>
@@ -233,6 +241,12 @@ else if (_result is not null)
         {
             <span class="badge" style="background-color: #20c997 !important; color: #000 !important;">
                 <i class="bi bi-arrow-repeat"></i> @_lastSearchedRequest.RecurringJobId
+            </span>
+        }
+        @if (!string.IsNullOrEmpty(_lastSearchedRequest.ArgumentsQuery))
+        {
+            <span class="badge text-bg-light border">
+                <i class="bi bi-braces"></i> args: @_lastSearchedRequest.ArgumentsQuery
             </span>
         }
         @if (!string.IsNullOrEmpty(_lastSearchedRequest.ContentQuery))
@@ -431,6 +445,7 @@ else if (_result is not null)
             if (!q.StartsWith("queue:", StringComparison.OrdinalIgnoreCase)
                 && !q.StartsWith("tag:", StringComparison.OrdinalIgnoreCase)
                 && !q.StartsWith("exception:", StringComparison.OrdinalIgnoreCase)
+                && !q.StartsWith("args:", StringComparison.OrdinalIgnoreCase)
                 && !q.All(char.IsDigit)
                 && q.Length < 2)
             {
@@ -476,6 +491,7 @@ else if (_result is not null)
             || (_currentFilterRequest.Tags is not null && _currentFilterRequest.Tags.Count > 0)
             || !string.IsNullOrEmpty(_currentFilterRequest.Queue)
             || !string.IsNullOrEmpty(_currentFilterRequest.RecurringJobId)
+            || !string.IsNullOrEmpty(_currentFilterRequest.ArgumentsQuery)
             || !string.IsNullOrEmpty(_currentFilterRequest.ContentQuery);
     }
 
@@ -531,6 +547,7 @@ else if (_result is not null)
                 Tags = _currentFilterRequest.Tags ?? new List<string>(),
                 Queue = _currentFilterRequest.Queue,
                 RecurringJobId = _currentFilterRequest.RecurringJobId,
+                ArgumentsQuery = _currentFilterRequest.ArgumentsQuery,
                 ContentQuery = _currentFilterRequest.ContentQuery,
                 SearchConsoleOutput = _currentFilterRequest.SearchConsoleOutput,
                 SearchStackTrace = _currentFilterRequest.SearchStackTrace,
@@ -551,6 +568,7 @@ else if (_result is not null)
                 MaxDurationSeconds = request.MaxDurationSeconds,
                 Tags = request.Tags?.ToList(),
                 RecurringJobId = request.RecurringJobId,
+                ArgumentsQuery = request.ArgumentsQuery,
                 ContentQuery = request.ContentQuery,
                 SearchConsoleOutput = request.SearchConsoleOutput,
                 SearchStackTrace = request.SearchStackTrace,
@@ -662,6 +680,12 @@ else if (_result is not null)
     private void ClearRecurringJobParam()
     {
         _currentFilterRequest.RecurringJobId = null;
+        StateHasChanged();
+    }
+
+    private void ClearArgumentsQueryParam()
+    {
+        _currentFilterRequest.ArgumentsQuery = null;
         StateHasChanged();
     }
 
@@ -791,6 +815,9 @@ else if (_result is not null)
 
         if (q.StartsWith("exception:", StringComparison.OrdinalIgnoreCase))
             return $"No failed jobs found matching \"{q[10..].Trim()}\".";
+
+        if (q.StartsWith("args:", StringComparison.OrdinalIgnoreCase))
+            return $"No jobs found with \"{q[5..].Trim()}\" in their arguments.";
 
         if (q.All(char.IsDigit) && q.Length <= 20)
             return $"No job found with ID \"{q}\".";
