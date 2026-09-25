@@ -609,6 +609,26 @@ QueueOperations = new QueueOperationsOptions
 
 A single global toggle (top of the `/queues` page) pauses every queue at once. While maintenance is active, a persistent yellow banner is rendered on every dashboard page with the operator's reason and a `Manage →` link. Disable maintenance to resume — individual queue pauses set before maintenance was enabled remain in effect.
 
+### Failure fingerprints
+
+An optional server filter records which kind of failure each failed job had, so failed jobs can be grouped by exception. Register it on every host that runs a Hangfire server:
+
+```csharp
+builder.Services.AddHangfire(config => config
+    .UseSqlServerStorage(connStr)
+    .UseDashboardFailureFingerprintFilter());   // <-- here
+```
+
+When a job enters the Failed state, the filter stores a `FailureFingerprint` job parameter such as `v1:6eca44f1fc4dce28`, which is a hash of three things:
+
+- **The exception type.**
+- **The first line of the message, with run-specific values replaced.** GUIDs, dates and times, hex values and hashes, e-mail addresses, IPv4 addresses, URL query strings and numbers become placeholders, so `Transaction (Process ID 57) was deadlocked…` and `Transaction (Process ID 112) was deadlocked…` are the same failure. Quoted names are kept, so `Column 'Email' cannot be null` and `Column 'Phone' cannot be null` stay apart.
+- **The top stack frame from your own code.** Frames in `System.`, `Microsoft.` and `Hangfire.` namespaces are skipped. Parameters, file paths and line numbers are dropped, and async, lambda and local-function names map to the method that contains them, so a rebuild or a moved line doesn't change the fingerprint.
+
+Only failures that end in the Failed state are fingerprinted, not the attempts that `AutomaticRetry` retries. The parameter stays on the job after it is requeued or deleted, and a later failure overwrites it. It is stored as a plain string and is visible under **Parameters** on the Job Details page.
+
+Grouping on the Failed page, which is coming next, uses this parameter. Failures without it (recorded before the filter was registered, or on a server without it) will be fingerprinted from their stored exception data when the page is read. That only covers a bounded number of jobs, so register the filter on every server.
+
 ### Audit log
 
 Every admin action performed through the dashboard is recorded:
