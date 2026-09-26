@@ -214,6 +214,162 @@ public class FailureFingerprintTests
         Assert.Equal(a.Fingerprint, b.Fingerprint);
     }
 
+    // ── Exception chain ─────────────────────────────────────────────────────────────────
+
+    private const string SaveChangesMessage =
+        "An error occurred while saving the entity changes. See the inner exception for details.";
+
+    // EF Core wraps every database error in a DbUpdateException with the same message.
+    private static FailureFingerprintResult SaveChangesFailure(string innerMessage, string outerType = "Microsoft.EntityFrameworkCore.DbUpdateException") =>
+        FailureFingerprint.Compute(
+            outerType,
+            SaveChangesMessage,
+            outerType + ": " + SaveChangesMessage + " ---> MySqlConnector.MySqlException: " + innerMessage + "\n" +
+            "   at MySqlConnector.Core.ServerSession.ReceiveReplyAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)\n" +
+            "   --- End of inner exception stack trace ---\n" +
+            "   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)\n" +
+            "   at MyApp.Jobs.CustomerImportJob.RunAsync()",
+            "MyApp.Jobs.CustomerImportJob, MyApp");
+
+    [Fact]
+    public void Wrapper_UsesTheInnermostTypeAndMessage()
+    {
+        var result = SaveChangesFailure("Column 'Email' cannot be null");
+
+        Assert.Equal("Microsoft.EntityFrameworkCore.DbUpdateException", result.ExceptionType);
+        Assert.Equal("MySqlConnector.MySqlException", result.InnerExceptionType);
+        Assert.Equal("Column 'Email' cannot be null", result.NormalizedMessage);
+        Assert.Equal("MyApp.Jobs.CustomerImportJob.RunAsync", result.TopFrame);
+    }
+
+    [Fact]
+    public void Wrapper_DifferentInnerErrors_AreDifferentFailures()
+    {
+        Assert.NotEqual(
+            SaveChangesFailure("Column 'Email' cannot be null").Fingerprint,
+            SaveChangesFailure("Column 'Phone' cannot be null").Fingerprint);
+        Assert.Equal(
+            SaveChangesFailure("Duplicate entry '42' for key 'PRIMARY'").Fingerprint,
+            SaveChangesFailure("Duplicate entry '43' for key 'PRIMARY'").Fingerprint);
+    }
+
+    [Fact]
+    public void Wrapper_TheOuterTypeStillCounts()
+    {
+        Assert.NotEqual(
+            SaveChangesFailure("Column 'Email' cannot be null").Fingerprint,
+            SaveChangesFailure("Column 'Email' cannot be null", outerType: "Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException").Fingerprint);
+    }
+
+    [Fact]
+    public void Wrapper_SeveralLevels_UsesTheInnermost()
+    {
+        const string details =
+            "System.Threading.Tasks.TaskCanceledException: The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing." +
+            " ---> System.TimeoutException: The operation was canceled." +
+            " ---> System.IO.IOException: Unable to read data from the transport connection: Operation canceled." +
+            " ---> System.Net.Sockets.SocketException: Operation canceled\n" +
+            "   --- End of inner exception stack trace ---\n" +
+            "   at MyApp.Clients.BillingClient.ChargeAsync(Decimal amount)";
+
+        var result = FailureFingerprint.Compute("System.Threading.Tasks.TaskCanceledException", "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", details);
+
+        Assert.Equal("System.Threading.Tasks.TaskCanceledException", result.ExceptionType);
+        Assert.Equal("System.Net.Sockets.SocketException", result.InnerExceptionType);
+        Assert.Equal("Operation canceled", result.NormalizedMessage);
+    }
+
+    [Fact]
+    public void Wrapper_MultiLineInnerMessage_ContainingAnArrow()
+    {
+        // As Hangfire writes it: the chain spans lines, and "--->" inside a message is not a boundary.
+        const string details =
+            "System.AggregateException: One or more errors occurred. (line one\n" +
+            "line two ---> not a type here) ---> System.InvalidOperationException: line one\n" +
+            "line two ---> not a type here\n" +
+            "   at MyApp.Jobs.OrderJob.Run()\n" +
+            "\n" +
+            "   --- End of inner exception stack trace ---\n" +
+            "   at MyApp.Jobs.OrderJob.Run()";
+
+        var result = FailureFingerprint.Compute("System.AggregateException", "One or more errors occurred. (line one\nline two ---> not a type here)", details);
+
+        Assert.Equal("System.InvalidOperationException", result.InnerExceptionType);
+        Assert.Equal("line one", result.NormalizedMessage);
+    }
+
+    [Fact]
+    public void Wrapper_ExceptionToStringFormat_IsReadToo()
+    {
+        // Exception.ToString(), as older Hangfire versions stored it: the arrow starts a new line and
+        // some types carry an error code.
+        const string details =
+            "System.Net.Http.HttpRequestException: Connection refused (db.internal:5432)\n" +
+            " ---> System.Net.Sockets.SocketException (111): Connection refused\n" +
+            "   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)\n" +
+            "   --- End of inner exception stack trace ---\n" +
+            "   at MyApp.Clients.BillingClient.ChargeAsync(Decimal amount)";
+
+        var result = FailureFingerprint.Compute("System.Net.Http.HttpRequestException", "Connection refused (db.internal:5432)", details);
+
+        Assert.Equal("System.Net.Sockets.SocketException", result.InnerExceptionType);
+        Assert.Equal("Connection refused", result.NormalizedMessage);
+    }
+
+    [Fact]
+    public void Wrapper_InnermostWithoutAMessage_KeepsTheWrappersMessage()
+    {
+        const string details =
+            "MyApp.ImportException: Import of orders.csv failed ---> MyApp.ParseException: \n" +
+            "   at MyApp.Import.Parser.ReadRow(String line)\n" +
+            "   --- End of inner exception stack trace ---\n" +
+            "   at MyApp.Jobs.ImportJob.Run()";
+
+        var result = FailureFingerprint.Compute("MyApp.ImportException", "Import of orders.csv failed", details);
+
+        Assert.Equal("MyApp.ParseException", result.InnerExceptionType);
+        Assert.Equal("Import of orders.csv failed", result.NormalizedMessage);
+    }
+
+    [Theory]
+    // No inner exception at all.
+    [InlineData("System.InvalidOperationException: Order 42 is locked\n   at MyApp.Jobs.OrderJob.Run()")]
+    // An arrow in the message that isn't followed by an exception type.
+    [InlineData("System.InvalidOperationException: Order 42 is locked ---> retry later\n   at MyApp.Jobs.OrderJob.Run()")]
+    [InlineData("System.InvalidOperationException: Order 42 is locked ---> see https://status.example.com\n   at MyApp.Jobs.OrderJob.Run()")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void NoWrapper_UsesTheStoredTypeAndMessage(string details)
+    {
+        var result = FailureFingerprint.Compute("System.InvalidOperationException", "Order 42 is locked", details);
+
+        Assert.Equal(string.Empty, result.InnerExceptionType);
+        Assert.Equal("Order <n> is locked", result.NormalizedMessage);
+    }
+
+    [Fact]
+    public void GenericExceptionTypes_DropTheirVersionedArguments()
+    {
+        static FailureFingerprintResult Fail(string runtimeVersion)
+        {
+            var type = "MyApp.RetryableError`1[[System.Int32, System.Private.CoreLib, Version=" + runtimeVersion + ", Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]";
+            return FailureFingerprint.Compute(type, "Boom", type + ": Boom\n   at MyApp.Jobs.OrderJob.Run()");
+        }
+
+        Assert.Equal("MyApp.RetryableError`1", Fail("9.0.0.0").ExceptionType);
+        Assert.Equal(Fail("9.0.0.0").Fingerprint, Fail("10.0.0.0").Fingerprint);
+    }
+
+    [Fact]
+    public void GenericInnerExceptionTypes_DropTheirVersionedArguments()
+    {
+        const string details =
+            "System.Exception: Wrapped ---> MyApp.RetryableError`1[[System.Int32, System.Private.CoreLib, Version=9.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]: Boom\n" +
+            "   at MyApp.Jobs.OrderJob.Run()";
+
+        Assert.Equal("MyApp.RetryableError`1", FailureFingerprint.Compute("System.Exception", "Wrapped", details).InnerExceptionType);
+    }
+
     // ── Top frame ───────────────────────────────────────────────────────────────────────
 
     private const string OrderJobFrameWithFile =
@@ -449,16 +605,22 @@ public class FailureFingerprintTests
     public void Golden_V1Value()
     {
         var result = FailureFingerprint.Compute(
-            "Microsoft.Data.SqlClient.SqlException",
-            "Transaction (Process ID 57) was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Rerun the transaction.",
-            "Microsoft.Data.SqlClient.SqlException (0x80131904): Transaction (Process ID 57) was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Rerun the transaction.\n" +
+            "Microsoft.EntityFrameworkCore.DbUpdateException",
+            SaveChangesMessage,
+            "Microsoft.EntityFrameworkCore.DbUpdateException: " + SaveChangesMessage +
+            " ---> Microsoft.Data.SqlClient.SqlException: Transaction (Process ID 57) was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Rerun the transaction.\n" +
             "   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)\n" +
-            "   at MyApp.Data.OrderRepository.<SaveAsync>d__4.MoveNext() in /src/MyApp/Data/OrderRepository.cs:line 57\n" +
-            "   at MyApp.Jobs.OrderJob.RunAsync(Int32 orderId) in /src/MyApp/Jobs/OrderJob.cs:line 21");
+            "   --- End of inner exception stack trace ---\n" +
+            "   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)\n" +
+            "   at Contoso.Data.OrderRepository.<SaveAsync>d__4.MoveNext() in /src/Contoso.Data/OrderRepository.cs:line 57\n" +
+            "   at MyApp.Jobs.OrderJob.RunAsync(Int32 orderId) in /src/MyApp/Jobs/OrderJob.cs:line 21",
+            "MyApp.Jobs.OrderJob, MyApp");
 
+        Assert.Equal("Microsoft.EntityFrameworkCore.DbUpdateException", result.ExceptionType);
+        Assert.Equal("Microsoft.Data.SqlClient.SqlException", result.InnerExceptionType);
         Assert.Equal("Transaction (Process ID <n>) was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Rerun the transaction.", result.NormalizedMessage);
-        Assert.Equal("MyApp.Data.OrderRepository.SaveAsync", result.TopFrame);
-        Assert.Equal("v1:6eca44f1fc4dce28", result.Fingerprint);
+        Assert.Equal("MyApp.Jobs.OrderJob.RunAsync", result.TopFrame);
+        Assert.Equal("v1:5a633710a9709394", result.Fingerprint);
     }
 
     [Fact]

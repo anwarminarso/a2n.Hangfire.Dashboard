@@ -7,9 +7,9 @@ using Hangfire.States;
 namespace a2n.Hangfire.Dashboard.Helpers;
 
 /// <summary>
-/// Computes the fingerprint that groups failed jobs by the kind of failure: the exception type, the
-/// first line of the message with run-specific values replaced by placeholders, and the top
-/// application frame of the stack trace.
+/// Computes the fingerprint that groups failed jobs by the kind of failure: the exception type (and
+/// the innermost exception's type when it wraps others), the first line of the message with
+/// run-specific values replaced by placeholders, and the top application frame of the stack trace.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,9 +22,18 @@ namespace a2n.Hangfire.Dashboard.Helpers;
 /// </para>
 /// <para>
 /// The value is <see cref="VersionPrefix"/> followed by the first 16 lowercase hex characters of the
-/// SHA-256 of <c>exceptionType + "\n" + normalizedMessage + "\n" + topFrame</c> (UTF-8). A change to
-/// the rules below that alters any fingerprint must bump the prefix, so values stored under the old
-/// rules can be recognised with <see cref="IsCurrentVersion"/> instead of silently splitting groups.
+/// SHA-256 of <c>exceptionType + "\n" + innerExceptionType + "\n" + normalizedMessage + "\n" + topFrame</c>
+/// (UTF-8). A change to the rules below that alters any fingerprint must bump the prefix, so values
+/// stored under the old rules can be recognised with <see cref="IsCurrentVersion"/> instead of silently
+/// splitting groups.
+/// </para>
+/// <para>
+/// <b>Exception.</b> When the exception wraps others, <c>ExceptionDetails</c> starts with the chain
+/// (<c>Outer: message ---&gt; Inner: message</c>) before the first stack frame. Then the innermost
+/// exception's type is added and its message is used instead of the wrapper's, which is often the same
+/// for every failure (EF Core's <c>DbUpdateException</c>). The outer type is kept, so the same error
+/// raised directly and through a wrapper stay apart. Generic arguments are dropped from type names:
+/// they carry assembly versions, which change with every deploy.
 /// </para>
 /// <para>
 /// <b>Message.</b> Only the first line is used, trimmed and capped at <see cref="MaxMessageLength"/>
@@ -101,7 +110,9 @@ public static class FailureFingerprint
     private const RegexOptions PatternOptions = RegexOptions.Compiled | RegexOptions.CultureInvariant;
 
     // The input is capped and every pattern is linear, so this only matters if that ever stops being
-    // true; a rule that times out is skipped rather than failing the state transition.
+    // true; a rule that times out is skipped rather than failing the state transition. Every Regex
+    // field must be declared below this one: static fields initialize in order, and a zero timeout
+    // makes the Regex constructor throw.
     private static readonly TimeSpan MatchTimeout = TimeSpan.FromMilliseconds(250);
 
     // A value glued to a letter or digit is part of a word ("Order2f…", "net8"), so ids, times and
@@ -165,6 +176,23 @@ public static class FailureFingerprint
 
     private static readonly Regex GenericParametersPattern = new(@"\[[^\[\]]*\]", PatternOptions, MatchTimeout);
 
+    private const string InnerExceptionSeparator = "---> ";
+
+    // How far past an arrow to look for "Type:". Type names, even with generic arguments, are much
+    // shorter; the bound keeps a long message full of arrows linear.
+    private const int MaxTypeNameLength = 1024;
+
+    // A type name as it appears in exception text: a dotted name, possibly with generic arguments.
+    private static readonly Regex ExceptionTypeNamePattern = new(
+        @"^[\p{L}_][\p{L}\p{N}_.+`]*(?:\[\[.*\]\])?\z",
+        PatternOptions, MatchTimeout);
+
+    // Exception.ToString(), which older Hangfire versions and other writers used, adds an error code
+    // after some type names: "SqlException (0x80131904)", "SocketException (111)".
+    private static readonly Regex ErrorCodeSuffixPattern = new(
+        @"\s\((?:0x[0-9A-Fa-f]{1,8}|-?[0-9]{1,10})\)\z",
+        PatternOptions, MatchTimeout);
+
     /// <summary>
     /// Returns true when <paramref name="storedValue"/> was computed with the current rules:
     /// <see cref="VersionPrefix"/> followed by 16 lowercase hex characters. A value from an older
@@ -202,14 +230,23 @@ public static class FailureFingerprint
     public static FailureFingerprintResult Compute(
         string exceptionType, string exceptionMessage, string exceptionDetails, string jobTypeName = null)
     {
-        var type = exceptionType ?? string.Empty;
-        var message = NormalizeMessage(exceptionMessage);
+        var type = CleanTypeName(exceptionType);
+        var innerType = string.Empty;
+        var rawMessage = exceptionMessage;
+        if (TryFindInnermostException(exceptionDetails, out var innermostType, out var innermostMessage))
+        {
+            innerType = CleanTypeName(innermostType);
+            // Keep the wrapper's message when the innermost exception has none.
+            if (!string.IsNullOrWhiteSpace(innermostMessage)) rawMessage = innermostMessage;
+        }
+
+        var message = NormalizeMessage(rawMessage);
         var topFrame = FindTopFrame(exceptionDetails, GetRootNamespace(jobTypeName));
 
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(type + "\n" + message + "\n" + topFrame));
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(type + "\n" + innerType + "\n" + message + "\n" + topFrame));
         var fingerprint = VersionPrefix + Convert.ToHexString(hash, 0, HashHexLength / 2).ToLowerInvariant();
 
-        return new FailureFingerprintResult(fingerprint, type, message, topFrame);
+        return new FailureFingerprintResult(fingerprint, type, innerType, message, topFrame);
     }
 
     /// <summary>
@@ -230,6 +267,77 @@ public static class FailureFingerprint
 
     private static string GetValue(IDictionary<string, string> data, string key)
         => data is not null && data.TryGetValue(key, out var value) ? value : null;
+
+    /// <summary>
+    /// Drops generic arguments, which carry assembly versions:
+    /// <c>MyError`1[[System.Int32, System.Private.CoreLib, Version=9.0.0.0, …]]</c> → <c>MyError`1</c>.
+    /// </summary>
+    private static string CleanTypeName(string typeName)
+    {
+        if (string.IsNullOrEmpty(typeName)) return string.Empty;
+
+        var bracket = typeName.IndexOf('[');
+        return (bracket >= 0 ? typeName[..bracket] : typeName).Trim();
+    }
+
+    /// <summary>
+    /// Finds the innermost exception in the chain that starts <c>ExceptionDetails</c>
+    /// (<c>Outer: message ---&gt; Inner: message</c>), searching from the end so the innermost wins.
+    /// A <c>---&gt;</c> that is part of a message is skipped: what follows it isn't a type name and a
+    /// colon.
+    /// </summary>
+    private static bool TryFindInnermostException(string details, out string type, out string message)
+    {
+        type = null;
+        message = null;
+        if (string.IsNullOrEmpty(details)) return false;
+
+        var header = ReadExceptionHeader(details);
+        var index = header.LastIndexOf(InnerExceptionSeparator, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            if (index == 0 || char.IsWhiteSpace(header[index - 1]))
+            {
+                var start = index + InnerExceptionSeparator.Length;
+                var length = Math.Min(MaxTypeNameLength, header.Length - start);
+                var lineEnd = header.IndexOf('\n', start, length);
+                var line = header.Substring(start, lineEnd >= 0 ? lineEnd - start : length);
+
+                // "Type: message", or "Type:" / "Type" when the message is empty.
+                var colon = line.IndexOf(": ", StringComparison.Ordinal);
+                if (colon < 0 && line.EndsWith(':')) colon = line.Length - 1;
+                var name = Replace(ErrorCodeSuffixPattern, (colon >= 0 ? line[..colon] : line).TrimEnd(), string.Empty);
+
+                if (IsMatch(ExceptionTypeNamePattern, name))
+                {
+                    type = name;
+                    message = colon >= 0 ? header[Math.Min(header.Length, start + colon + 2)..] : string.Empty;
+                    return true;
+                }
+            }
+
+            index = index == 0 ? -1 : header.LastIndexOf(InnerExceptionSeparator, index - 1, StringComparison.Ordinal);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The exception text before the first stack frame: the exception chain with its messages, which
+    /// may span several lines.
+    /// </summary>
+    private static string ReadExceptionHeader(string details)
+    {
+        var header = new StringBuilder();
+        var first = true;
+        foreach (var line in details.Split('\n'))
+        {
+            if (CleanFrame(line) is not null || line.TrimStart().StartsWith("--- End of", StringComparison.Ordinal)) break;
+            if (!first) header.Append('\n');
+            header.Append(line.TrimEnd('\r'));
+            first = false;
+        }
+        return header.ToString();
+    }
 
     private static string NormalizeMessage(string message)
     {
@@ -373,6 +481,18 @@ public static class FailureFingerprint
             return input;
         }
     }
+
+    private static bool IsMatch(Regex pattern, string input)
+    {
+        try
+        {
+            return pattern.IsMatch(input);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
 }
 
 /// <summary>
@@ -380,11 +500,16 @@ public static class FailureFingerprint
 /// label is built from; <see cref="Fingerprint"/> is what jobs are grouped by.
 /// </summary>
 /// <param name="Fingerprint">The fingerprint, e.g. <c>v1:3f6c0a1e9b2d4c77</c>.</param>
-/// <param name="ExceptionType">The exception type as stored (full name), or empty.</param>
-/// <param name="NormalizedMessage">The first line of the message after normalization, or empty.</param>
+/// <param name="ExceptionType">The exception type as stored (full name, without generic arguments), or empty.</param>
+/// <param name="InnerExceptionType">The innermost exception's type when the exception wraps others, otherwise empty.</param>
+/// <param name="NormalizedMessage">
+/// The first line of the message after normalization — the innermost exception's message when there
+/// is one — or empty.
+/// </param>
 /// <param name="TopFrame">The top application frame as <c>Namespace.Type.Method</c>, or empty when the trace has no frames.</param>
 public sealed record FailureFingerprintResult(
     string Fingerprint,
     string ExceptionType,
+    string InnerExceptionType,
     string NormalizedMessage,
     string TopFrame);
