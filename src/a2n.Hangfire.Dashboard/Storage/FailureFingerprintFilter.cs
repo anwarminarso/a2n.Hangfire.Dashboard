@@ -21,9 +21,9 @@ namespace a2n.Hangfire.Dashboard.Storage;
 /// <para>
 /// The fingerprint is computed from <see cref="IState.SerializeData"/> — the same
 /// <c>ExceptionType</c>, <c>ExceptionMessage</c> and <c>ExceptionDetails</c> strings Hangfire stores
-/// in the state — rather than from the <see cref="Exception"/> object, so a failure recorded before
-/// the filter was registered gets the same value when the dashboard computes it later from the stored
-/// state. It is written under <see cref="FailureFingerprint.ParameterName"/> as a raw string, through
+/// in the state — rather than from the <see cref="Exception"/> object, plus the job's type name, so a
+/// failure recorded before the filter was registered gets the same value when the dashboard computes it
+/// later from the stored state and invocation data. It is written under <see cref="FailureFingerprint.ParameterName"/> as a raw string, through
 /// the state-change transaction when the storage supports
 /// <see cref="JobStorageFeatures.Transaction.SetJobParameter"/> and through the connection otherwise.
 /// </para>
@@ -63,7 +63,7 @@ public class FailureFingerprintFilter : IApplyStateFilter
                 return;
 
             var jobId = context.BackgroundJob.Id;
-            var fingerprint = FailureFingerprint.Compute(context.NewState.SerializeData()).Fingerprint;
+            var fingerprint = FailureFingerprint.Compute(context.NewState.SerializeData(), GetJobTypeName(context)).Fingerprint;
 
             // In the transaction the parameter commits together with the Failed state. Storages that
             // can't do that get it straight away, which only leaves it behind if the transition is
@@ -90,6 +90,29 @@ public class FailureFingerprintFilter : IApplyStateFilter
     /// </remarks>
     public void OnStateUnapplied(ApplyStateContext context, IWriteOnlyTransaction transaction)
     {
+    }
+
+    /// <summary>
+    /// The job's type name, which the fingerprint uses to prefer the application's own frames. When
+    /// the type couldn't be loaded (the job is failing for exactly that reason), it is read from the
+    /// stored invocation data, which is where the dashboard's fallback reads it too. Not every storage
+    /// returns that from <c>GetJobData</c> (Hangfire.PostgreSql 1.20 doesn't); the fingerprint is then
+    /// computed without it, which only matters if such a trace has a frame in the job's namespace.
+    /// </summary>
+    private static string GetJobTypeName(ApplyStateContext context)
+    {
+        var type = context.BackgroundJob.Job?.Type;
+        if (type is not null) return type.FullName;
+
+        try
+        {
+            return context.Connection.GetJobData(context.BackgroundJob.Id)?.InvocationData?.Type;
+        }
+        catch
+        {
+            // Without a type the fingerprint still works; it just can't prefer the job's namespace.
+            return null;
+        }
     }
 
     private void LogFailure(Exception ex, string jobId)

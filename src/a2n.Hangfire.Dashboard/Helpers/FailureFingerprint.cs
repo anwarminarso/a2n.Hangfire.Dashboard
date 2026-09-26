@@ -38,9 +38,12 @@ namespace a2n.Hangfire.Dashboard.Helpers;
 /// quotes.
 /// </para>
 /// <para>
-/// <b>Top frame.</b> The first stack frame, after cleaning, that is not in a <c>System.</c>,
-/// <c>Microsoft.</c> or <c>Hangfire.</c> namespace; the first frame when every frame is; empty when
-/// there are no frames. Cleaning drops the parameter list and the <c> in &lt;path&gt;:line &lt;n&gt;</c>
+/// <b>Top frame.</b> The first stack frame, after cleaning, in the root namespace of the job's type
+/// (<c>MyApp</c> for <c>MyApp.Jobs.OrderJob</c>), so the same database error raised from two jobs
+/// doesn't collapse into one group at a shared driver frame. Without a job type, or when no frame is
+/// in its namespace, the first frame outside the framework and common libraries
+/// (<see cref="LibraryNamespaces"/>); the first frame when every frame is in one; empty when there
+/// are no frames. Cleaning drops the parameter list and the <c> in &lt;path&gt;:line &lt;n&gt;</c>
 /// suffix (present or not depending on how Hangfire was configured), drops generic arity, and unwraps
 /// compiler-generated names (async state machines, lambdas, local functions) to the method that
 /// contains them, so a rebuild or a moved line does not change the fingerprint.
@@ -65,6 +68,31 @@ public static class FailureFingerprint
     public const int MaxMessageLength = 500;
 
     private const int HashHexLength = 16;
+
+    /// <summary>
+    /// Namespaces whose frames are skipped when looking for the top frame outside the job's own
+    /// namespace: the framework, Hangfire, and libraries that commonly throw on the application's
+    /// behalf (data access, serialization, HTTP and resilience, cloud SDKs, messaging, DI proxies).
+    /// </summary>
+    /// <remarks>
+    /// This list is part of the fingerprint rules: adding to it changes fingerprints whose top frame
+    /// was in the added namespace, so it requires a new <see cref="VersionPrefix"/>. It is only
+    /// consulted when no frame is in the job type's root namespace.
+    /// </remarks>
+    public static IReadOnlyList<string> LibraryNamespaces { get; } = Array.AsReadOnly(new[]
+    {
+        "System", "Microsoft", "Hangfire",
+        "Npgsql", "Dapper", "MySqlConnector", "MySql", "Oracle", "MongoDB", "StackExchange", "Pomelo",
+        "Newtonsoft",
+        "Polly", "RestSharp", "Flurl", "Refit", "Grpc",
+        "Azure", "Amazon", "Google",
+        "RabbitMQ", "MassTransit", "Confluent",
+        "Castle", "Autofac", "MediatR", "AutoMapper", "FluentValidation",
+    });
+
+    // Where the root namespace of a type name ends, whether it is a full name ("MyApp.Jobs.OrderJob",
+    // "MyApp.Outer+Inner", "MyApp.Handler`1[[...]]") or as Hangfire stores it ("MyApp.Jobs.OrderJob, MyApp").
+    private static readonly char[] RootNamespaceTerminators = { '.', '+', '`', ',', '[' };
 
     private const string ExceptionTypeKey = "ExceptionType";
     private const string ExceptionMessageKey = "ExceptionMessage";
@@ -166,11 +194,17 @@ public static class FailureFingerprint
     /// <param name="exceptionType">Full name of the exception type (<c>ExceptionType</c>).</param>
     /// <param name="exceptionMessage">The exception message (<c>ExceptionMessage</c>).</param>
     /// <param name="exceptionDetails">The exception text with its stack trace (<c>ExceptionDetails</c>).</param>
-    public static FailureFingerprintResult Compute(string exceptionType, string exceptionMessage, string exceptionDetails)
+    /// <param name="jobTypeName">
+    /// The job's type, either as Hangfire stores it (<c>InvocationData.Type</c>, e.g.
+    /// <c>MyApp.Jobs.OrderJob, MyApp</c>) or as <see cref="Type.FullName"/>. Only its root namespace is
+    /// used, to prefer the application's own frames; both forms give the same result. Null when unknown.
+    /// </param>
+    public static FailureFingerprintResult Compute(
+        string exceptionType, string exceptionMessage, string exceptionDetails, string jobTypeName = null)
     {
         var type = exceptionType ?? string.Empty;
         var message = NormalizeMessage(exceptionMessage);
-        var topFrame = FindTopFrame(exceptionDetails);
+        var topFrame = FindTopFrame(exceptionDetails, GetRootNamespace(jobTypeName));
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(type + "\n" + message + "\n" + topFrame));
         var fingerprint = VersionPrefix + Convert.ToHexString(hash, 0, HashHexLength / 2).ToLowerInvariant();
@@ -184,12 +218,14 @@ public static class FailureFingerprint
     /// count as empty strings. Never throws.
     /// </summary>
     /// <param name="stateData">State data with <c>ExceptionType</c>, <c>ExceptionMessage</c> and <c>ExceptionDetails</c>.</param>
-    public static FailureFingerprintResult Compute(IDictionary<string, string> stateData)
+    /// <param name="jobTypeName">The job's type name; see <see cref="Compute(string, string, string, string)"/>.</param>
+    public static FailureFingerprintResult Compute(IDictionary<string, string> stateData, string jobTypeName = null)
     {
         return Compute(
             GetValue(stateData, ExceptionTypeKey),
             GetValue(stateData, ExceptionMessageKey),
-            GetValue(stateData, ExceptionDetailsKey));
+            GetValue(stateData, ExceptionDetailsKey),
+            jobTypeName);
     }
 
     private static string GetValue(IDictionary<string, string> data, string key)
@@ -218,20 +254,47 @@ public static class FailureFingerprint
         return text;
     }
 
-    private static string FindTopFrame(string details)
+    private static string FindTopFrame(string details, string jobRootNamespace)
     {
         if (string.IsNullOrEmpty(details)) return string.Empty;
 
         string firstFrame = null;
+        string firstApplicationFrame = null;
         foreach (var line in details.Split('\n'))
         {
             var frame = CleanFrame(line);
             if (frame is null) continue;
-            if (!IsFrameworkFrame(frame)) return frame;
+            if (jobRootNamespace is not null && IsInNamespace(frame, jobRootNamespace)) return frame;
             firstFrame ??= frame;
+            if (firstApplicationFrame is null && !IsLibraryFrame(frame)) firstApplicationFrame = frame;
         }
-        return firstFrame ?? string.Empty;
+        return firstApplicationFrame ?? firstFrame ?? string.Empty;
     }
+
+    /// <summary>
+    /// The first segment of a job type name, or null when there is none or it is itself a library
+    /// namespace: a job such as <c>Console.WriteLine</c> says nothing about where the application's
+    /// code lives.
+    /// </summary>
+    private static string GetRootNamespace(string jobTypeName)
+    {
+        if (string.IsNullOrWhiteSpace(jobTypeName)) return null;
+
+        var name = jobTypeName.Trim();
+        var end = name.IndexOfAny(RootNamespaceTerminators);
+        var root = (end >= 0 ? name[..end] : name).Trim();
+        if (root.Length == 0 || LibraryNamespaces.Contains(root, StringComparer.Ordinal)) return null;
+        return root;
+    }
+
+    /// <summary>
+    /// True when <paramref name="frame"/> is in <paramref name="root"/> or below it. The boundary check
+    /// keeps <c>MySql</c> from matching <c>MySqlConnector</c>.
+    /// </summary>
+    private static bool IsInNamespace(string frame, string root)
+        => frame.Length > root.Length
+        && frame.StartsWith(root, StringComparison.Ordinal)
+        && frame[root.Length] is '.' or '+';
 
     /// <summary>
     /// Reduces a stack-frame line to <c>Namespace.Type.Method</c>, or returns null when the line is
@@ -290,10 +353,14 @@ public static class FailureFingerprint
         return string.Join('.', kept);
     }
 
-    private static bool IsFrameworkFrame(string frame)
-        => frame.StartsWith("System.", StringComparison.Ordinal)
-        || frame.StartsWith("Microsoft.", StringComparison.Ordinal)
-        || frame.StartsWith("Hangfire.", StringComparison.Ordinal);
+    private static bool IsLibraryFrame(string frame)
+    {
+        foreach (var library in LibraryNamespaces)
+        {
+            if (IsInNamespace(frame, library)) return true;
+        }
+        return false;
+    }
 
     private static string Replace(Regex pattern, string input, string replacement)
     {

@@ -3,6 +3,7 @@ using Hangfire;
 using Hangfire.Common;
 using Hangfire.PostgreSql;
 using Hangfire.States;
+using Hangfire.Storage;
 using Npgsql;
 using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.PostgreSql.Tests.Fixtures;
@@ -63,11 +64,12 @@ public class FailureFingerprintFilterTests
         try
         {
             using var connection = storage.GetConnection();
+            var jobTypeName = ReadStoredJobTypeName(jobId);
 
             Assert.True(client.ChangeState(jobId, Fail("Order 42 is locked"), EnqueuedState.StateName));
             var first = connection.GetJobParameter(jobId, FailureFingerprint.ParameterName);
             Assert.True(FailureFingerprint.IsCurrentVersion(first));
-            Assert.Equal(FailureFingerprint.Compute(connection.GetStateData(jobId).Data).Fingerprint, first);
+            Assert.Equal(FailureFingerprint.Compute(connection.GetStateData(jobId).Data, jobTypeName).Fingerprint, first);
             Assert.Equal(first, ReadRawParameter(jobId));
 
             Assert.True(client.ChangeState(jobId, new EnqueuedState("fingerprint"), FailedState.StateName));
@@ -76,13 +78,24 @@ public class FailureFingerprintFilterTests
             Assert.True(client.ChangeState(jobId, Fail("Payment gateway rejected the request"), EnqueuedState.StateName));
             var second = connection.GetJobParameter(jobId, FailureFingerprint.ParameterName);
             Assert.NotEqual(first, second);
-            Assert.Equal(FailureFingerprint.Compute(connection.GetStateData(jobId).Data).Fingerprint, second);
+            Assert.Equal(FailureFingerprint.Compute(connection.GetStateData(jobId).Data, jobTypeName).Fingerprint, second);
         }
         finally
         {
             // Other tests in the collection assert on counts over the seeded jobs.
             DeleteJob(jobId);
         }
+    }
+
+    // The job type as the dashboard's fallback reads it: from the stored invocation data. (Hangfire.PostgreSql's
+    // GetJobData leaves JobData.InvocationData unset, so the column is the one source every storage has.)
+    private string ReadStoredJobTypeName(string jobId)
+    {
+        using var sql = new NpgsqlConnection(_fixture.ConnectionString);
+        var payload = sql.QuerySingle<string>(
+            $"SELECT invocationdata::text FROM \"{_fixture.SchemaName}\".job WHERE id = @jobId",
+            new { jobId = long.Parse(jobId) });
+        return InvocationData.DeserializePayload(payload).Type;
     }
 
     private string ReadRawParameter(string jobId)

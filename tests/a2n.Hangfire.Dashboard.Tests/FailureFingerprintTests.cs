@@ -294,6 +294,105 @@ public class FailureFingerprintTests
         Assert.Equal("System.Threading.Tasks.Task.ThrowIfExceptional", TopFrame(details));
     }
 
+    // A PostgresException raised through Dapper and a shared data-access helper, as two different jobs
+    // would report it. Only the last frame, the job's own method, differs.
+    private static string DuplicateKeyDetails(string jobFrame) =>
+        "Npgsql.PostgresException: 23505: duplicate key value violates unique constraint \"pk_orders\"\n" +
+        "   at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)\n" +
+        "   at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource<TResult>.GetResult(Int16 token)\n" +
+        "   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)\n" +
+        "   at Dapper.SqlMapper.ExecuteImplAsync(IDbConnection cnn, CommandDefinition command, Object param)\n" +
+        "   at Contoso.Data.OrderStore.InsertAsync(Order order) in /src/Contoso.Data/OrderStore.cs:line 31\n" +
+        "   at " + jobFrame + "() in /src/MyApp/Jobs/Job.cs:line 18";
+
+    private const string ImportJobFrame = "MyApp.Jobs.ImportOrdersJob.RunAsync";
+    private const string SyncJobFrame = "MyApp.Jobs.SyncOrdersJob.RunAsync";
+
+    [Fact]
+    public void Frame_WithoutAJobType_SkipsLibraryFrames()
+    {
+        Assert.Equal("Contoso.Data.OrderStore.InsertAsync", TopFrame(DuplicateKeyDetails(ImportJobFrame)));
+    }
+
+    [Theory]
+    [InlineData("MyApp.Jobs.ImportOrdersJob, MyApp")]
+    [InlineData("MyApp.Jobs.ImportOrdersJob, MyApp, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null")]
+    [InlineData("MyApp.Jobs.ImportOrdersJob")]
+    [InlineData("MyApp.Jobs.Handler`1[[MyApp.Order, MyApp]], MyApp")]
+    [InlineData("MyApp.Jobs.Outer+ImportOrdersJob, MyApp")]
+    public void Frame_PrefersTheJobTypesRootNamespace_InEveryTypeNameForm(string jobTypeName)
+    {
+        var result = FailureFingerprint.Compute("Npgsql.PostgresException", "m", DuplicateKeyDetails(ImportJobFrame), jobTypeName);
+
+        Assert.Equal(ImportJobFrame, result.TopFrame);
+    }
+
+    [Fact]
+    public void SameLibraryError_FromTwoJobs_IsTwoFailures_WhenTheJobTypeIsKnown()
+    {
+        const string type = "Npgsql.PostgresException";
+        const string message = "23505: duplicate key value violates unique constraint \"pk_orders\"";
+
+        var import = FailureFingerprint.Compute(type, message, DuplicateKeyDetails(ImportJobFrame), "MyApp.Jobs.ImportOrdersJob, MyApp");
+        var sync = FailureFingerprint.Compute(type, message, DuplicateKeyDetails(SyncJobFrame), "MyApp.Jobs.SyncOrdersJob, MyApp");
+        Assert.NotEqual(import.Fingerprint, sync.Fingerprint);
+
+        // Without the job type both stop at the shared helper, which is all the trace alone can tell.
+        Assert.Equal(
+            FailureFingerprint.Compute(type, message, DuplicateKeyDetails(ImportJobFrame)).Fingerprint,
+            FailureFingerprint.Compute(type, message, DuplicateKeyDetails(SyncJobFrame)).Fingerprint);
+    }
+
+    [Theory]
+    // No frame in the job's namespace: fall back to the first frame outside the libraries.
+    [InlineData("Billing.Jobs.InvoiceJob, Billing")]
+    // A job type in a library namespace (e.g. a Console.WriteLine job) says nothing about the app.
+    [InlineData("System.Console, System.Console")]
+    [InlineData("Hangfire.Server.BackgroundJobServer, Hangfire.Core")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Frame_NoUsableJobNamespace_FallsBackToTheFirstApplicationFrame(string jobTypeName)
+    {
+        var result = FailureFingerprint.Compute("Npgsql.PostgresException", "m", DuplicateKeyDetails(ImportJobFrame), jobTypeName);
+
+        Assert.Equal("Contoso.Data.OrderStore.InsertAsync", result.TopFrame);
+    }
+
+    [Fact]
+    public void Frame_LibraryNamespaces_MatchWholeSegments()
+    {
+        // "MySql" is a library namespace; "MySqlHelpers" is not.
+        const string details =
+            "System.InvalidOperationException: Boom\n" +
+            "   at MySqlConnector.MySqlCommand.ExecuteReaderAsync(CommandBehavior behavior)\n" +
+            "   at MySql.Data.MySqlClient.MySqlCommand.ExecuteReader()\n" +
+            "   at MySqlHelpers.Retry.Run(Action action)";
+
+        Assert.Equal("MySqlHelpers.Retry.Run", TopFrame(details));
+    }
+
+    /// <summary>
+    /// The library list is part of the v1 rules: adding a namespace changes the fingerprint of every
+    /// failure whose top frame was in it. Like <see cref="Golden_V1Value"/>, a change here means a new
+    /// <see cref="FailureFingerprint.VersionPrefix"/>.
+    /// </summary>
+    [Fact]
+    public void LibraryNamespaces_ArePinnedForV1()
+    {
+        Assert.Equal(
+            new[]
+            {
+                "System", "Microsoft", "Hangfire",
+                "Npgsql", "Dapper", "MySqlConnector", "MySql", "Oracle", "MongoDB", "StackExchange", "Pomelo",
+                "Newtonsoft",
+                "Polly", "RestSharp", "Flurl", "Refit", "Grpc",
+                "Azure", "Amazon", "Google",
+                "RabbitMQ", "MassTransit", "Confluent",
+                "Castle", "Autofac", "MediatR", "AutoMapper", "FluentValidation",
+            },
+            FailureFingerprint.LibraryNamespaces);
+    }
+
     [Theory]
     [InlineData("System.InvalidOperationException: Boom")]
     [InlineData("")]
@@ -431,9 +530,9 @@ public class FailureFingerprintTests
     }
 
     [Property(MaxTest = 300)]
-    public Property Compute_NeverThrows_AndAlwaysReturnsACurrentFingerprint(string type, string message, string details)
+    public Property Compute_NeverThrows_AndAlwaysReturnsACurrentFingerprint(string type, string message, string details, string jobTypeName)
     {
-        var result = FailureFingerprint.Compute(type, message, details);
+        var result = FailureFingerprint.Compute(type, message, details, jobTypeName);
 
         return (FailureFingerprint.IsCurrentVersion(result.Fingerprint)
                 && !result.NormalizedMessage.Contains('\n')

@@ -53,12 +53,30 @@ public class FailureFingerprintFilterTests
     private void StorageSupportsTransactionalParameters(bool supported)
         => _storage.Setup(s => s.HasFeature(JobStorageFeatures.Transaction.SetJobParameter)).Returns(supported);
 
-    private ApplyStateContext BuildContext(IState newState, IWriteOnlyTransaction transaction)
+    private static readonly Job TestJobCall = Job.FromExpression(() => TestJob.Run());
+
+    // What the dashboard's fallback passes: the type name as Hangfire stores it.
+    private static readonly string StoredJobTypeName = InvocationData.SerializeJob(TestJobCall).Type;
+
+    private ApplyStateContext BuildContext(IState newState, IWriteOnlyTransaction transaction, bool jobLoaded = true)
     {
-        var job = Job.FromExpression(() => TestJob.Run());
-        var backgroundJob = new BackgroundJob(JobId, job, DateTime.UtcNow, new Dictionary<string, string>());
+        var backgroundJob = new BackgroundJob(JobId, jobLoaded ? TestJobCall : null, DateTime.UtcNow, new Dictionary<string, string>());
         return new ApplyStateContext(_storage.Object, _connection.Object, transaction, backgroundJob, newState, ProcessingState.StateName);
     }
+
+    private static string FallbackFingerprint(IDictionary<string, string> stateData)
+        => FailureFingerprint.Compute(stateData, StoredJobTypeName).Fingerprint;
+
+    // A trace whose first application frame is a shared helper outside the job's namespace.
+    private static Dictionary<string, string> SharedHelperFailure(string jobFrame) => new()
+    {
+        ["ExceptionType"] = "System.TimeoutException",
+        ["ExceptionMessage"] = "The operation has timed out.",
+        ["ExceptionDetails"] =
+            "System.TimeoutException: The operation has timed out.\n" +
+            "   at Contoso.Shared.Retry.Run(Action action)\n" +
+            "   at " + jobFrame + "()",
+    };
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowFromOrderJob(int orderId)
@@ -82,7 +100,7 @@ public class FailureFingerprintFilterTests
     {
         StorageSupportsTransactionalParameters(true);
         var state = FailedStateFromThrownException();
-        var expected = FailureFingerprint.Compute(state.SerializeData()).Fingerprint;
+        var expected = FallbackFingerprint(state.SerializeData());
 
         new FailureFingerprintFilter().OnStateApplied(BuildContext(state, _transaction.Object), _transaction.Object);
 
@@ -95,7 +113,7 @@ public class FailureFingerprintFilterTests
     {
         StorageSupportsTransactionalParameters(false);
         var state = FailedStateFromThrownException();
-        var expected = FailureFingerprint.Compute(state.SerializeData()).Fingerprint;
+        var expected = FallbackFingerprint(state.SerializeData());
 
         new FailureFingerprintFilter().OnStateApplied(BuildContext(state, _transaction.Object), _transaction.Object);
 
@@ -148,7 +166,7 @@ public class FailureFingerprintFilterTests
 
         new FailureFingerprintFilter().OnStateApplied(BuildContext(state, _transaction.Object), _transaction.Object);
 
-        _transaction.Verify(t => t.SetJobParameter(JobId, FailureFingerprint.ParameterName, FailureFingerprint.Compute(data).Fingerprint), Times.Once);
+        _transaction.Verify(t => t.SetJobParameter(JobId, FailureFingerprint.ParameterName, FallbackFingerprint(data)), Times.Once);
     }
 
     public enum FailurePoint { SerializeData, HasFeature, TransactionWrite, ConnectionWrite }
@@ -233,6 +251,56 @@ public class FailureFingerprintFilterTests
     }
 
     [Fact]
+    public void JobType_IsPassedOn_SoTheJobsOwnFrameIsPreferred()
+    {
+        StorageSupportsTransactionalParameters(true);
+        var jobFrame = typeof(TestJob).FullName + "." + nameof(TestJob.Run);
+        var data = SharedHelperFailure(jobFrame);
+
+        new FailureFingerprintFilter().OnStateApplied(
+            BuildContext(new FakeState(FailedState.StateName, () => data), _transaction.Object), _transaction.Object);
+
+        Assert.Equal(jobFrame, FailureFingerprint.Compute(data, StoredJobTypeName).TopFrame);
+        _transaction.Verify(t => t.SetJobParameter(JobId, FailureFingerprint.ParameterName, FallbackFingerprint(data)), Times.Once);
+        Assert.NotEqual(FailureFingerprint.Compute(data).Fingerprint, FallbackFingerprint(data));
+    }
+
+    [Fact]
+    public void JobTypeNotLoadable_UsesTheStoredTypeName_LikeTheFallback()
+    {
+        StorageSupportsTransactionalParameters(true);
+        const string storedType = "MyApp.Jobs.OrderJob, MyApp";
+        _connection.Setup(c => c.GetJobData(JobId)).Returns(new JobData
+        {
+            InvocationData = new InvocationData(storedType, "Run", "[]", "[]"),
+        });
+        var data = SharedHelperFailure("MyApp.Jobs.OrderJob.Run");
+
+        new FailureFingerprintFilter().OnStateApplied(
+            BuildContext(new FakeState(FailedState.StateName, () => data), _transaction.Object, jobLoaded: false),
+            _transaction.Object);
+
+        var fallback = FailureFingerprint.Compute(data, storedType);
+        Assert.Equal("MyApp.Jobs.OrderJob.Run", fallback.TopFrame);
+        _transaction.Verify(t => t.SetJobParameter(JobId, FailureFingerprint.ParameterName, fallback.Fingerprint), Times.Once);
+    }
+
+    [Fact]
+    public void JobTypeUnavailable_StillWritesAFingerprint()
+    {
+        StorageSupportsTransactionalParameters(true);
+        _connection.Setup(c => c.GetJobData(JobId)).Throws(new InvalidOperationException("storage unavailable"));
+        var data = SharedHelperFailure("MyApp.Jobs.OrderJob.Run");
+
+        new FailureFingerprintFilter().OnStateApplied(
+            BuildContext(new FakeState(FailedState.StateName, () => data), _transaction.Object, jobLoaded: false),
+            _transaction.Object);
+
+        var withoutJobType = FailureFingerprint.Compute(data).Fingerprint;
+        _transaction.Verify(t => t.SetJobParameter(JobId, FailureFingerprint.ParameterName, withoutJobType), Times.Once);
+    }
+
+    [Fact]
     public void OnStateUnapplied_KeepsTheFingerprint()
     {
         StorageSupportsTransactionalParameters(true);
@@ -257,7 +325,7 @@ public class FailureFingerprintFilterTests
         new FailureFingerprintFilter().OnStateApplied(BuildContext(state, _transaction.Object), _transaction.Object);
 
         // The fallback for failures without a stored fingerprint starts from the same dictionary.
-        var fallback = FailureFingerprint.Compute(state.SerializeData());
+        var fallback = FailureFingerprint.Compute(state.SerializeData(), StoredJobTypeName);
         Assert.Equal(fallback.Fingerprint, written);
         Assert.True(FailureFingerprint.IsCurrentVersion(written));
         Assert.Equal(typeof(InvalidOperationException).FullName, fallback.ExceptionType);
@@ -265,7 +333,7 @@ public class FailureFingerprintFilterTests
         Assert.Equal(typeof(FailureFingerprintFilterTests).FullName + "." + nameof(ThrowFromOrderJob), fallback.TopFrame);
 
         // A different order id, from the same place, is the same failure.
-        Assert.Equal(fallback.Fingerprint, FailureFingerprint.Compute(FailedStateFromThrownException(orderId: 7).SerializeData()).Fingerprint);
+        Assert.Equal(fallback.Fingerprint, FallbackFingerprint(FailedStateFromThrownException(orderId: 7).SerializeData()));
     }
 
     [Fact]
@@ -296,6 +364,6 @@ public class FailureFingerprintFilterTests
         // Stored raw, not JSON-encoded, and equal to what the fallback computes from the stored state.
         var stored = connection.GetJobParameter(jobId, FailureFingerprint.ParameterName);
         Assert.True(FailureFingerprint.IsCurrentVersion(stored));
-        Assert.Equal(FailureFingerprint.Compute(stateData.Data).Fingerprint, stored);
+        Assert.Equal(FailureFingerprint.Compute(stateData.Data, connection.GetJobData(jobId).InvocationData.Type).Fingerprint, stored);
     }
 }
