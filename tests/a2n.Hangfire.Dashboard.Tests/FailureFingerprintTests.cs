@@ -85,6 +85,8 @@ public class FailureFingerprintTests
     [InlineData("Order {3F2504E0-4F89-11D3-9A0C-0305E82C3301} not found", "Order <guid> not found")]
     [InlineData("Order 3f2504e04f8911d39a0c0305e82c3301 not found", "Order <guid> not found")]
     [InlineData("Key cache_3f2504e0-4f89-11d3-9a0c-0305e82c3301 expired", "Key cache_<guid> expired")]
+    // 32 digits without a letter is a number, not a GUID.
+    [InlineData("Order 12345678901234567890123456789012 not found", "Order <n> not found")]
     public void Guids(string message, string expected)
     {
         Assert.Equal(expected, Normalize(message));
@@ -115,6 +117,8 @@ public class FailureFingerprintTests
     // Too short for a hash, and a hex-letters-only word is still a word.
     [InlineData("Token 3f2a is invalid", "Token 3f2a is invalid")]
     [InlineData("Token deadbeefdeadbeefdeadbeef is invalid", "Token deadbeefdeadbeefdeadbeef is invalid")]
+    // Digits only is a number, however long.
+    [InlineData("Snowflake id 1234567890123456789 is unknown", "Snowflake id <n> is unknown")]
     public void HexValues(string message, string expected)
     {
         Assert.Equal(expected, Normalize(message));
@@ -139,6 +143,24 @@ public class FailureFingerprintTests
     }
 
     [Theory]
+    [InlineData("Failed to connect to [::1]:5432", "Failed to connect to <ip>")]
+    [InlineData("Failed to connect to [2001:db8::1]:443", "Failed to connect to <ip>")]
+    [InlineData("Failed to connect to [fe80::1%eth0]:443", "Failed to connect to <ip>")]
+    [InlineData("Host 2001:db8::8a2e:370:7334 is unreachable", "Host <ip> is unreachable")]
+    [InlineData("Host 2001:0db8:85a3:0000:0000:8a2e:0370:7334 is unreachable", "Host <ip> is unreachable")]
+    [InlineData("Host ::ffff:10.0.0.12 is unreachable", "Host <ip> is unreachable")]
+    [InlineData("Connection to ::1 refused.", "Connection to <ip> refused.")]
+    [InlineData("GET http://[::1]:8080/health?probe=1 failed", "GET http://<ip>/health?<query> failed")]
+    // Not addresses.
+    [InlineData("Cannot resolve std::string", "Cannot resolve std::string")]
+    [InlineData("Unexpected token '::'", "Unexpected token '::'")]
+    [InlineData("Lock expired at 13:20:06", "Lock expired at <time>")]
+    public void Ipv6Addresses(string message, string expected)
+    {
+        Assert.Equal(expected, Normalize(message));
+    }
+
+    [Theory]
     [InlineData(
         "GET https://api.example.com/orders/42?page=2&size=50 failed",
         "GET https://api.example.com/orders/<n>?<query> failed")]
@@ -156,6 +178,7 @@ public class FailureFingerprintTests
     [Theory]
     [InlineData("Retry 3 of 5 took 1.5 seconds", "Retry <n> of <n> took <n> seconds")]
     [InlineData("Balance is -42", "Balance is -<n>")]
+    [InlineData("Amount 12345678901234567.25 exceeds the limit", "Amount <n> exceeds the limit")]
     // Digits that are part of a word or identifier stay.
     [InlineData("Unsupported format v2 in Order2Invoice on net8", "Unsupported format v2 in Order2Invoice on net8")]
     [InlineData("Timeout after 30000ms", "Timeout after 30000ms")]

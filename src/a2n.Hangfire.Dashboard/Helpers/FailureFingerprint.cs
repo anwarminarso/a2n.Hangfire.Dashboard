@@ -38,10 +38,10 @@ namespace a2n.Hangfire.Dashboard.Helpers;
 /// <para>
 /// <b>Message.</b> Only the first line is used, trimmed and capped at <see cref="MaxMessageLength"/>
 /// characters. Then, in this order: GUIDs → <c>&lt;guid&gt;</c>; dates and times →
-/// <c>&lt;time&gt;</c>; <c>0x…</c> values and hex runs of 16+ characters containing a digit →
-/// <c>&lt;hex&gt;</c>; e-mail addresses → <c>&lt;email&gt;</c>; IPv4 addresses with an optional port →
-/// <c>&lt;ip&gt;</c>; URL query strings → <c>?&lt;query&gt;</c>; standalone integers and decimals →
-/// <c>&lt;n&gt;</c>. GUIDs and timestamps go first because they contain digits the number rule would
+/// <c>&lt;time&gt;</c>; <c>0x…</c> values and hex runs of 16+ characters containing a digit and a
+/// letter → <c>&lt;hex&gt;</c>; e-mail addresses → <c>&lt;email&gt;</c>; IPv6 and IPv4 addresses with
+/// an optional port → <c>&lt;ip&gt;</c>; URL query strings → <c>?&lt;query&gt;</c>; standalone integers
+/// and decimals, however long → <c>&lt;n&gt;</c>. GUIDs and timestamps go first because they contain digits the number rule would
 /// otherwise take apart. Quoted text is not replaced as a whole — <c>Column 'Email' cannot be null</c>
 /// and <c>Column 'Phone' cannot be null</c> are different failures — but the rules still apply inside
 /// quotes.
@@ -123,9 +123,13 @@ public static class FailureFingerprint
 
     private const string Hex4 = "[0-9a-fA-F]{4}";
 
-    // 1. GUIDs in any .NET format: hyphenated or the 32-digit "N" form, with or without braces.
+    // 1. GUIDs in any .NET format: hyphenated or the 32-digit "N" form, with or without braces. The
+    // "N" form must contain a letter, so a 32-digit number is left to the number rule.
     private static readonly Regex GuidPattern = new(
-        @"\{?" + NotAfterAlnum + "[0-9a-fA-F]{8}-?" + Hex4 + "-?" + Hex4 + "-?" + Hex4 + "-?[0-9a-fA-F]{12}" + NotBeforeAlnum + @"\}?",
+        @"\{?" + NotAfterAlnum
+            + "(?:[0-9a-fA-F]{8}-" + Hex4 + "-" + Hex4 + "-" + Hex4 + "-[0-9a-fA-F]{12}"
+            + "|(?=[0-9]*[a-fA-F])[0-9a-fA-F]{32})"
+            + NotBeforeAlnum + @"\}?",
         PatternOptions, MatchTimeout);
 
     private const string TimeOfDay = @"[0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,9})?)?";
@@ -141,10 +145,10 @@ public static class FailureFingerprint
         + ")" + NotBeforeAlnum,
         PatternOptions, MatchTimeout);
 
-    // 3. 0x-prefixed values (HRESULTs, addresses) and long hex runs (hashes, tokens). The run must
-    // contain a digit so that a long word made only of the letters a–f is left alone.
+    // 3. 0x-prefixed values (HRESULTs, addresses) and long hex runs (hashes, tokens). A run must
+    // contain both a digit and a letter: only letters a–f is a word, and only digits is a number.
     private static readonly Regex HexPattern = new(
-        NotAfterAlnum + "(?:0[xX][0-9a-fA-F]+|(?=[a-fA-F]*[0-9])[0-9a-fA-F]{16,})" + NotBeforeAlnum,
+        NotAfterAlnum + "(?:0[xX][0-9a-fA-F]+|(?=[a-fA-F]*[0-9])(?=[0-9]*[a-fA-F])[0-9a-fA-F]{16,})" + NotBeforeAlnum,
         PatternOptions, MatchTimeout);
 
     // 4. E-mail addresses. The lookbehind makes a match start at the beginning of the local part, so
@@ -153,9 +157,24 @@ public static class FailureFingerprint
         @"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]*[A-Za-z0-9]",
         PatternOptions, MatchTimeout);
 
-    // 5. IPv4 addresses with an optional port. A fifth dotted part means a version number, not an
+    private const string Ipv6Group = "[0-9a-fA-F]{1,4}";
+
+    // 5a. IPv6 addresses, before IPv4 so an IPv4-mapped address (::ffff:10.0.0.1) is replaced whole:
+    // bracketed as in an endpoint ([::1]:5432, [fe80::1%eth0]:443), the full eight-group form, or a
+    // compressed form containing "::" and a hex digit. Bare forms need no alphanumeric or colon next
+    // to them, which leaves std::string and a lone '::' alone.
+    private static readonly Regex Ipv6Pattern = new(
+        @"\[(?=[0-9a-fA-F.]{0,45}:[0-9a-fA-F.]{0,45}:)[0-9a-fA-F:.]{2,45}(?:%[0-9A-Za-z]{1,16})?\](?::[0-9]{1,5})?"
+            + @"|(?<![\p{L}\p{N}:.])(?:"
+            + Ipv6Group + ":" + Ipv6Group + ":" + Ipv6Group + ":" + Ipv6Group + ":"
+            + Ipv6Group + ":" + Ipv6Group + ":" + Ipv6Group + ":" + Ipv6Group
+            + @"|(?=[0-9a-fA-F:.]{0,45}::)(?=[:.]{0,45}[0-9a-fA-F])[0-9a-fA-F:.]{1,44}[0-9a-fA-F:]"
+            + @")(?![\p{L}\p{N}:])",
+        PatternOptions, MatchTimeout);
+
+    // 5b. IPv4 addresses with an optional port. A fifth dotted part means a version number, not an
     // address, and is left alone.
-    private static readonly Regex IpPattern = new(
+    private static readonly Regex Ipv4Pattern = new(
         @"(?<![\p{L}\p{N}.])[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?::[0-9]{1,5})?(?!\.?[\p{L}\p{N}])",
         PatternOptions, MatchTimeout);
 
@@ -356,7 +375,8 @@ public static class FailureFingerprint
         text = Replace(TimestampPattern, text, "<time>");
         text = Replace(HexPattern, text, "<hex>");
         text = Replace(EmailPattern, text, "<email>");
-        text = Replace(IpPattern, text, "<ip>");
+        text = Replace(Ipv6Pattern, text, "<ip>");
+        text = Replace(Ipv4Pattern, text, "<ip>");
         text = Replace(UrlQueryPattern, text, "${url}?<query>");
         text = Replace(NumberPattern, text, "<n>");
         return text;
