@@ -57,6 +57,10 @@ builder.Services.AddHangfire(config =>
     // takes effect on this Hangfire server. Without this call the dashboard still records the
     // pause but jobs would keep executing on running servers until restart.
     config.UseDashboardQueuePauseFilter();
+
+    // Record a failure fingerprint on each job that fails, so failed jobs can be grouped by the
+    // kind of failure.
+    config.UseDashboardFailureFingerprintFilter();
 });
 
 builder.Services.AddHangfireServer(options =>

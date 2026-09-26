@@ -609,6 +609,28 @@ QueueOperations = new QueueOperationsOptions
 
 A single global toggle (top of the `/queues` page) pauses every queue at once. While maintenance is active, a persistent yellow banner is rendered on every dashboard page with the operator's reason and a `Manage →` link. Disable maintenance to resume — individual queue pauses set before maintenance was enabled remain in effect.
 
+### Failure fingerprints
+
+An optional server filter records which kind of failure each failed job had, so failed jobs can be grouped by exception. Register it on every host that runs a Hangfire server:
+
+```csharp
+builder.Services.AddHangfire(config => config
+    .UseSqlServerStorage(connStr)
+    .UseDashboardFailureFingerprintFilter());   // <-- here
+```
+
+When a job enters the Failed state, the filter stores a `FailureFingerprint` job parameter such as `v1:5a633710a9709394`, which is a hash of three things:
+
+- **The exception type.** When the exception wraps others, the innermost exception's type is included and its message is used. EF Core, for example, wraps every database error in a `DbUpdateException` with the same message, so without this `Column 'Email' cannot be null` and `Column 'Phone' cannot be null` would look identical. Generic arguments are dropped from type names because they carry assembly versions.
+- **The first line of the message, with run-specific values replaced.** GUIDs, dates and times, hex values and hashes, e-mail addresses, IPv6 and IPv4 addresses, URL query strings and numbers become placeholders, so `Transaction (Process ID 57) was deadlocked…` and `Transaction (Process ID 112) was deadlocked…` are the same failure. Quoted names are kept, so `Column 'Email' cannot be null` and `Column 'Phone' cannot be null` stay apart.
+- **The top stack frame from your own code.** This is the first frame in the root namespace of the job's type, e.g. `MyApp` for `MyApp.Jobs.OrderJob`, so the same database error from two jobs doesn't collapse into one group at a shared driver frame. If no frame is in that namespace, the first frame outside the framework and common libraries is used (`System`, `Microsoft`, `Hangfire`, `Npgsql`, `Dapper`, `Newtonsoft`, `Polly`, `StackExchange`, `Azure`, `Amazon` and others; the full list is `FailureFingerprint.LibraryNamespaces`). Parameters, file paths and line numbers are dropped, and async, lambda and local-function names map to the method that contains them, so a rebuild or a moved line doesn't change the fingerprint.
+
+Hangfire keeps only the first 100 lines of a failure's exception details. In a very deep stack, such as a long async chain through framework code, your own frames can fall past that limit. The fingerprint then uses the first remaining frame outside those libraries, or the first frame.
+
+Only failures that end in the Failed state are fingerprinted, not the attempts that `AutomaticRetry` retries. The parameter stays on the job after it is requeued or deleted, and a later failure overwrites it. It is stored as a plain string and is visible under **Parameters** on the Job Details page.
+
+Grouping on the Failed page, which is coming next, uses this parameter. Failures without it (recorded before the filter was registered, or on a server without it) will be fingerprinted from their stored exception data when the page is read. That only covers a bounded number of jobs, so register the filter on every server.
+
 ### Audit log
 
 Every admin action performed through the dashboard is recorded:
