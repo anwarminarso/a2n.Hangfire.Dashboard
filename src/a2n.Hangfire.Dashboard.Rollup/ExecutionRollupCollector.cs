@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using a2n.Hangfire.Dashboard.Heatmap;
+using a2n.Hangfire.Dashboard.Interfaces;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.Storage;
@@ -45,6 +46,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
 
     private readonly JobStorage _storage;
     private readonly MetricsRollupStore _store;
+    private readonly IFailedJobPageSource _failedJobs;
     private readonly ILogger<ExecutionRollupCollector> _logger;
     private CancellationTokenSource _stoppingCts;
     private Task _loopTask;
@@ -52,6 +54,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
     public ExecutionRollupCollector(IServiceProvider serviceProvider)
     {
         _storage = serviceProvider.GetService<JobStorage>();
+        _failedJobs = serviceProvider.GetService<IFailedJobPageSource>();
         _logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<ExecutionRollupCollector>()
                   ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionRollupCollector>.Instance;
         _store = new MetricsRollupStore(
@@ -164,7 +167,9 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
         var failed = Scan(
             "failed",
             failedCheckpoint,
-            (from, count) => monitoringApi.FailedJobs(from, count),
+            (from, count) => _failedJobs != null
+                ? _failedJobs.GetFailedJobs(from, count)
+                : monitoringApi.FailedJobs(from, count),
             dto => dto.FailedAt,
             (jobId, dto, failedAt) =>
             {

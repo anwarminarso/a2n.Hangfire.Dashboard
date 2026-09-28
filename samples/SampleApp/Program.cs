@@ -15,6 +15,8 @@ var sqlServerConn = builder.Configuration.GetConnectionString("SqlServer");
 var postgreSqlConn = builder.Configuration.GetConnectionString("PostgreSql");
 var redisConn = builder.Configuration.GetConnectionString("Redis");
 
+var seedThrottling = builder.Configuration.GetValue("SeedThrottling", false);
+var sampleJobsSeeder = builder.Configuration.GetValue("SampleJobsSeeder", false);
 Console.WriteLine($"[SampleApp] Storage provider: {storageProvider}");
 
 // Add Hangfire services (server + storage)
@@ -104,7 +106,7 @@ var app = builder.Build();
 // directly, so the sample seeds equivalent entries without referencing that (commercial) package:
 // semaphores with holders, a held mutex, and a fixed rate-limit window. Disable by setting
 // SeedThrottling=false.
-if (builder.Configuration["SeedThrottling"] != "false")
+if (seedThrottling)
 using (var seedScope = app.Services.CreateScope())
 {
     var storage = seedScope.ServiceProvider.GetRequiredService<JobStorage>();
@@ -213,7 +215,8 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 });
 
 // Seed sample recurring jobs (full demo set: basic + long-running + continuation pipeline)
-app.Lifetime.ApplicationStarted.Register(SampleJobsSeeder.SeedAll);
+if (sampleJobsSeeder)
+    app.Lifetime.ApplicationStarted.Register(SampleJobsSeeder.SeedAll);
 
 // Two health surfaces, each with a distinct purpose:
 //

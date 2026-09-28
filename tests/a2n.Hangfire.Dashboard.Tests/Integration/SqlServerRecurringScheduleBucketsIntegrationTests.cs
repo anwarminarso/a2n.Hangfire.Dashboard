@@ -91,7 +91,8 @@ public class SqlServerRecurringScheduleBucketsIntegrationTests
         // Req 7.7 (explicit): the ad-hoc fire in the critical/Mon/09 bucket did NOT inflate it.
         var critical = buckets.Single(b => b.Queue == "critical" && b.DayIndex == 0 && b.Hour == 9);
         Assert.Equal(2, critical.FireCount); // 2 recurring, not 3 (ad-hoc excluded)
-        Assert.Equal(9999d, critical.MaxMs, 3); // the 9999ms ad-hoc duration was not aggregated
+        Assert.NotEqual(9999d, critical.MaxMs); // the 9999ms ad-hoc duration was not aggregated
+        Assert.Equal(3000d, critical.MaxMs, 3); // only the two recurring durations {1000, 3000}
     }
 
     private static async Task CreateSchemaAndTablesAsync(SqlConnection connection, string schema)
