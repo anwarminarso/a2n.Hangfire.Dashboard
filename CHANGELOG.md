@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.6 — Failed Jobs page survives a missing FailedAt
+
+> **Patch release.** On PostgreSQL, the Failed Jobs page returned HTTP 500 as soon as one failed job's state payload omitted `FailedAt`. `Hangfire.PostgreSql` 1.21.1 throws `KeyNotFoundException` from `FailedJobs` for that row, and the same call took down the demand and execution rollup polls. No public API removals; no migration. Hosts that do not use the PostgreSQL adapter are unchanged.
+
+### Fixed
+
+- **The Failed Jobs page opens when a failed state has no `FailedAt`.** `Hangfire.PostgreSql` wraps each state payload in a `SafeDictionary` whose `new` indexer returns the default for a missing key, but `GetJobs` types the selector as `Dictionary<string, string>`. The indexer is bound to that static type, so the guard never runs and `stateData["FailedAt"]` throws. One incomplete row — legal Hangfire state data; `FailedState` does not require every key — failed the whole page. With `UsePostgreSqlStorage` configured, the dashboard now reads that page itself, in the same newest-id order the monitoring API uses. Missing exception fields stay empty, and when `FailedAt` is absent the state row's `createdat` is shown so the list still has a time. A job type the host cannot load is listed with its raw invocation data instead of being dropped.
+  - **The same reader feeds the rollups.** `DemandRollupService` and `ExecutionRollupCollector` called `FailedJobs` directly, so the identical exception aborted a demand-rollup poll and a metrics-rollup scan. Both use the reader when the PostgreSQL adapter registers it. Other storages keep Hangfire's monitoring API.
+
+### Changed
+
+- **SampleApp reads its seed flags as booleans.** `SeedThrottling` and `SampleJobsSeeder` were compared to the string `"false"`. A JSON `false` is surfaced by the configuration binder as `"False"`, so the comparison never matched and seeding stayed on. Both flags are now read with `GetValue<bool>`, defaulting to `false`.
+
 ## 2.5.5 — Job arguments, argument search, configurable search timeout, sortable grids
 
 > **Patch release.** Closes the two gaps against the original Hangfire dashboard — job arguments were never shown, and there was no way to search by an argument value ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42)) — and removes the hardcoded 5-second search timeout ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)). Also adds column sorting across the in-memory grids ([#41](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/41)) and a newest/oldest toggle on the storage-paged job lists, fixes the search badge that didn't clear its filter input ([#44](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/44)), and stops search from reading the whole `Job` table just to count matches ([#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45)). Adds `DashboardUIOptions.SearchTimeoutSeconds`; no public API removals; no migration.
