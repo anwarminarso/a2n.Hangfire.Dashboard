@@ -78,6 +78,22 @@ public class FailureFingerprintFilterTests
             "   at " + jobFrame + "()",
     };
 
+    // What Hangfire records when it cannot deserialize a job: BackgroundJobStateChanger catches
+    // JobLoadException from EnsureLoaded and replaces the state it was asked for with
+    // FailedState(ex.InnerException). The job's method was never invoked, so every frame belongs to
+    // the framework or to Hangfire.
+    private static Dictionary<string, string> JobLoadFailure() => new()
+    {
+        ["ExceptionType"] = "System.TypeLoadException",
+        ["ExceptionMessage"] = "Could not load type 'Contoso.Jobs.OrderJob' from assembly 'Contoso'.",
+        ["ExceptionDetails"] =
+            "System.TypeLoadException: Could not load type 'Contoso.Jobs.OrderJob' from assembly 'Contoso'.\n" +
+            "   at System.Reflection.RuntimeAssembly.GetTypeCore(QCallAssembly assembly, String typeName)\n" +
+            "   at Hangfire.Storage.InvocationData.DeserializeJob()\n" +
+            "   at Hangfire.Storage.JobData.EnsureLoaded()\n" +
+            "   at Hangfire.States.BackgroundJobStateChanger.ChangeState(StateChangeContext context)",
+    };
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowFromOrderJob(int orderId)
         => throw new InvalidOperationException($"Order {orderId} is locked by 10.0.0.12:5432 since 2026-09-25T13:20:06Z");
@@ -265,38 +281,27 @@ public class FailureFingerprintFilterTests
         Assert.NotEqual(FailureFingerprint.Compute(data).Fingerprint, FallbackFingerprint(data));
     }
 
+    /// <summary>
+    /// The job type is taken from the context alone. A null <c>Job</c> means Hangfire could not
+    /// deserialize the job, and it is that load failure being recorded: the application's method was
+    /// never invoked, so the trace has no frame in the job's namespace and the type name cannot change
+    /// the fingerprint. The filter therefore doesn't go back to the storage for it, which would make a
+    /// versioned hash depend on whether the installed adapter fills in
+    /// <see cref="JobData.InvocationData"/>.
+    /// </summary>
     [Fact]
-    public void JobTypeNotLoadable_UsesTheStoredTypeName_LikeTheFallback()
+    public void JobTypeNotLoadable_TheStorageIsNotQueried_AndTheFingerprintIsTheSameEitherWay()
     {
         StorageSupportsTransactionalParameters(true);
-        const string storedType = "MyApp.Jobs.OrderJob, MyApp";
-        _connection.Setup(c => c.GetJobData(JobId)).Returns(new JobData
-        {
-            InvocationData = new InvocationData(storedType, "Run", "[]", "[]"),
-        });
-        var data = SharedHelperFailure("MyApp.Jobs.OrderJob.Run");
+        var data = JobLoadFailure();
 
         new FailureFingerprintFilter().OnStateApplied(
             BuildContext(new FakeState(FailedState.StateName, () => data), _transaction.Object, jobLoaded: false),
             _transaction.Object);
 
-        var fallback = FailureFingerprint.Compute(data, storedType);
-        Assert.Equal("MyApp.Jobs.OrderJob.Run", fallback.TopFrame);
-        _transaction.Verify(t => t.SetJobParameter(JobId, FailureFingerprint.ParameterName, fallback.Fingerprint), Times.Once);
-    }
-
-    [Fact]
-    public void JobTypeUnavailable_StillWritesAFingerprint()
-    {
-        StorageSupportsTransactionalParameters(true);
-        _connection.Setup(c => c.GetJobData(JobId)).Throws(new InvalidOperationException("storage unavailable"));
-        var data = SharedHelperFailure("MyApp.Jobs.OrderJob.Run");
-
-        new FailureFingerprintFilter().OnStateApplied(
-            BuildContext(new FakeState(FailedState.StateName, () => data), _transaction.Object, jobLoaded: false),
-            _transaction.Object);
-
+        _connection.Verify(c => c.GetJobData(It.IsAny<string>()), Times.Never);
         var withoutJobType = FailureFingerprint.Compute(data).Fingerprint;
+        Assert.Equal(withoutJobType, FallbackFingerprint(data));
         _transaction.Verify(t => t.SetJobParameter(JobId, FailureFingerprint.ParameterName, withoutJobType), Times.Once);
     }
 

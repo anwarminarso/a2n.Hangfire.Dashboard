@@ -93,27 +93,30 @@ public class FailureFingerprintFilter : IApplyStateFilter
     }
 
     /// <summary>
-    /// The job's type name, which the fingerprint uses to prefer the application's own frames. When
-    /// the type couldn't be loaded (the job is failing for exactly that reason), it is read from the
-    /// stored invocation data, which is where the dashboard's fallback reads it too. Not every storage
-    /// returns that from <c>GetJobData</c> (Hangfire.PostgreSql 1.20 doesn't); the fingerprint is then
-    /// computed without it, which only matters if such a trace has a frame in the job's namespace.
+    /// The job's type name, which the fingerprint uses to prefer the application's own frames, or null
+    /// when the type couldn't be loaded.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Null means exactly one thing: Hangfire could not deserialize the job.
+    /// <c>BackgroundJobStateChanger</c> builds the <see cref="ApplyStateContext"/> from
+    /// <see cref="JobData.Job"/>, which is only null after <c>EnsureLoaded</c> threw
+    /// <c>JobLoadException</c>, and it is that same failure being recorded, since the changer replaces
+    /// the state it was asked for with <c>FailedState(ex.InnerException)</c>.
+    /// </para>
+    /// <para>
+    /// The application's method was therefore never invoked, so the stack trace holds only Hangfire,
+    /// serialization and reflection frames and has nothing in the job's own namespace. Passing the
+    /// stored type name here would not change the chosen frame, which is why the type is not read back
+    /// from the storage: <c>GetJobData</c> returns the invocation data on some storages and not on
+    /// others (Hangfire.PostgreSql 1.20 leaves <see cref="JobData.InvocationData"/> unset), so using it
+    /// would make a versioned hash depend on which adapter is installed, and would change stored
+    /// fingerprints if an adapter started filling that field in. It also costs a query on a path that
+    /// is already failing.
+    /// </para>
+    /// </remarks>
     private static string GetJobTypeName(ApplyStateContext context)
-    {
-        var type = context.BackgroundJob.Job?.Type;
-        if (type is not null) return type.FullName;
-
-        try
-        {
-            return context.Connection.GetJobData(context.BackgroundJob.Id)?.InvocationData?.Type;
-        }
-        catch
-        {
-            // Without a type the fingerprint still works; it just can't prefer the job's namespace.
-            return null;
-        }
-    }
+        => context.BackgroundJob.Job?.Type?.FullName;
 
     private void LogFailure(Exception ex, string jobId)
     {
