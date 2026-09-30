@@ -58,7 +58,7 @@ namespace a2n.Hangfire.Dashboard.Helpers;
 /// contains them, so a rebuild or a moved line does not change the fingerprint.
 /// </para>
 /// </remarks>
-public static class FailureFingerprint
+public static partial class FailureFingerprint
 {
     /// <summary>
     /// Job parameter under which <see cref="FailureFingerprintFilter"/> stores the fingerprint.
@@ -107,13 +107,15 @@ public static class FailureFingerprint
     private const string ExceptionMessageKey = "ExceptionMessage";
     private const string ExceptionDetailsKey = "ExceptionDetails";
 
-    private const RegexOptions PatternOptions = RegexOptions.Compiled | RegexOptions.CultureInvariant;
+    // Every pattern below is a [GeneratedRegex]: the matcher is emitted at build time, so the patterns
+    // are checked by the compiler rather than on first use, and there is no interpretation or
+    // reflection-emit cost at startup. Their options and timeout must be attribute arguments, hence
+    // the constants.
+    private const RegexOptions PatternOptions = RegexOptions.CultureInvariant;
 
     // The input is capped and every pattern is linear, so this only matters if that ever stops being
-    // true; a rule that times out is skipped rather than failing the state transition. Every Regex
-    // field must be declared below this one: static fields initialize in order, and a zero timeout
-    // makes the Regex constructor throw.
-    private static readonly TimeSpan MatchTimeout = TimeSpan.FromMilliseconds(250);
+    // true; a rule that times out is skipped rather than failing the state transition.
+    private const int MatchTimeoutMs = 250;
 
     // A value glued to a letter or digit is part of a word ("Order2f…", "net8"), so ids, times and
     // addresses are only replaced when nothing alphanumeric touches them. Underscores and other
@@ -125,37 +127,41 @@ public static class FailureFingerprint
 
     // 1. GUIDs in any .NET format: hyphenated or the 32-digit "N" form, with or without braces. The
     // "N" form must contain a letter, so a 32-digit number is left to the number rule.
-    private static readonly Regex GuidPattern = new(
+    [GeneratedRegex(
         @"\{?" + NotAfterAlnum
             + "(?:[0-9a-fA-F]{8}-" + Hex4 + "-" + Hex4 + "-" + Hex4 + "-[0-9a-fA-F]{12}"
             + "|(?=[0-9]*[a-fA-F])[0-9a-fA-F]{32})"
             + NotBeforeAlnum + @"\}?",
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex GuidPattern();
 
     private const string TimeOfDay = @"[0-9]{1,2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,9})?)?";
     private const string AmPm = @"(?:\s?[AaPp][Mm])?";
 
     // 2. ISO 8601 dates and date-times (fraction, Z or offset); M/d/yyyy, d.M.yyyy and yyyy/MM/dd
     // with an optional time and AM/PM; standalone HH:mm:ss(.fff).
-    private static readonly Regex TimestampPattern = new(
+    [GeneratedRegex(
         NotAfterAlnum + "(?:"
             + "[0-9]{4}-[0-9]{2}-[0-9]{2}(?:[T ]" + TimeOfDay + @"(?:Z|[+-][0-9]{2}(?::?[0-9]{2})?)?)?"
             + @"|(?:[0-9]{4}/[0-9]{1,2}/[0-9]{1,2}|[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}|[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})(?:,? " + TimeOfDay + AmPm + ")?"
             + @"|[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?" + AmPm
         + ")" + NotBeforeAlnum,
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex TimestampPattern();
 
     // 3. 0x-prefixed values (HRESULTs, addresses) and long hex runs (hashes, tokens). A run must
     // contain both a digit and a letter: only letters a–f is a word, and only digits is a number.
-    private static readonly Regex HexPattern = new(
+    [GeneratedRegex(
         NotAfterAlnum + "(?:0[xX][0-9a-fA-F]+|(?=[a-fA-F]*[0-9])(?=[0-9]*[a-fA-F])[0-9a-fA-F]{16,})" + NotBeforeAlnum,
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex HexPattern();
 
     // 4. E-mail addresses. The lookbehind makes a match start at the beginning of the local part, so
     // a long run of address characters without an '@' is scanned once, not once per character.
-    private static readonly Regex EmailPattern = new(
+    [GeneratedRegex(
         @"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]*[A-Za-z0-9]",
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex EmailPattern();
 
     private const string Ipv6Group = "[0-9a-fA-F]{1,4}";
 
@@ -163,37 +169,43 @@ public static class FailureFingerprint
     // bracketed as in an endpoint ([::1]:5432, [fe80::1%eth0]:443), the full eight-group form, or a
     // compressed form containing "::" and a hex digit. Bare forms need no alphanumeric or colon next
     // to them, which leaves std::string and a lone '::' alone.
-    private static readonly Regex Ipv6Pattern = new(
+    [GeneratedRegex(
         @"\[(?=[0-9a-fA-F.]{0,45}:[0-9a-fA-F.]{0,45}:)[0-9a-fA-F:.]{2,45}(?:%[0-9A-Za-z]{1,16})?\](?::[0-9]{1,5})?"
             + @"|(?<![\p{L}\p{N}:.])(?:"
             + Ipv6Group + ":" + Ipv6Group + ":" + Ipv6Group + ":" + Ipv6Group + ":"
             + Ipv6Group + ":" + Ipv6Group + ":" + Ipv6Group + ":" + Ipv6Group
             + @"|(?=[0-9a-fA-F:.]{0,45}::)(?=[:.]{0,45}[0-9a-fA-F])[0-9a-fA-F:.]{1,44}[0-9a-fA-F:]"
             + @")(?![\p{L}\p{N}:])",
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex Ipv6Pattern();
 
     // 5b. IPv4 addresses with an optional port. A fifth dotted part means a version number, not an
     // address, and is left alone.
-    private static readonly Regex Ipv4Pattern = new(
+    [GeneratedRegex(
         @"(?<![\p{L}\p{N}.])[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?::[0-9]{1,5})?(?!\.?[\p{L}\p{N}])",
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex Ipv4Pattern();
 
     // 6. The query string of an absolute URL. The path is kept: it usually names the endpoint, and
     // the other rules already replace ids in it.
-    private static readonly Regex UrlQueryPattern = new(
+    [GeneratedRegex(
         @"(?<![A-Za-z0-9+.-])(?<url>[A-Za-z][A-Za-z0-9+.-]*://[^\s?#""']*)\?[^\s#""']*",
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex UrlQueryPattern();
 
     // 7. Standalone integers and decimals. Unlike the rules above, an underscore counts as part of a
     // word here, so identifiers such as IX_Orders_2 keep their digits along with v2 and net8. A
     // dotted run such as 1.2.3 is a version and is left alone as a whole.
-    private static readonly Regex NumberPattern = new(
+    [GeneratedRegex(
         @"(?<![\p{L}\p{N}_.])[0-9]+(?:\.[0-9]+)?(?!\.?[\p{L}\p{N}_])",
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex NumberPattern();
 
-    private static readonly Regex GenericArityPattern = new(@"`[0-9]+", PatternOptions, MatchTimeout);
+    [GeneratedRegex(@"`[0-9]+", PatternOptions, MatchTimeoutMs)]
+    private static partial Regex GenericArityPattern();
 
-    private static readonly Regex GenericParametersPattern = new(@"\[[^\[\]]*\]", PatternOptions, MatchTimeout);
+    [GeneratedRegex(@"\[[^\[\]]*\]", PatternOptions, MatchTimeoutMs)]
+    private static partial Regex GenericParametersPattern();
 
     private const string InnerExceptionSeparator = "---> ";
 
@@ -202,15 +214,17 @@ public static class FailureFingerprint
     private const int MaxTypeNameLength = 1024;
 
     // A type name as it appears in exception text: a dotted name, possibly with generic arguments.
-    private static readonly Regex ExceptionTypeNamePattern = new(
+    [GeneratedRegex(
         @"^[\p{L}_][\p{L}\p{N}_.+`]*(?:\[\[.*\]\])?\z",
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex ExceptionTypeNamePattern();
 
     // Exception.ToString(), which older Hangfire versions and other writers used, adds an error code
     // after some type names: "SqlException (0x80131904)", "SocketException (111)".
-    private static readonly Regex ErrorCodeSuffixPattern = new(
+    [GeneratedRegex(
         @"\s\((?:0x[0-9A-Fa-f]{1,8}|-?[0-9]{1,10})\)\z",
-        PatternOptions, MatchTimeout);
+        PatternOptions, MatchTimeoutMs)]
+    private static partial Regex ErrorCodeSuffixPattern();
 
     /// <summary>
     /// Returns true when <paramref name="storedValue"/> was computed with the current rules:
@@ -325,9 +339,9 @@ public static class FailureFingerprint
                 // "Type: message", or "Type:" / "Type" when the message is empty.
                 var colon = line.IndexOf(": ", StringComparison.Ordinal);
                 if (colon < 0 && line.EndsWith(':')) colon = line.Length - 1;
-                var name = Replace(ErrorCodeSuffixPattern, (colon >= 0 ? line[..colon] : line).TrimEnd(), string.Empty);
+                var name = Replace(ErrorCodeSuffixPattern(), (colon >= 0 ? line[..colon] : line).TrimEnd(), string.Empty);
 
-                if (IsMatch(ExceptionTypeNamePattern, name))
+                if (IsMatch(ExceptionTypeNamePattern(), name))
                 {
                     type = name;
                     message = colon >= 0 ? header[Math.Min(header.Length, start + colon + 2)..] : string.Empty;
@@ -371,14 +385,14 @@ public static class FailureFingerprint
             text = text[..cut];
         }
 
-        text = Replace(GuidPattern, text, "<guid>");
-        text = Replace(TimestampPattern, text, "<time>");
-        text = Replace(HexPattern, text, "<hex>");
-        text = Replace(EmailPattern, text, "<email>");
-        text = Replace(Ipv6Pattern, text, "<ip>");
-        text = Replace(Ipv4Pattern, text, "<ip>");
-        text = Replace(UrlQueryPattern, text, "${url}?<query>");
-        text = Replace(NumberPattern, text, "<n>");
+        text = Replace(GuidPattern(), text, "<guid>");
+        text = Replace(TimestampPattern(), text, "<time>");
+        text = Replace(HexPattern(), text, "<hex>");
+        text = Replace(EmailPattern(), text, "<email>");
+        text = Replace(Ipv6Pattern(), text, "<ip>");
+        text = Replace(Ipv4Pattern(), text, "<ip>");
+        text = Replace(UrlQueryPattern(), text, "${url}?<query>");
+        text = Replace(NumberPattern(), text, "<n>");
         return text;
     }
 
@@ -442,8 +456,8 @@ public static class FailureFingerprint
         // start with "at " (e.g. "at least one (1) item is required") from counting as a frame.
         if (method.Length == 0 || method.IndexOf('.') < 0 || method.Any(char.IsWhiteSpace)) return null;
 
-        method = Replace(GenericArityPattern, method, string.Empty);
-        method = Replace(GenericParametersPattern, method, string.Empty);
+        method = Replace(GenericArityPattern(), method, string.Empty);
+        method = Replace(GenericParametersPattern(), method, string.Empty);
         return UnwrapCompilerGenerated(method);
     }
 
