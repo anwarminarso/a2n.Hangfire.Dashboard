@@ -58,7 +58,7 @@ else
                                     <a href="jobs/details/@jobId" class="font-monospace">@ShortenId(jobId)</a>
                                 </td>
                                 <td><span class="badge bg-secondary">@(info.state ?? "Scheduled")</span></td>
-                                <td><JobNameDisplay Name="@(info.jobName ?? "Unknown")" ArgumentsText="@(info.jobArgs ?? "")" /></td>
+                                <td class="hf-job-cell"><JobNameDisplay Name="@(info.jobName ?? "Unknown")" ArgumentsText="@(info.jobArgs ?? "")" /></td>
                                 <td class="text-body-secondary">@(info.reason ?? "")</td>
                                 <td class="text-end">
                                     @if (info.retryAt.HasValue)

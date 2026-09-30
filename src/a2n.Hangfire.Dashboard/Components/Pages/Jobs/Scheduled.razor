@@ -60,7 +60,7 @@
                                             <RelativeTime UtcTime="@job.Value.EnqueueAt" IsFuture="true" />
                                         }
                                     </td>
-                                    <td><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
+                                    <td class="hf-job-cell"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
                                     <td class="text-end">
                                         @if (job.Value?.ScheduledAt.HasValue == true)
                                         {

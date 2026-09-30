@@ -79,12 +79,19 @@
                                     else
                                     {
                                         <td><ServerLabel FullId="@job.Value.ServerId" /></td>
-                                        <td>
+                                        <td class="hf-job-cell">
                                             @if (IsServerPossiblyAborted(job.Value.ServerId))
                                             {
-                                                <i class="bi bi-exclamation-triangle text-warning me-1" title="Server heartbeat timeout — job may be aborted"></i>
+                                                @* The name wraps as a block, so the warning sits beside it rather than above. *@
+                                                <div class="d-flex align-items-start gap-1">
+                                                    <i class="bi bi-exclamation-triangle text-warning" title="Server heartbeat timeout — job may be aborted"></i>
+                                                    <div><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></div>
+                                                </div>
                                             }
-                                            <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
+                                            else
+                                            {
+                                                <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
+                                            }
                                         </td>
                                         <td class="text-end">
                                             @if (job.Value.StartedAt.HasValue)
