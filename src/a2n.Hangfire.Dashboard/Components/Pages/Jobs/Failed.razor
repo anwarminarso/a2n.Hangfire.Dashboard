@@ -53,7 +53,7 @@ else
                                            @onchange="() => ToggleJob(job.Key)" />
                                 </td>
                                 <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                <td>
+                                <td class="hf-job-cell">
                                     <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
                                     @if (!string.IsNullOrEmpty(job.Value?.Reason))
                                     {

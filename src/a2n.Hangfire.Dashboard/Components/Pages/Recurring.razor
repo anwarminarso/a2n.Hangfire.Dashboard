@@ -88,7 +88,7 @@ else
                                     <td><span class="hf-job-name font-monospace" title="@stopped.Id">@stopped.Id</span></td>
                                     <td><code class="font-monospace">@stopped.Cron</code></td>
                                     <td>@(stopped.TimeZone ?? "UTC")</td>
-                                    <td><span class="hf-job-name" title="@($"{stopped.TypeName}.{stopped.MethodName}")">@stopped.TypeName.@stopped.MethodName</span></td>
+                                    <td class="hf-job-cell"><span class="hf-job-name" title="@($"{stopped.TypeName}.{stopped.MethodName}")">@stopped.TypeName.@stopped.MethodName</span></td>
                                     <td>
                                         @if (stopped.StoppedAt.HasValue)
                                         {
@@ -165,7 +165,7 @@ else
                                     </td>
                                     <td><code class="font-monospace">@job.Cron</code></td>
                                     <td>@(job.TimeZoneId ?? "UTC")</td>
-                                    <td><JobNameDisplay Job="@job.Job" Name="@GetJobName(job)" /></td>
+                                    <td class="hf-job-cell"><JobNameDisplay Job="@job.Job" Name="@GetJobName(job)" /></td>
                                     <td class="text-end">
                                         @if (job.NextExecution.HasValue)
                                         {

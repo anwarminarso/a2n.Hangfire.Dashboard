@@ -57,7 +57,7 @@
                                     <td class="font-monospace">
                                         <a href="jobs/details/@jobId">@ShortenId(jobId)</a>
                                     </td>
-                                    <td><JobNameDisplay Name="@(info.jobName ?? "Unknown")" ArgumentsText="@(info.jobArgs ?? "")" /></td>
+                                    <td class="hf-job-cell"><JobNameDisplay Name="@(info.jobName ?? "Unknown")" ArgumentsText="@(info.jobArgs ?? "")" /></td>
                                     <td>
                                         @if (!string.IsNullOrEmpty(info.options))
                                         {

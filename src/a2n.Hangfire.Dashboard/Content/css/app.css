@@ -1241,6 +1241,29 @@ a.hf-st-link:hover .hf-st-link-icon {
     .hf-job-name { max-width: 14rem; }
 }
 
+/* ===== Job column in list tables (Issue #55) =====
+   A single 22rem line cut most descriptive job names off. In the Job column the name now wraps
+   instead, clamped to three lines so one very long name can't stretch its row; the argument line
+   stays on one line, as secondary detail. The column keeps the 22rem cap, widening to 28rem only
+   from 1600px: below that the Recurring table, with the most columns, already scrolls sideways at
+   22rem, and a wider cap would only add to it. The cap is fixed rather than a share of the screen,
+   so the other columns keep their proportions and a long value still can't widen the table (#12).
+   `text-wrap: pretty` avoids a lone word on the last line where supported. The title tooltip still
+   carries the full value. */
+.hf-job-cell .hf-job-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+}
+@media (min-width: 1600px) {
+    .hf-job-cell .hf-job-name,
+    .hf-job-cell .hf-job-args { max-width: 28rem; }
+}
+
 /* Clickable header for sortable table columns (SortableHeader). */
 .hf-sort-btn {
     display: inline-flex;

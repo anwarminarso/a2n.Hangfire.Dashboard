@@ -77,7 +77,7 @@
                                     else
                                     {
                                         <td><span class="badge bg-secondary">@(job.Value.State ?? "N/A")</span></td>
-                                        <td><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
+                                        <td class="hf-job-cell"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
                                         <td class="text-end">
                                             @if (job.Value.FetchedAt.HasValue)
                                             {
