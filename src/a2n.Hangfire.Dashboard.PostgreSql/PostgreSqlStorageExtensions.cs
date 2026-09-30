@@ -29,9 +29,11 @@ public static class PostgreSqlStorageExtensions
 
         var provider = new PostgreSqlQueryProvider(connectionString, schema);
         var metricsProvider = new PostgreSqlMetricsProvider(connectionString, schema);
+        var failedJobs = new PostgreSqlFailedJobReader(connectionString, schema);
 
         builder.Services.AddSingleton<IStorageQueryProvider>(provider);
         builder.Services.AddSingleton<IStorageMetricsProvider>(metricsProvider);
+        builder.Services.AddSingleton<IFailedJobPageSource>(failedJobs);
         builder.HasQueryProvider = true;
         builder.HasMetricsProvider = true;
 

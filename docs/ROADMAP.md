@@ -421,6 +421,15 @@ The rollup adapter shipped in v2.5.0 read back several of its own aggregates inc
 
 ---
 
+## v2.5.6 — Failed Jobs page survives a missing FailedAt ✅
+
+**Goal**: Stop one incomplete failed-state payload from taking down the Failed Jobs page and the rollup polls on PostgreSQL. No migration.
+
+- ✅ **Failed Jobs no longer 500s** — `Hangfire.PostgreSql` 1.21.1 throws `KeyNotFoundException` from `FailedJobs` when `state.data` omits `FailedAt`. Its `SafeDictionary` indexer is hidden with `new` and never runs, because `GetJobs` types the selector as `Dictionary<string, string>`. With the PostgreSQL adapter configured, the dashboard reads that page itself, in the same newest-id order. Missing exception fields stay empty, and `createdat` on the state row fills in when `FailedAt` is absent. A job type the host cannot load stays on the list.
+- ✅ **Rollups use the same reader** — `DemandRollupService` and `ExecutionRollupCollector` called `FailedJobs` directly, so the same exception aborted those polls. Both use the reader when it is registered. Other storages keep the monitoring API.
+
+---
+
 ## v2.6 — Integrations (Planned)
 
 **Goal**: Plug the dashboard into the modern observability and automation stack.
@@ -495,6 +504,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.5.3 | **Throttling visibility, DST-correct heatmap, storage portability**: Throttling pages for semaphores / mutexes / rate-limit windows with orphan detection (#30, #31 — Detach deferred); heatmap window now seven *local* days, fixing silently dropped cells across DST transitions; extended-storage-API guards so third-party storages no longer fail the dashboard shell; first CI workflow | ✅ Done |
 | v2.5.4 | **Recurring Jobs fixes**: page-size selector now paginates both the active and Stopped tables, with page-scoped "select all" and offset clamping (#37); Id / Last Execution link to the latest execution's details (#38); `Dictionary<K,V>` / `List<T>` arguments survive the JSON ▸ Form switch (#39); blank required parameters no longer block the view toggle, only saving | ✅ Done |
 | v2.5.5 | **Job arguments, search, and sorting**: arguments on Job Details and list rows plus `args:` search (#42); configurable search timeout with Cancel (#43); sortable in-memory grids and a newest/oldest toggle on the job lists (#41); search badge clears its filter input (#44); search counts at most 1,000 matches and pages by primary key (#45) | ✅ Done |
+| v2.5.6 | **Failed Jobs on PostgreSQL**: the page no longer returns HTTP 500 when a failed state's payload omits `FailedAt`; the adapter reads that page itself, and the demand and execution rollups use the same reader | ✅ Done |
 | v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
 | v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, clustering, ...) | Planned |

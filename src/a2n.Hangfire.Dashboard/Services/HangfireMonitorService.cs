@@ -3,6 +3,7 @@ using Hangfire;
 using Hangfire.States;
 using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
+using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Internal;
 using a2n.Hangfire.Dashboard.Storage;
 
@@ -17,15 +18,18 @@ public class HangfireMonitorService
     private readonly AuditLogService _audit;
     private readonly DashboardUIOptions _options;
     private readonly JobMethodResolver _resolver;
+    private readonly IFailedJobPageSource _failedJobs;
 
     public HangfireMonitorService(
         JobStorage storage,
         AuditLogService audit = null,
         DashboardUIOptions options = null,
-        JobMethodResolver resolver = null)
+        JobMethodResolver resolver = null,
+        IFailedJobPageSource failedJobs = null)
     {
         _storage = storage;
         _audit = audit;
+        _failedJobs = failedJobs;
         // Defaults keep the service usable when constructed without the Job Builder dependencies
         // (e.g. the existing DI factory). DI should supply the configured options and the singleton
         // resolver so the access gates and discovery cache behave correctly at runtime.
@@ -56,7 +60,13 @@ public class HangfireMonitorService
         => GetMonitoringApi().SucceededJobs(from, count);
 
     public JobList<FailedJobDto> GetFailedJobs(int from, int count)
-        => GetMonitoringApi().FailedJobs(from, count);
+    {
+        // PostgreSQL's monitoring API throws when a failed state's payload omits FailedAt.
+        // The storage adapter supplies a reader that leaves those fields empty instead.
+        if (_failedJobs != null)
+            return _failedJobs.GetFailedJobs(from, count);
+        return GetMonitoringApi().FailedJobs(from, count);
+    }
 
     public JobList<DeletedJobDto> GetDeletedJobs(int from, int count)
         => GetMonitoringApi().DeletedJobs(from, count);

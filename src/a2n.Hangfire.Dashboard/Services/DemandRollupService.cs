@@ -102,6 +102,7 @@ public class DemandRollupService : IHostedService, IDisposable
 
     private readonly IStorageMetricsProvider _metricsProvider;
     private readonly JobStorage _storage;
+    private readonly IFailedJobPageSource _failedJobs;
     private readonly ILogger<DemandRollupService> _logger;
 
     private CancellationTokenSource _stoppingCts;
@@ -123,6 +124,7 @@ public class DemandRollupService : IHostedService, IDisposable
         // Resolve optionally — null when no metrics provider is registered (graceful degradation).
         _metricsProvider = serviceProvider.GetService<IStorageMetricsProvider>();
         _storage = serviceProvider.GetService<JobStorage>();
+        _failedJobs = serviceProvider.GetService<IFailedJobPageSource>();
         _logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<DemandRollupService>()
                   ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DemandRollupService>.Instance;
     }
@@ -371,7 +373,9 @@ public class DemandRollupService : IHostedService, IDisposable
             JobList<FailedJobDto> page;
             try
             {
-                page = api.FailedJobs(offset, PageSize);
+                page = _failedJobs != null
+                    ? _failedJobs.GetFailedJobs(offset, PageSize)
+                    : api.FailedJobs(offset, PageSize);
             }
             catch (Exception ex)
             {

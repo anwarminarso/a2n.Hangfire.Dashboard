@@ -79,7 +79,8 @@ public static class HangfireDashboardUIExtensions
             // against the real options and the discovery cache is shared (Req 5.6, 5.8).
             var options = sp.GetRequiredService<DashboardUIOptions>();
             var resolver = sp.GetRequiredService<JobMethodResolver>();
-            return new HangfireMonitorService(storage, audit, options, resolver);
+            var failedJobs = sp.GetService<IFailedJobPageSource>();
+            return new HangfireMonitorService(storage, audit, options, resolver, failedJobs);
         });
 
         services.AddScoped<HealthCheckService>(sp =>
