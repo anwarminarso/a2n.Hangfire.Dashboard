@@ -20,9 +20,8 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      # The PostgreSQL suite has no skip path: its fixture opens a connection in InitializeAsync and
-      # every test fails when none is reachable. Providing a server is therefore the only way to run
-      # the solution's tests, and it also means the adapter is covered rather than skipped.
+      # The PostgreSQL suite skips itself when no server is reachable, so this container is what makes
+      # the adapter actually covered here instead of reported as skipped.
       # Credentials match tests/a2n.Hangfire.Dashboard.PostgreSql.Tests/appsettings.json, which is
       # committed — a throwaway local test password, not a secret.
       postgres:
@@ -56,8 +55,8 @@ jobs:
         run: dotnet build "src/Hangfire Dashboard.slnx" -c Release --no-restore
 
       # Covers the six test projects in the solution, each across all three target frameworks.
-      # PostgreSQL runs against the service container above. The SQL Server suite uses SkippableFact
-      # and skips itself, since no SQL Server is provided here.
+      # PostgreSQL runs against the service container above. The SQL Server suite skips itself, since
+      # no SQL Server is provided here; both adapter suites use SkippableFact.
       - name: Test
         run: >
           dotnet test "src/Hangfire Dashboard.slnx" -c Release --no-build
