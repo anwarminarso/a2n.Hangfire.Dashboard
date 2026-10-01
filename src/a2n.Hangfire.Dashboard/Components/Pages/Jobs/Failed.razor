@@ -17,7 +17,7 @@ else if (_jobs.Count == 0)
 }
 else
 {
-    <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div class="d-flex gap-2">
             <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
                 <i class="bi bi-arrow-repeat"></i> Requeue
@@ -31,12 +31,12 @@ else
 
     <div class="card">
         <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+            <div class="table-responsive hf-grid">
+                <table class="table table-hover table-sm mb-0 hf-stack">
                     <thead>
                         <tr>
                             <th style="width: 40px;">
-                                <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" />
+                                <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
                             </th>
                             <th>Id</th>
                             <th>Job</th>
@@ -48,19 +48,19 @@ else
                         @foreach (var job in _jobs)
                         {
                             <tr class="@(IsSelected(job.Key) ? "table-active" : "")">
-                                <td>
+                                <td class="hf-cell-select">
                                     <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
-                                           @onchange="() => ToggleJob(job.Key)" />
+                                           @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
                                 </td>
-                                <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                <td class="hf-job-cell">
+                                <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                <td class="hf-job-cell hf-cell-primary">
                                     <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
                                     @if (!string.IsNullOrEmpty(job.Value?.Reason))
                                     {
                                         <div class="text-muted small">@TruncateReason(job.Value.Reason)</div>
                                     }
                                 </td>
-                                <td class="text-end">
+                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Failed">
                                     @if (job.Value?.FailedAt.HasValue == true)
                                     {
                                         <RelativeTime UtcTime="@job.Value.FailedAt.Value" />
@@ -69,7 +69,7 @@ else
                             </tr>
                             @if (job.Value?.ExceptionMessage is not null)
                             {
-                                <tr>
+                                <tr class="hf-row-detail @(IsSelected(job.Key) ? "table-active" : "")">
                                     <td></td>
                                     <td colspan="3">
                                         <div class="alert alert-danger py-2 px-3 mb-0 small hf-exception">

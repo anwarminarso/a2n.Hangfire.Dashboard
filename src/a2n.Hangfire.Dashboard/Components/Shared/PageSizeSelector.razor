@@ -1,8 +1,10 @@
 @* Items per page selector — positioned at top-right of toolbar, matching original Hangfire *@
 
 <div class="d-flex align-items-center gap-1">
-    <small class="text-body-secondary">Items per page:</small>
-    <select class="form-select form-select-sm" style="width: auto;"
+    @* The label is dropped on small screens, where it wrapped onto two lines; the select keeps an
+       accessible name either way. *@
+    <small class="text-body-secondary text-nowrap d-none d-md-inline">Items per page:</small>
+    <select class="form-select form-select-sm" style="width: auto;" aria-label="Items per page"
             value="@PageSize" @onchange="OnChanged">
         <option value="10">10</option>
         <option value="20">20</option>

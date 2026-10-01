@@ -18,7 +18,7 @@
     }
     else
     {
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <div class="d-flex gap-2">
                 <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
                     <i class="bi bi-arrow-repeat"></i> Requeue
@@ -29,17 +29,17 @@
 
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <th style="width: 40px;">
-                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" />
+                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
                                 </th>
                                 <th>Id</th>
                                 <th>Job</th>
-                                <th>Duration</th>
-                                <th>Latency</th>
+                                <th class="hf-col-p1">Duration</th>
+                                <th class="hf-col-p2">Latency</th>
                                 <SortableHeader Label="Succeeded" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
                                                 Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
                             </tr>
@@ -48,15 +48,15 @@
                             @foreach (var job in _jobs)
                             {
                                 <tr>
-                                    <td>
+                                    <td class="hf-cell-select">
                                         <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
-                                               @onchange="() => ToggleJob(job.Key)" />
+                                               @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
                                     </td>
-                                    <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                    <td class="hf-job-cell"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
-                                    <td>@GetPerformanceDuration(job.Value)</td>
-                                    <td>@GetLatency(job.Value)</td>
-                                    <td class="text-end">
+                                    <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                    <td class="hf-job-cell hf-cell-primary"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
+                                    <td class="hf-cell-meta hf-nowrap hf-col-p1" data-label="Duration">@GetPerformanceDuration(job.Value)</td>
+                                    <td class="hf-cell-meta hf-nowrap hf-col-p2" data-label="Latency">@GetLatency(job.Value)</td>
+                                    <td class="text-end hf-cell-meta hf-nowrap" data-label="Succeeded">
                                         @if (job.Value?.SucceededAt.HasValue == true)
                                         {
                                             <RelativeTime UtcTime="@job.Value.SucceededAt.Value" />

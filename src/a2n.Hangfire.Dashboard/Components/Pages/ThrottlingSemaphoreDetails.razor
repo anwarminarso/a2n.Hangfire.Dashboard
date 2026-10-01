@@ -70,8 +70,8 @@ else
 
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <SortableHeader Label="Job" Style="width: 18%;"
@@ -89,10 +89,10 @@ else
                             @foreach (var holder in SortedHolders)
                             {
                                 <tr>
-                                    <td>
+                                    <td class="hf-cell-title hf-nowrap">
                                         <a href="jobs/details/@holder.JobId" class="font-monospace">@ShortenId(holder.JobId)</a>
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta" data-label="State">
                                         @if (holder.StateName is null)
                                         {
                                             <span class="text-body-secondary" title="The job no longer exists in storage.">unknown</span>
@@ -109,7 +109,7 @@ else
                                             <span class="badge bg-danger ms-2" title="@holder.OrphanReason">orphaned</span>
                                         }
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta" data-label="Server">
                                         @if (holder.ServerId is null)
                                         {
                                             <span class="text-body-secondary">—</span>

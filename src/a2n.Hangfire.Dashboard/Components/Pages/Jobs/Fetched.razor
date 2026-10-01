@@ -26,7 +26,7 @@
     }
     else
     {
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <div class="d-flex gap-2">
                 <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
                     <i class="bi bi-arrow-repeat"></i> Requeue
@@ -40,15 +40,15 @@
 
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <th style="width: 40px;">
-                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" />
+                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
                                 </th>
                                 <th>Id</th>
-                                <th>State</th>
+                                <th class="hf-col-p2">State</th>
                                 <th>Job</th>
                                 <SortableHeader Label="Fetched" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
                                                 Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
@@ -60,25 +60,25 @@
                                 var isObsolete = job.Value == null;
 
                                 <tr class="@(isObsolete ? "opacity-50" : "")">
-                                    <td>
+                                    <td class="hf-cell-select">
                                         @if (job.Value != null)
                                         {
                                             <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
-                                                   @onchange="() => ToggleJob(job.Key)" />
+                                                   @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
                                         }
                                     </td>
-                                    <td class="font-monospace">
+                                    <td class="font-monospace hf-cell-title hf-nowrap">
                                         <a href="jobs/details/@job.Key">@ShortenId(job.Key)</a>
                                     </td>
                                     @if (job.Value == null)
                                     {
-                                        <td colspan="3"><em class="text-muted">Job expired</em></td>
+                                        <td class="hf-cell-primary" colspan="3"><em class="text-muted">Job expired</em></td>
                                     }
                                     else
                                     {
-                                        <td><span class="badge bg-secondary">@(job.Value.State ?? "N/A")</span></td>
-                                        <td class="hf-job-cell"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
-                                        <td class="text-end">
+                                        <td class="hf-cell-meta hf-col-p2" data-label="State"><span class="badge bg-secondary">@(job.Value.State ?? "N/A")</span></td>
+                                        <td class="hf-job-cell hf-cell-primary"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
+                                        <td class="text-end hf-cell-meta hf-nowrap" data-label="Fetched">
                                             @if (job.Value.FetchedAt.HasValue)
                                             {
                                                 <RelativeTime UtcTime="@job.Value.FetchedAt.Value" />

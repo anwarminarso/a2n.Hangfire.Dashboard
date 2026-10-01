@@ -47,12 +47,12 @@ else
                     }
                     else
                     {
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover mb-0">
+                        <div class="table-responsive hf-grid">
+                            <table class="table table-sm table-hover mb-0 hf-stack">
                                 <thead>
                                     <tr>
                                         <th>Job Type</th>
-                                        <th class="text-end">Avg (ms)</th>
+                                        <th class="text-end hf-nowrap">Avg (ms)</th>
                                         <th class="text-end">p50</th>
                                         <th class="text-end">p95</th>
                                         <th class="text-end">p99</th>
@@ -63,14 +63,14 @@ else
                                     @foreach (var stat in _durationStats.OrderByDescending(s => s.P95Ms).Take(20))
                                     {
                                         <tr>
-                                            <td class="text-truncate" style="max-width: 250px;" title="@stat.JobType">
-                                                @GetShortTypeName(stat.JobType)
+                                            <td class="hf-job-cell hf-cell-title">
+                                                <span class="hf-job-name" title="@stat.JobType">@GetShortTypeName(stat.JobType)</span>
                                             </td>
-                                            <td class="text-end">@stat.AverageMs.ToString("N0")</td>
-                                            <td class="text-end">@stat.P50Ms.ToString("N0")</td>
-                                            <td class="text-end fw-semibold">@stat.P95Ms.ToString("N0")</td>
-                                            <td class="text-end">@stat.P99Ms.ToString("N0")</td>
-                                            <td class="text-end">@stat.Count.ToString("N0")</td>
+                                            <td class="text-end hf-cell-meta hf-nowrap" data-label="Avg (ms)">@stat.AverageMs.ToString("N0")</td>
+                                            <td class="text-end hf-cell-meta hf-nowrap" data-label="p50">@stat.P50Ms.ToString("N0")</td>
+                                            <td class="text-end hf-cell-meta hf-nowrap fw-semibold" data-label="p95">@stat.P95Ms.ToString("N0")</td>
+                                            <td class="text-end hf-cell-meta hf-nowrap" data-label="p99">@stat.P99Ms.ToString("N0")</td>
+                                            <td class="text-end hf-cell-meta hf-nowrap" data-label="Count">@stat.Count.ToString("N0")</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -103,13 +103,13 @@ else
                     }
                     else
                     {
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover mb-0">
+                        <div class="table-responsive hf-grid">
+                            <table class="table table-sm table-hover mb-0 hf-stack">
                                 <thead>
                                     <tr>
                                         <th>Job ID</th>
                                         <th>Job Type</th>
-                                        <th class="text-end">Duration (ms)</th>
+                                        <th class="text-end hf-nowrap">Duration (ms)</th>
                                         <th>Completed</th>
                                     </tr>
                                 </thead>
@@ -117,16 +117,16 @@ else
                                     @foreach (var job in _slowestJobs)
                                     {
                                         <tr>
-                                            <td>
+                                            <td class="hf-cell-title hf-nowrap">
                                                 <a href="jobs/details/@job.JobId" class="text-decoration-none">
                                                     @job.JobId
                                                 </a>
                                             </td>
-                                            <td class="text-truncate" style="max-width: 200px;" title="@job.JobName">
-                                                @GetShortTypeName(job.JobName)
+                                            <td class="hf-job-cell hf-cell-primary">
+                                                <span class="hf-job-name" title="@job.JobName">@GetShortTypeName(job.JobName)</span>
                                             </td>
-                                            <td class="text-end fw-semibold">@job.DurationMs.ToString("N0")</td>
-                                            <td>
+                                            <td class="text-end hf-cell-meta hf-nowrap fw-semibold" data-label="Duration (ms)">@job.DurationMs.ToString("N0")</td>
+                                            <td class="hf-cell-meta hf-nowrap" data-label="Completed">
                                                 @if (job.CompletedAt.HasValue)
                                                 {
                                                     <RelativeTime UtcTime="@job.CompletedAt.Value" />

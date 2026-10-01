@@ -78,8 +78,8 @@ else
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-sm table-hover align-middle mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <th>Job ID</th>
@@ -92,12 +92,12 @@ else
                             @foreach (var failure in _recentFailures)
                             {
                                 <tr>
-                                    <td class="font-monospace">
+                                    <td class="font-monospace hf-cell-title hf-nowrap">
                                         <a href="jobs/details/@failure.JobId">@ShortenId(failure.JobId)</a>
                                     </td>
-                                    <td>@ShortenJobType(failure.JobName)</td>
-                                    <td><code>@ShortenExceptionType(failure.ExceptionType)</code></td>
-                                    <td>
+                                    <td class="hf-job-cell hf-cell-primary"><span class="hf-job-name" title="@failure.JobName">@ShortenJobType(failure.JobName)</span></td>
+                                    <td class="hf-cell-meta" data-label="Exception" style="overflow-wrap: anywhere;"><code>@ShortenExceptionType(failure.ExceptionType)</code></td>
+                                    <td class="hf-cell-meta hf-nowrap" data-label="Failed">
                                         @if (failure.LastStateChange.HasValue)
                                         {
                                             <RelativeTime UtcTime="@failure.LastStateChange.Value" />

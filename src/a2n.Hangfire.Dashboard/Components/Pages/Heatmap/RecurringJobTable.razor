@@ -43,16 +43,16 @@ else
             </span>
         </div>
         <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0 align-middle">
+            <div class="table-responsive hf-grid">
+                <table class="table table-hover table-sm mb-0 align-middle hf-stack">
                     <thead>
                         <tr>
                             <SortableHeader Label="Id" IsActive="@_sort.IsActive(RowSort.Id)" Descending="@_sort.Descending"
                                             OnSort="() => _sort.Toggle(RowSort.Id)" />
-                            <th>Cron</th>
+                            <th class="hf-col-p2">Cron</th>
                             <SortableHeader Label="Queue" IsActive="@_sort.IsActive(RowSort.Queue)" Descending="@_sort.Descending"
                                             OnSort="() => _sort.Toggle(RowSort.Queue)" />
-                            <SortableHeader Label="Time Zone" IsActive="@_sort.IsActive(RowSort.TimeZone)" Descending="@_sort.Descending"
+                            <SortableHeader Label="Time Zone" CssClass="hf-col-p1" IsActive="@_sort.IsActive(RowSort.TimeZone)" Descending="@_sort.Descending"
                                             OnSort="() => _sort.Toggle(RowSort.TimeZone)" />
                             <SortableHeader Label="Est. Duration" CssClass="text-end" IsActive="@_sort.IsActive(RowSort.Duration)"
                                             Descending="@_sort.Descending" OnSort="() => _sort.Toggle(RowSort.Duration)" />
@@ -64,7 +64,7 @@ else
                         @foreach (var row in SortedRows)
                         {
                             <tr>
-                                <td>
+                                <td class="hf-cell-title">
                                     <span class="hf-job-name font-monospace" title="@row.JobId">@row.JobId</span>
                                     @if (row.IsLongPeriod)
                                     {
@@ -74,7 +74,7 @@ else
                                         </span>
                                     }
                                 </td>
-                                <td>
+                                <td class="hf-cell-meta hf-nowrap hf-col-p2" data-label="Cron">
                                     @if (string.IsNullOrWhiteSpace(row.CronExpression))
                                     {
                                         <span class="text-body-secondary">—</span>
@@ -84,10 +84,10 @@ else
                                         <code class="font-monospace">@row.CronExpression</code>
                                     }
                                 </td>
-                                <td><QueueBadge Queue="@row.Queue" Color="@QueueColorFor(row.Queue)" /></td>
-                                <td>@row.TimeZoneLabel</td>
-                                <td class="text-end">@row.DurationLabel</td>
-                                <td class="text-end">
+                                <td class="hf-cell-meta" data-label="Queue"><QueueBadge Queue="@row.Queue" Color="@QueueColorFor(row.Queue)" /></td>
+                                <td class="hf-cell-meta hf-col-p1" data-label="Time Zone">@row.TimeZoneLabel</td>
+                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Est. Duration">@row.DurationLabel</td>
+                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Window Cells">
                                     @if (row.ContributingCellCount > 0)
                                     {
                                         @row.ContributingCellCount

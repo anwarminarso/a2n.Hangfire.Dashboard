@@ -68,18 +68,18 @@ else
         <h6 class="text-body-secondary mt-3 mb-2">Semaphores</h6>
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <SortableHeader Label="Id" Style="width: 22%;"
+                                <SortableHeader Label="Id" CssClass="hf-sem-id"
                                                 IsActive="@_semaphoreSort.IsActive(SemaphoreSort.Id)" Descending="@_semaphoreSort.Descending"
                                                 OnSort="() => _semaphoreSort.Toggle(SemaphoreSort.Id)" />
-                                <th>Description</th>
-                                <SortableHeader Label="Usage" CssClass="pe-4" Style="width: 240px;"
+                                <th class="hf-col-p1">Description</th>
+                                <SortableHeader Label="Usage" CssClass="pe-4 hf-sem-usage"
                                                 IsActive="@_semaphoreSort.IsActive(SemaphoreSort.Usage)" Descending="@_semaphoreSort.Descending"
                                                 OnSort="() => _semaphoreSort.Toggle(SemaphoreSort.Usage)" />
-                                <SortableHeader Label="Holders" Style="width: 24%; min-width: 160px;"
+                                <SortableHeader Label="Holders" CssClass="hf-sem-holders"
                                                 IsActive="@_semaphoreSort.IsActive(SemaphoreSort.Holders)" Descending="@_semaphoreSort.Descending"
                                                 OnSort="() => _semaphoreSort.Toggle(SemaphoreSort.Holders)" />
                             </tr>
@@ -88,10 +88,10 @@ else
                             @foreach (var semaphore in SortedSemaphores)
                             {
                                 <tr>
-                                    <td class="font-monospace">
+                                    <td class="font-monospace hf-cell-title" style="overflow-wrap: anywhere;">
                                         <a href="throttling/semaphores/@Uri.EscapeDataString(semaphore.Id)">@semaphore.Id</a>
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta hf-col-p1" data-label="Description">
                                         @if (semaphore.Description is null)
                                         {
                                             <span class="text-body-secondary">—</span>
@@ -101,7 +101,7 @@ else
                                             @semaphore.Description
                                         }
                                     </td>
-                                    <td class="pe-4">
+                                    <td class="pe-4 hf-cell-meta hf-cell-wide" data-label="Usage">
                                         <div class="d-flex align-items-center gap-2">
                                             <div class="progress flex-grow-1" style="height: 6px; min-width: 100px;">
                                                 <div class="progress-bar @GetUsageBarClass(semaphore)"
@@ -112,17 +112,21 @@ else
                                             </small>
                                         </div>
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta" data-label="Holders">
                                         @if (semaphore.HolderJobIds.Count == 0)
                                         {
                                             <span class="text-body-secondary">—</span>
                                         }
                                         else
                                         {
-                                            @foreach (var jobId in semaphore.HolderJobIds)
-                                            {
-                                                <a href="jobs/details/@jobId" class="font-monospace me-2">@ShortenId(jobId)</a>
-                                            }
+                                            @* Razor emits the links with no whitespace between them, which made the
+                                               list one unbreakable word that widened the table as holders grew. *@
+                                            <span class="d-inline-flex flex-wrap column-gap-2">
+                                                @foreach (var jobId in semaphore.HolderJobIds)
+                                                {
+                                                    <a href="jobs/details/@jobId" class="font-monospace">@ShortenId(jobId)</a>
+                                                }
+                                            </span>
                                         }
                                     </td>
                                 </tr>
@@ -140,8 +144,8 @@ else
     {
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <SortableHeader Label="Id"
@@ -153,7 +157,7 @@ else
                                 <SortableHeader Label="State" Style="width: 12%;"
                                                 IsActive="@_mutexSort.IsActive(MutexSort.State)" Descending="@_mutexSort.Descending"
                                                 OnSort="() => _mutexSort.Toggle(MutexSort.State)" />
-                                <SortableHeader Label="Server" Style="width: 18%;"
+                                <SortableHeader Label="Server" CssClass="hf-col-p1" Style="width: 18%;"
                                                 IsActive="@_mutexSort.IsActive(MutexSort.Server)" Descending="@_mutexSort.Descending"
                                                 OnSort="() => _mutexSort.Toggle(MutexSort.Server)" />
                             </tr>
@@ -162,8 +166,8 @@ else
                             @foreach (var row in SortedMutexRows)
                             {
                                 <tr>
-                                    <td class="font-monospace">@row.MutexId</td>
-                                    <td>
+                                    <td class="font-monospace hf-cell-title" style="overflow-wrap: anywhere;">@row.MutexId</td>
+                                    <td class="hf-cell-meta hf-nowrap" data-label="Held By">
                                         @if (row.Holder is null)
                                         {
                                             <span class="text-body-secondary">—</span>
@@ -173,7 +177,7 @@ else
                                             <a href="jobs/details/@row.Holder.JobId" class="font-monospace">@ShortenId(row.Holder.JobId)</a>
                                         }
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta" data-label="State">
                                         @if (row.Holder?.StateName is null)
                                         {
                                             <span class="text-body-secondary">—</span>
@@ -189,7 +193,7 @@ else
                                             <span class="badge bg-danger ms-2" title="@row.Holder.OrphanReason">orphaned</span>
                                         }
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta hf-col-p1" data-label="Server">
                                         @if (row.Holder?.ServerId is null)
                                         {
                                             <span class="text-body-secondary">—</span>
@@ -217,8 +221,8 @@ else
         <h6 class="text-body-secondary mt-3 mb-2">Rate-Limit Windows</h6>
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <SortableHeader Label="Type" Style="width: 10%;"
@@ -227,7 +231,7 @@ else
                                 <SortableHeader Label="Id" Style="width: 22%;"
                                                 IsActive="@_windowSort.IsActive(WindowSort.Id)" Descending="@_windowSort.Descending"
                                                 OnSort="() => _windowSort.Toggle(WindowSort.Id)" />
-                                <th>Description</th>
+                                <th class="hf-col-p1">Description</th>
                                 <SortableHeader Label="Limit" CssClass="text-end" Style="width: 12%;"
                                                 IsActive="@_windowSort.IsActive(WindowSort.Limit)" Descending="@_windowSort.Descending"
                                                 OnSort="() => _windowSort.Toggle(WindowSort.Limit)" />
@@ -243,9 +247,9 @@ else
                             @foreach (var window in SortedWindows)
                             {
                                 <tr>
-                                    <td><span class="badge bg-secondary">@window.Type</span></td>
-                                    <td class="font-monospace">@window.Id</td>
-                                    <td>
+                                    <td class="hf-cell-meta" data-label="Type"><span class="badge bg-secondary">@window.Type</span></td>
+                                    <td class="font-monospace hf-cell-title" style="overflow-wrap: anywhere;">@window.Id</td>
+                                    <td class="hf-cell-meta hf-col-p1" data-label="Description">
                                         @if (window.Description is null)
                                         {
                                             <span class="text-body-secondary">—</span>
@@ -255,9 +259,9 @@ else
                                             @window.Description
                                         }
                                     </td>
-                                    <td class="text-end">@(window.Limit?.ToString() ?? "—")</td>
-                                    <td class="text-end">@FormatInterval(window.IntervalSeconds)</td>
-                                    <td class="text-end">@(window.Counter?.ToString() ?? "—")</td>
+                                    <td class="text-end hf-cell-meta hf-nowrap" data-label="Limit">@(window.Limit?.ToString() ?? "—")</td>
+                                    <td class="text-end hf-cell-meta hf-nowrap" data-label="Interval">@FormatInterval(window.IntervalSeconds)</td>
+                                    <td class="text-end hf-cell-meta hf-nowrap" data-label="Current Count">@(window.Counter?.ToString() ?? "—")</td>
                                 </tr>
                             }
                         </tbody>

@@ -17,8 +17,8 @@ else
 {
     <div class="card">
         <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+            <div class="table-responsive hf-grid">
+                <table class="table table-hover table-sm mb-0 hf-stack">
                     <thead>
                         <tr>
                             <SortableHeader Label="Name" IsActive="@_sort.IsActive(ServerSortColumn.Name)"
@@ -26,7 +26,7 @@ else
                             <SortableHeader Label="Workers" IsActive="@_sort.IsActive(ServerSortColumn.Workers)"
                                             Descending="@_sort.Descending" OnSort="() => _sort.Toggle(ServerSortColumn.Workers)" />
                             <th>Queues</th>
-                            <SortableHeader Label="Started" IsActive="@_sort.IsActive(ServerSortColumn.Started)"
+                            <SortableHeader Label="Started" CssClass="hf-col-p1" IsActive="@_sort.IsActive(ServerSortColumn.Started)"
                                             Descending="@_sort.Descending" OnSort="() => _sort.Toggle(ServerSortColumn.Started)" />
                             <SortableHeader Label="Heartbeat" IsActive="@_sort.IsActive(ServerSortColumn.Heartbeat)"
                                             Descending="@_sort.Descending" OnSort="() => _sort.Toggle(ServerSortColumn.Heartbeat)" />
@@ -36,7 +36,7 @@ else
                         @foreach (var server in SortedServers)
                         {
                             <tr>
-                                <td>
+                                <td class="hf-cell-title">
                                     @if (IsServerHealthy(server))
                                     {
                                         <span class="d-inline-block rounded-circle bg-success me-2" style="width: 8px; height: 8px;"></span>
@@ -47,15 +47,19 @@ else
                                     }
                                     <ServerLabel FullId="@server.Name" />
                                 </td>
-                                <td>@server.WorkersCount</td>
-                                <td>
-                                    @foreach (var queue in server.Queues)
-                                    {
-                                        <QueueBadge Queue="@queue" CssClass="me-1" />
-                                    }
+                                <td class="hf-cell-meta" data-label="Workers">@server.WorkersCount</td>
+                                <td class="hf-cell-meta" data-label="Queues">
+                                    @* A wrapping flex row: Razor puts no whitespace between the badges, so as
+                                       plain inline content they could not break onto a second line. *@
+                                    <span class="d-inline-flex flex-wrap gap-1">
+                                        @foreach (var queue in server.Queues)
+                                        {
+                                            <QueueBadge Queue="@queue" />
+                                        }
+                                    </span>
                                 </td>
-                                <td>@FormatRelativeTime(server.StartedAt)</td>
-                                <td>
+                                <td class="hf-cell-meta hf-nowrap hf-col-p1" data-label="Started">@FormatRelativeTime(server.StartedAt)</td>
+                                <td class="hf-cell-meta hf-nowrap" data-label="Heartbeat">
                                     @if (server.Heartbeat.HasValue)
                                     {
                                         @FormatRelativeTime(server.Heartbeat.Value)

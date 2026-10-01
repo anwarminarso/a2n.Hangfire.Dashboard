@@ -62,7 +62,7 @@
                             @foreach (var prop in _job.Properties.Where(p => !p.Key.StartsWith("DBG_") && p.Key != "Continuations"))
                             {
                                 <tr>
-                                    <td class="fw-semibold text-body-secondary" style="width: 200px;">@prop.Key</td>
+                                    <td class="fw-semibold text-body-secondary hf-param-key">@prop.Key</td>
                                     <td><code class="text-break">@prop.Value</code></td>
                                 </tr>
                             }

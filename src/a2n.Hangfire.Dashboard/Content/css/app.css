@@ -1366,3 +1366,250 @@ a.hf-st-link:hover .hf-st-link-icon {
     overflow-wrap: anywhere;
     word-break: break-word;
 }
+
+/* =====================================================================================
+   Responsive layout
+   Phones get a compact shell and card-style list rows; laptops keep navigation visible as an
+   icon rail; wide screens get the full sidebar and a centred, capped content column.
+   ===================================================================================== */
+
+/* ----- Shell: sidebar ----- */
+.hf-sidebar-desktop {
+    width: 240px;
+    overflow-y: auto;
+}
+/* Off-canvas menu on phones and tablets: never wider than most of the screen. Its header already
+   shows the dashboard title, so the menu's own brand row is dropped. The close button is white for
+   the dark sidebar; on the light sidebar it uses Bootstrap's default dark glyph. */
+.hf-sidebar-offcanvas {
+    --bs-offcanvas-width: min(300px, 86vw);
+}
+.hf-sidebar-offcanvas .hf-nav-brand { display: none; }
+.hf-sidebar-offcanvas .hf-nav { padding-top: 4px; }
+[data-bs-theme="light"] .hf-sidebar-offcanvas .btn-close-white { filter: none; }
+
+/* A thin scrollbar on the sidebar, so it doesn't take a fifth of the icon rail. */
+.hf-sidebar-desktop { scrollbar-width: thin; }
+
+/* Icon rail from 992px to 1399px. The full 240px sidebar left too little room for list tables at
+   laptop widths; the rail keeps every page one click away at 68px. Labels move into the links'
+   title tooltips, group headers become dividers, and every group is shown expanded, since a
+   collapsed group would hide its icons with no visible header to reopen it. */
+@media (min-width: 992px) and (max-width: 1399.98px) {
+    .hf-sidebar-desktop {
+        width: 68px;
+        overflow-x: hidden;
+    }
+    .hf-sidebar-desktop .hf-nav { padding: 12px 8px; }
+    .hf-sidebar-desktop .hf-nav-brand { justify-content: center; padding: 4px 0 16px; }
+    .hf-sidebar-desktop .hf-nav-brand-text,
+    .hf-sidebar-desktop .hf-nav-item > span:not(.hf-nav-counter),
+    .hf-sidebar-desktop .hf-nav-group-title,
+    .hf-sidebar-desktop .hf-nav-group-chevron {
+        display: none;
+    }
+    .hf-sidebar-desktop .hf-nav-group-toggle {
+        height: 1px;
+        padding: 0;
+        margin: 6px 8px;
+        background: var(--hf-nav-divider);
+        pointer-events: none;
+    }
+    .hf-sidebar-desktop .hf-nav-group-body[hidden] {
+        display: flex !important;
+    }
+    .hf-sidebar-desktop .hf-nav-item {
+        justify-content: center;
+        padding: 9px 0;
+    }
+    .hf-sidebar-desktop .hf-nav-icon { font-size: 1.1rem; }
+    /* Counters become a small badge on the icon's corner. */
+    .hf-sidebar-desktop .hf-nav-counter {
+        position: absolute;
+        top: 2px;
+        right: 4px;
+        min-width: 0;
+        margin: 0;
+        padding: 0 4px;
+        font-size: 9px;
+        line-height: 14px;
+        text-align: center;
+        border-radius: 999px;
+        background-color: var(--bs-body-bg);
+    }
+}
+
+/* ----- Shell: content column ----- */
+/* On wide screens the content is centred and capped at 1760px, so a row can still be followed
+   from its name to its actions; below that it uses the full width. */
+.hf-main {
+    padding: 1rem max(1rem, calc((100% - 1760px) / 2));
+}
+@media (min-width: 992px) {
+    .hf-main {
+        padding: 1.5rem max(1.5rem, calc((100% - 1760px) / 2));
+    }
+}
+/* Page headings repeat the title already in the top bar; on phones they take less room. */
+@media (max-width: 575.98px) {
+    .hf-main h2 {
+        font-size: 1.35rem;
+    }
+}
+
+/* Job Details parameter names: a fixed 200px column left a phone about 150px for the value. */
+.hf-param-key { width: 200px; }
+@media (max-width: 575.98px) {
+    .hf-param-key { width: 38%; }
+}
+
+/* ----- Toolbars above list tables ----- */
+/* Filter inputs shrink with the toolbar instead of forcing a fixed width. */
+.hf-filter-input {
+    flex: 1 1 14rem;
+    min-width: 0;
+    max-width: 18rem;
+}
+@media (max-width: 575.98px) {
+    .hf-filter-input { max-width: none; }
+    .hf-toolbar-end { width: 100%; }
+}
+
+/* ----- List tables: columns by priority -----
+   The table's own width decides, not the screen's: .hf-grid on the .table-responsive wrapper makes
+   it a size container, so the same table behaves correctly next to the full sidebar, the icon rail,
+   or no sidebar at all. Optional columns carry a priority and are hidden in order as the table
+   narrows: p4 first (below 1360px), then p3 (1200px), p2 (1040px) and p1 (900px). Columns without
+   a priority are always shown. Hidden values reappear on the phone cards below. */
+.hf-grid {
+    container-type: inline-size;
+    container-name: hf-grid;
+}
+.hf-nowrap { white-space: nowrap; }
+.hf-cell-actions { white-space: nowrap; width: 1%; }
+
+@container hf-grid (max-width: 1359.98px) { .hf-col-p4 { display: none; } }
+@container hf-grid (max-width: 1199.98px) { .hf-col-p3 { display: none; } }
+@container hf-grid (max-width: 1039.98px) { .hf-col-p2 { display: none; } }
+@container hf-grid (max-width: 899.98px)  { .hf-col-p1 { display: none; } }
+
+/* Throttling ▸ Semaphores: fixed proportions only while Description is shown. Without it, the
+   percentages made the browser stretch Holders past the container. */
+@container hf-grid (min-width: 900px) {
+    .hf-sem-id { width: 22%; }
+    .hf-sem-usage { width: 240px; }
+    .hf-sem-holders { width: 24%; min-width: 160px; }
+}
+
+/* Narrower tables give the name columns less room before they wrap. */
+@container hf-grid (max-width: 1099.98px) {
+    .hf-grid .hf-job-cell .hf-job-name,
+    .hf-grid .hf-job-cell .hf-job-args { max-width: 18rem; }
+}
+@container hf-grid (max-width: 899.98px) {
+    .hf-grid .hf-job-cell .hf-job-name,
+    .hf-grid .hf-job-cell .hf-job-args { max-width: 16rem; }
+    .hf-grid .hf-cell-title .hf-job-name { max-width: 12rem; }
+}
+
+/* ----- List tables: cards on phones -----
+   Below 640px of table width, a table marked .hf-stack renders each row as a card:
+   - .hf-cell-select   the row checkbox, pinned to the card's top-left corner
+   - .hf-cell-title    the row's identity (job id, server name), next to it
+   - .hf-cell-actions  row buttons, top-right
+   - .hf-cell-primary  the job name, full width
+   - .hf-cell-meta     label/value details, labelled from data-label, flowing on one or more lines
+   Columns hidden by priority in table mode are shown again here, so nothing is lost. Cells without
+   a role (for example a colspan detail row) keep their content and take the full width. */
+@container hf-grid (max-width: 639.98px) {
+    .hf-stack thead { display: none; }
+    .hf-stack,
+    .hf-stack tbody { display: block; }
+    .hf-stack tr {
+        position: relative;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: 0.9rem;
+        row-gap: 0.15rem;
+        padding: 0.7rem 0.85rem 0.75rem;
+        border-bottom: 1px solid var(--bs-border-color);
+        /* Bootstrap paints row states (table-active, table-secondary) on each cell; on a card the
+           row paints them instead, so the padding between cells is covered too. */
+        background-color: var(--bs-table-bg);
+        box-shadow: inset 0 0 0 9999px var(--bs-table-bg-state, var(--bs-table-bg-type, transparent));
+    }
+    .hf-stack tr:has(> .hf-cell-select) { padding-left: 2.6rem; }
+    .hf-stack tr:last-child { border-bottom: 0; }
+    .hf-stack td {
+        display: block;
+        padding: 0;
+        border: 0;
+        text-align: left !important;
+        background-color: transparent;
+        box-shadow: none;
+    }
+    .hf-stack td.hf-col-p1,
+    .hf-stack td.hf-col-p2,
+    .hf-stack td.hf-col-p3,
+    .hf-stack td.hf-col-p4 { display: block; }
+    .hf-stack td.hf-cell-select {
+        position: absolute;
+        left: 0.85rem;
+        top: 0.8rem;
+    }
+    .hf-stack td.hf-cell-title {
+        flex: 1 1 0;
+        min-width: 0;
+        font-weight: 600;
+    }
+    .hf-stack td.hf-cell-title .hf-job-name { max-width: 100%; }
+    /* With no buttons to share the top line with, the title takes the whole line, so the details
+       start underneath instead of squeezing a long name into a narrow column. */
+    .hf-stack tr:not(:has(> .hf-cell-actions)) > td.hf-cell-title { flex-basis: 100%; }
+    .hf-stack td.hf-cell-actions {
+        flex: 0 0 auto;
+        width: auto;
+        margin-top: -0.2rem;
+    }
+    .hf-stack td.hf-cell-primary {
+        order: 1;
+        flex: 1 0 100%;
+        min-width: 0;
+    }
+    .hf-stack td.hf-cell-primary .hf-job-name,
+    .hf-stack td.hf-cell-primary .hf-job-args { max-width: 100%; }
+    .hf-stack td.hf-cell-meta {
+        order: 2;
+        max-width: 100%;
+        font-size: 0.8125rem;
+    }
+    .hf-stack td.hf-cell-meta[data-label]::before {
+        content: attr(data-label) " ";
+        color: var(--bs-secondary-color);
+    }
+    .hf-stack td.hf-cell-meta:empty { display: none; }
+    /* Bars and other wide values (throughput, utilization, result strips) take their own line,
+       with the label above the value. */
+    .hf-stack td.hf-cell-meta.hf-cell-wide {
+        flex: 1 0 100%;
+        min-width: 0;
+    }
+    .hf-stack td.hf-cell-meta.hf-cell-wide[data-label]::before {
+        display: block;
+        margin-bottom: 0.15rem;
+    }
+    .hf-stack td:not([class*="hf-cell-"]) {
+        order: 3;
+        flex: 1 0 100%;
+        min-width: 0;
+    }
+    /* Detail rows (.hf-row-detail: Failed's exception, Recurring's error) sit under the card they
+       belong to, which drops its own bottom border. */
+    .hf-stack tr.hf-row-detail {
+        display: block;
+        padding-top: 0;
+    }
+    .hf-stack tr.hf-row-detail > td:empty { display: none; }
+    .hf-stack tr:has(+ tr.hf-row-detail) { border-bottom: 0; }
+}
