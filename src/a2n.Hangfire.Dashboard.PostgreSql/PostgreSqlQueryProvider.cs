@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
@@ -279,6 +280,177 @@ LIMIT @Count";
             DurationMs = r.DurationMs,
             CompletedAt = r.CompletedAt
         }).ToList();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GetFailureGroupsAsync / GetFailureGroupJobsAsync
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // The failed-job columns FailureGrouping reads, named after FailedJobRow's properties. The jsonb
+    // columns (text on older schemas) are read as text.
+    private const string FailedJobRowColumns = @"
+j.id AS ""Id"",
+j.invocationdata::text AS ""InvocationData"",
+j.arguments::text AS ""Arguments"",
+j.createdat AS ""CreatedAt"",
+s.reason AS ""Reason"",
+s.createdat AS ""StateCreatedAt"",
+s.data::text AS ""StateData""";
+
+    // A stored value counts only when FailureFingerprint.IsCurrentVersion would accept it: the prefix
+    // followed by exactly HashHexLength lowercase hex characters. PostgreSQL regexes are
+    // case-sensitive, and the anchors reject anything longer.
+    private const string StoredFingerprintMatch = "p.value ~ @StoredPattern";
+
+    internal static readonly string StoredFingerprintPattern =
+        "^" + System.Text.RegularExpressions.Regex.Escape(FailureFingerprint.VersionPrefix)
+        + "[0-9a-f]{" + FailureFingerprint.HashHexLength + "}$";
+
+    // Stored fingerprints are counted from the job and jobparameter indexes alone; state.data is only
+    // read for the fallback and the labels. Takes @ParameterName and @StoredPattern.
+    //
+    // The parameter is looked up per failed job, rather than joined: as a join, the planner prefers to
+    // scan the whole jobparameter table, which holds every job's parameters (several per succeeded
+    // job), once there are a few thousand failed jobs. The LIMIT keeps the lookup from being flattened
+    // back into a join, and counts a job once should an old schema hold a duplicate parameter.
+    internal string StoredFingerprintGroupsSql => $@"
+SELECT p.value AS ""Fingerprint"", COUNT(*) AS ""Count"", MAX(j.id) AS ""NewestJobId""
+FROM {_jobTable} j
+CROSS JOIN LATERAL (
+    SELECT p.value FROM {_jobParameterTable} p
+    WHERE p.jobid = j.id AND p.name = @ParameterName
+    LIMIT 1) p
+WHERE j.statename = 'Failed'
+  AND {StoredFingerprintMatch}
+GROUP BY p.value";
+
+    /// <inheritdoc />
+    public bool SupportsFailureGrouping => true;
+
+    /// <inheritdoc />
+    public async Task<FailureGroupsResult> GetFailureGroupsAsync(int labelCount, CancellationToken ct)
+    {
+
+        var withoutStoredFingerprint = $@"j.statename = 'Failed'
+  AND NOT EXISTS (
+      SELECT 1 FROM {_jobParameterTable} p
+      WHERE p.jobid = j.id AND p.name = @ParameterName AND {StoredFingerprintMatch})";
+
+        var failedSql = $@"
+SELECT COUNT(*)
+FROM {_jobTable} j
+WHERE j.statename = 'Failed'";
+
+        var fallbackSql = $@"
+SELECT {FailedJobRowColumns}
+FROM {_jobTable} j
+LEFT JOIN {_stateTable} s ON s.id = j.stateid
+WHERE {withoutStoredFingerprint}
+ORDER BY j.id DESC
+LIMIT @Limit";
+
+        var samplesSql = $@"
+SELECT {FailedJobRowColumns}
+FROM {_jobTable} j
+LEFT JOIN {_stateTable} s ON s.id = j.stateid
+WHERE j.id = ANY(@Ids) AND j.statename = 'Failed'";
+
+        var parameters = new
+        {
+            ParameterName = FailureFingerprint.ParameterName,
+            StoredPattern = StoredFingerprintPattern,
+            Limit = JobFilterCriteria.CountLimit,
+        };
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var stored = (await connection.QueryAsync<StoredFailureGroup>(
+            new CommandDefinition(StoredFingerprintGroupsSql, parameters, cancellationToken: ct))).ToList();
+        // Counted as the failed jobs minus the stored ones rather than with NOT EXISTS, which the
+        // planner turns into an anti-join over the whole jobparameter table. Jobs that change state
+        // between the two queries can make the difference slightly off, never negative.
+        var failed = await connection.ExecuteScalarAsync<long>(
+            new CommandDefinition(failedSql, cancellationToken: ct));
+        var unfingerprinted = Math.Max(0, failed - stored.Sum(s => s.Count));
+        var fallback = await connection.QueryAsync<FailedJobRow>(
+            new CommandDefinition(fallbackSql, parameters, cancellationToken: ct));
+
+        return await FailureGrouping.BuildAsync(
+            stored,
+            unfingerprinted,
+            fallback.Select(FailureGrouping.Compute).ToList(),
+            labelCount,
+            async (ids, token) =>
+            {
+                var rows = await connection.QueryAsync<FailedJobRow>(
+                    new CommandDefinition(samplesSql, new { Ids = ids.ToArray() }, cancellationToken: token));
+                return rows.Select(FailureGrouping.Compute).ToList();
+            },
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<JobSummaryDto>> GetFailureGroupJobsAsync(
+        FailureGroupDto group, int count, CancellationToken ct)
+    {
+        // Group keys are always current fingerprints; anything else can't name a group.
+        if (group == null || !FailureFingerprint.IsCurrentVersion(group.Fingerprint) || count <= 0)
+            return Array.Empty<JobSummaryDto>();
+
+        // The group's members are collected first — its stored members, looked up per failed job as in
+        // StoredFingerprintGroupsSql, plus the fallback members it carries, minus any the filter has
+        // fingerprinted since (it failed again) — and only the newest @Count of them are joined to their
+        // state. Filtering while walking the job table newest-first instead reads the whole table when
+        // the group's jobs are old. The LIMIT also keeps the planner from flattening the subquery.
+        var sql = $@"
+SELECT {FailedJobRowColumns}
+FROM (
+    SELECT f.id
+    FROM {_jobTable} f
+    CROSS JOIN LATERAL (
+        SELECT p.value FROM {_jobParameterTable} p
+        WHERE p.jobid = f.id AND p.name = @ParameterName
+        LIMIT 1) p
+    WHERE f.statename = 'Failed' AND p.value = @Fingerprint
+    UNION
+    SELECT f.id
+    FROM {_jobTable} f
+    WHERE f.id = ANY(@ComputedIds)
+      AND f.statename = 'Failed'
+      AND NOT EXISTS (
+          SELECT 1 FROM {_jobParameterTable} p
+          WHERE p.jobid = f.id AND p.name = @ParameterName AND {StoredFingerprintMatch})
+    ORDER BY 1 DESC
+    LIMIT @Count) m
+INNER JOIN {_jobTable} j ON j.id = m.id
+LEFT JOIN {_stateTable} s ON s.id = j.stateid
+ORDER BY j.id DESC";
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var rows = await connection.QueryAsync<FailedJobRow>(new CommandDefinition(sql, new
+        {
+            Count = count,
+            ParameterName = FailureFingerprint.ParameterName,
+            Fingerprint = group.Fingerprint,
+            StoredPattern = StoredFingerprintPattern,
+            ComputedIds = ParseJobIds(group.ComputedJobIds),
+        }, cancellationToken: ct));
+
+        return rows.Select(FailureGrouping.ToJobSummary).ToList();
+    }
+
+    private static long[] ParseJobIds(IEnumerable<string> ids)
+    {
+        var parsed = new List<long>();
+        foreach (var id in ids ?? Enumerable.Empty<string>())
+        {
+            if (long.TryParse(id, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var value))
+                parsed.Add(value);
+        }
+        return parsed.ToArray();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

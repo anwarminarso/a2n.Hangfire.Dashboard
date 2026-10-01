@@ -1,0 +1,421 @@
+using Dapper;
+using Hangfire;
+using Hangfire.Common;
+using Hangfire.PostgreSql;
+using Hangfire.States;
+using Hangfire.Storage;
+using Npgsql;
+using a2n.Hangfire.Dashboard.Helpers;
+using a2n.Hangfire.Dashboard.Models;
+using a2n.Hangfire.Dashboard.PostgreSql.Tests.Fixtures;
+using a2n.Hangfire.Dashboard.Storage;
+
+namespace a2n.Hangfire.Dashboard.PostgreSql.Tests.QueryProvider;
+
+/// <summary>
+/// Grouping failed jobs by exception (#53) against a live PostgreSQL storage. Jobs fail through
+/// Hangfire's state machine, with and without <see cref="FailureFingerprintFilter"/>, so the stored
+/// and the computed fingerprints come from the real code paths.
+/// <para>
+/// The fixture's 20 seeded failed jobs (no stored fingerprint) stay in place throughout, and every
+/// test deletes the jobs it adds, since other tests count over the seed.
+/// </para>
+/// </summary>
+[Collection("PostgreSql")]
+public class FailureGroupsTests
+{
+    private readonly PostgreSqlFixture _fixture;
+    private readonly PostgreSqlStorage _storage;
+    private readonly PostgreSqlQueryProvider _provider;
+    private readonly List<string> _created = new();
+
+    public FailureGroupsTests(PostgreSqlFixture fixture)
+    {
+        _fixture = fixture;
+        var options = new PostgreSqlStorageOptions { SchemaName = fixture.SchemaName, PrepareSchemaIfNecessary = false };
+        _storage = new PostgreSqlStorage(
+            new global::Hangfire.PostgreSql.Factories.NpgsqlConnectionFactory(fixture.ConnectionString, options), options);
+        _provider = new PostgreSqlQueryProvider(fixture.ConnectionString, fixture.SchemaName);
+    }
+
+    public static class OrderJob
+    {
+        public static void Run() { }
+    }
+
+    private static readonly Job Job = Job.FromExpression(() => OrderJob.Run());
+
+    // Every failure is thrown from here, so jobs failing with the same message have the same trace.
+    private static FailedState Fail(string message)
+    {
+        try
+        {
+            throw new InvalidOperationException(message);
+        }
+        catch (Exception ex)
+        {
+            return new FailedState(ex);
+        }
+    }
+
+    // No AutomaticRetry, which would turn the Failed state into a scheduled retry.
+    private string CreateWithFilter(IState state)
+        => Track(new BackgroundJobClient(_storage, new JobFilterCollection { new FailureFingerprintFilter() }).Create(Job, state));
+
+    private string CreateWithoutFilter(IState state)
+        => Track(new BackgroundJobClient(_storage, new JobFilterCollection()).Create(Job, state));
+
+    private string Track(string jobId)
+    {
+        _created.Add(jobId);
+        return jobId;
+    }
+
+    private Task<FailureGroupsResult> GroupsAsync(int labelCount = FailureGroupsResult.DefaultLabelCount)
+        => _provider.GetFailureGroupsAsync(labelCount, CancellationToken.None);
+
+    [SkippableFact]
+    public async Task FilteredAndUnfilteredFailures_LandInOneGroup_LabeledFromTheNewestJob()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        try
+        {
+            var computed = CreateWithoutFilter(Fail("Order 17 is locked"));
+            var stored = CreateWithFilter(Fail("Order 18 is locked"));
+            using var connection = _storage.GetConnection();
+            var key = connection.GetJobParameter(stored, FailureFingerprint.ParameterName);
+            Assert.True(FailureFingerprint.IsCurrentVersion(key));
+
+            var result = await GroupsAsync();
+
+            var group = Assert.Single(result.Groups, g => g.Fingerprint == key);
+            Assert.Equal(2, group.Count);
+            Assert.Equal(1, group.StoredCount);
+            Assert.Equal(1, group.ComputedCount);
+            Assert.Equal(new[] { computed }, group.ComputedJobIds);
+            Assert.Equal(stored, group.NewestJobId);
+
+            // The newest job has a stored fingerprint, so its label was read back from storage; it
+            // must describe the same failure the stored key stands for.
+            var label = FailureFingerprint.Compute(connection.GetStateData(stored).Data, ReadStoredJobTypeName(stored));
+            Assert.Equal(key, label.Fingerprint);
+            Assert.True(group.IsLabeled);
+            Assert.Equal(label.ExceptionType, group.ExceptionType);
+            Assert.Equal(label.InnerExceptionType, group.InnerExceptionType);
+            Assert.Equal("Order <n> is locked", group.NormalizedMessage);
+            Assert.Equal(label.TopFrame, group.TopFrame);
+            Assert.NotNull(group.LastFailedAt);
+
+            // The seeded failures are fingerprinted on the fly alongside.
+            Assert.Equal(TestDataSeeder.Counts.Failed + 1, result.UnfingerprintedCount);
+            Assert.Equal(result.UnfingerprintedCount, result.FallbackCount);
+            Assert.False(result.IsPartial);
+            Assert.Equal(TestDataSeeder.Counts.Failed + 2, result.Groups.Sum(g => g.Count));
+        }
+        finally
+        {
+            DeleteCreated();
+        }
+    }
+
+    [SkippableFact]
+    public async Task JobsInOtherStates_AreNotCounted()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        try
+        {
+            var requeued = CreateWithFilter(Fail("Order 21 is locked"));
+            using var connection = _storage.GetConnection();
+            var key = connection.GetJobParameter(requeued, FailureFingerprint.ParameterName);
+            // The parameter stays on a requeued job.
+            new BackgroundJobClient(_storage, new JobFilterCollection()).Requeue(requeued);
+            var succeeded = CreateWithoutFilter(new SucceededState(null, 0, 0));
+            connection.SetJobParameter(succeeded, FailureFingerprint.ParameterName, key);
+
+            var result = await GroupsAsync();
+
+            Assert.DoesNotContain(result.Groups, g => g.Fingerprint == key);
+            Assert.Equal(TestDataSeeder.Counts.Failed, result.Groups.Sum(g => g.Count));
+            Assert.Equal(TestDataSeeder.Counts.Failed, result.UnfingerprintedCount);
+        }
+        finally
+        {
+            DeleteCreated();
+        }
+    }
+
+    [SkippableFact]
+    public async Task StoredValuesOfAnotherVersionOrForm_AreRecomputed()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        try
+        {
+            var notCurrent = new[]
+            {
+                "v0:0123456789abcdef",
+                "v1:0123456789ABCDEF",
+                "V1:0123456789abcdef",
+                "v1:0123456789abcdef0",
+                "v1:0123456789abcde",
+            };
+            using var connection = _storage.GetConnection();
+            var ids = notCurrent.Select(value =>
+            {
+                var id = CreateWithoutFilter(Fail("Order 31 is locked"));
+                connection.SetJobParameter(id, FailureFingerprint.ParameterName, value);
+                return id;
+            }).ToList();
+            var expected = FailureFingerprint.Compute(connection.GetStateData(ids[0]).Data, ReadStoredJobTypeName(ids[0])).Fingerprint;
+
+            var result = await GroupsAsync();
+
+            Assert.DoesNotContain(result.Groups, g => notCurrent.Contains(g.Fingerprint, StringComparer.OrdinalIgnoreCase));
+            var group = Assert.Single(result.Groups, g => g.Fingerprint == expected);
+            Assert.Equal(0, group.StoredCount);
+            Assert.Equal(notCurrent.Length, group.ComputedCount);
+            Assert.Equal(TestDataSeeder.Counts.Failed + notCurrent.Length, result.UnfingerprintedCount);
+        }
+        finally
+        {
+            DeleteCreated();
+        }
+    }
+
+    [SkippableFact]
+    public async Task OnlyTheLargestGroups_AreLabeled()
+    {
+        PostgreSqlFixture.RequireAvailable();
+
+        var result = await GroupsAsync(labelCount: 2);
+
+        Assert.True(result.Groups.Count > 2);
+        Assert.All(result.Groups.Take(2), g => Assert.True(g.IsLabeled));
+        Assert.All(result.Groups.Skip(2), g =>
+        {
+            Assert.False(g.IsLabeled);
+            Assert.Null(g.ExceptionType);
+            Assert.Null(g.LastFailedAt);
+        });
+        Assert.Equal(result.Groups.OrderByDescending(g => g.Count).Select(g => g.Count), result.Groups.Select(g => g.Count));
+    }
+
+    [SkippableFact]
+    public async Task GroupJobs_AreTheNewestStillFailed_StoredAndComputedAlike()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        try
+        {
+            var ids = new List<string>();
+            for (var i = 0; i < 3; i++)
+            {
+                ids.Add(CreateWithoutFilter(Fail("Order 41 is locked")));
+                ids.Add(CreateWithFilter(Fail("Order 42 is locked")));
+            }
+            var requeuedLater = CreateWithFilter(Fail("Order 43 is locked"));
+            using var connection = _storage.GetConnection();
+            var key = connection.GetJobParameter(requeuedLater, FailureFingerprint.ParameterName);
+            var group = Assert.Single((await GroupsAsync()).Groups, g => g.Fingerprint == key);
+            Assert.Equal(7, group.Count);
+
+            new BackgroundJobClient(_storage, new JobFilterCollection()).Requeue(requeuedLater);
+            var jobs = await _provider.GetFailureGroupJobsAsync(group, 4, CancellationToken.None);
+
+            Assert.Equal(ids.AsEnumerable().Reverse().Take(4), jobs.Select(j => j.JobId));
+            var newest = jobs[0];
+            Assert.Equal("Failed", newest.State);
+            Assert.Equal("System.InvalidOperationException", newest.ExceptionType);
+            Assert.Equal("Order 42 is locked", newest.ExceptionMessage);
+            Assert.Equal(ReadStoredJobTypeName(newest.JobId), newest.InvocationData.Type);
+            Assert.Equal("[]", newest.InvocationData.Arguments);
+            Assert.EndsWith("OrderJob.Run", newest.JobName);
+            Assert.NotNull(newest.LastStateChange);
+            Assert.NotNull(newest.CreatedAt);
+        }
+        finally
+        {
+            DeleteCreated();
+        }
+    }
+
+    [SkippableFact]
+    public async Task StatesWithoutFailedAtOrExceptionFields_AreGroupedAsEmpty()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        var stateTime = new DateTime(2026, 9, 1, 8, 30, 0, DateTimeKind.Utc);
+        try
+        {
+            var empty = InsertFailedJob("'{}'", stateTime);
+            var noData = InsertFailedJob("NULL", stateTime);
+
+            var result = await GroupsAsync();
+
+            var group = Assert.Single(result.Groups, g => g.Fingerprint == FailureFingerprint.Compute(null, null, null).Fingerprint);
+            Assert.Equal(new[] { noData, empty }, group.ComputedJobIds);
+            Assert.True(group.IsLabeled);
+            Assert.Equal("", group.ExceptionType);
+            Assert.Equal(stateTime, group.LastFailedAt);
+
+            var jobs = await _provider.GetFailureGroupJobsAsync(group, 10, CancellationToken.None);
+            Assert.Equal(new[] { noData, empty }, jobs.Select(j => j.JobId));
+            Assert.All(jobs, j => Assert.Equal(stateTime, j.LastStateChange));
+        }
+        finally
+        {
+            DeleteCreated();
+        }
+    }
+
+    [SkippableFact]
+    public async Task MoreUnfingerprintedJobsThanTheLimit_GivesAPartialResult_FromTheNewest()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        const int storedJobs = 3;
+        const int total = storedJobs + JobFilterCriteria.CountLimit + 5;
+        await using var schema = await ThrowawaySchema.CreateAsync(_fixture.ConnectionString, total, storedJobs);
+        var provider = new PostgreSqlQueryProvider(_fixture.ConnectionString, schema.Name);
+
+        var result = await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None);
+
+        Assert.True(result.IsPartial);
+        Assert.Equal(JobFilterCriteria.CountLimit + 5, result.UnfingerprintedCount);
+        Assert.Equal(JobFilterCriteria.CountLimit, result.FallbackCount);
+        var group = Assert.Single(result.Groups);
+        Assert.Equal(schema.Fingerprint, group.Fingerprint);
+        Assert.Equal(storedJobs, group.StoredCount);
+        Assert.Equal(JobFilterCriteria.CountLimit, group.ComputedCount);
+        Assert.Equal(total.ToString(), group.NewestJobId);
+        Assert.Equal((total - JobFilterCriteria.CountLimit + 1).ToString(), group.ComputedJobIds[^1]);
+        Assert.Equal("System.TimeoutException", group.ExceptionType);
+    }
+
+    [SkippableFact]
+    public async Task StoredGroupsQuery_UsesTheJobAndParameterIndexes_AndNeverReadsState()
+    {
+        PostgreSqlFixture.RequireAvailable();
+
+        // The tables are small, so the planner is told to avoid sequential scans; what matters is that
+        // the query can be answered from the indexes, not which plan wins on 100 rows.
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var tx = await connection.BeginTransactionAsync();
+        await connection.ExecuteAsync("SET LOCAL enable_seqscan = off", transaction: tx);
+        var plan = string.Join("\n", await connection.QueryAsync<string>(
+            "EXPLAIN " + _provider.StoredFingerprintGroupsSql,
+            new { ParameterName = FailureFingerprint.ParameterName, StoredPattern = PostgreSqlQueryProvider.StoredFingerprintPattern },
+            transaction: tx));
+
+        Assert.Contains("ix_hangfire_job_statename", plan);
+        Assert.Contains("ix_hangfire_jobparameter_jobidandname", plan);
+        Assert.DoesNotContain("on state", plan);
+        Assert.DoesNotContain("state s", plan);
+    }
+
+    // The job type as the dashboard reads it: from the stored invocation data.
+    private string ReadStoredJobTypeName(string jobId)
+    {
+        using var sql = new NpgsqlConnection(_fixture.ConnectionString);
+        var payload = sql.QuerySingle<string>(
+            $"SELECT invocationdata::text FROM \"{_fixture.SchemaName}\".job WHERE id = @jobId",
+            new { jobId = long.Parse(jobId) });
+        return InvocationData.DeserializePayload(payload).Type;
+    }
+
+    // A Failed job whose state was written by something other than Hangfire's FailedState.
+    private string InsertFailedJob(string stateDataSql, DateTime stateCreatedAt)
+    {
+        var schema = _fixture.SchemaName;
+        using var sql = new NpgsqlConnection(_fixture.ConnectionString);
+        var jobId = sql.QuerySingle<long>($@"
+INSERT INTO ""{schema}"".job (invocationdata, arguments, createdat, statename)
+VALUES ('{{""Type"":""Legacy.Job, Legacy"",""Method"":""Run"",""ParameterTypes"":""[]"",""Arguments"":null}}', '[]', now(), 'Failed')
+RETURNING id");
+        sql.Execute($@"
+WITH s AS (
+    INSERT INTO ""{schema}"".state (jobid, name, reason, createdat, data)
+    VALUES (@JobId, 'Failed', NULL, @CreatedAt, {stateDataSql})
+    RETURNING id)
+UPDATE ""{schema}"".job SET stateid = (SELECT id FROM s) WHERE id = @JobId",
+            new { JobId = jobId, CreatedAt = stateCreatedAt });
+        return Track(jobId.ToString());
+    }
+
+    private void DeleteCreated()
+    {
+        var schema = _fixture.SchemaName;
+        using var sql = new NpgsqlConnection(_fixture.ConnectionString);
+        sql.Execute(
+            $"DELETE FROM \"{schema}\".jobqueue WHERE jobid = ANY(@Ids); " +
+            $"DELETE FROM \"{schema}\".jobparameter WHERE jobid = ANY(@Ids); " +
+            $"DELETE FROM \"{schema}\".state WHERE jobid = ANY(@Ids); " +
+            $"DELETE FROM \"{schema}\".job WHERE id = ANY(@Ids);",
+            new { Ids = _created.Select(long.Parse).ToArray() });
+        _created.Clear();
+    }
+
+    /// <summary>
+    /// A schema of its own with <c>total</c> failed jobs (ids 1..total, all the same failure), the
+    /// first <c>storedJobs</c> of them with the fingerprint stored, since the shared fixture's jobs are
+    /// counted exactly by other tests.
+    /// </summary>
+    private sealed class ThrowawaySchema : IAsyncDisposable
+    {
+        private const string JobType = "Bulk.Job, Bulk";
+        private const string StateData =
+            @"{""FailedAt"":""2026-09-01T00:00:00.0000000Z"",""ExceptionType"":""System.TimeoutException""," +
+            @"""ExceptionMessage"":""The operation has timed out."",""ExceptionDetails"":""System.TimeoutException: The operation has timed out.""}";
+
+        private readonly string _connectionString;
+
+        private ThrowawaySchema(string connectionString)
+        {
+            _connectionString = connectionString;
+            Name = "test_groups_" + Guid.NewGuid().ToString("N")[..10];
+            Fingerprint = FailureFingerprint.Compute(FailureGrouping.ReadStateData(StateData), JobType).Fingerprint;
+        }
+
+        public string Name { get; }
+
+        public string Fingerprint { get; }
+
+        public static async Task<ThrowawaySchema> CreateAsync(string connectionString, int total, int storedJobs)
+        {
+            var schema = new ThrowawaySchema(connectionString);
+            try
+            {
+                await using var connection = new NpgsqlConnection(connectionString);
+                await connection.OpenAsync();
+                PostgreSqlObjectsInstaller.Install(connection, schema.Name);
+                await connection.ExecuteAsync($@"
+INSERT INTO ""{schema.Name}"".job (id, invocationdata, arguments, createdat, statename)
+SELECT g, '{{""Type"":""{JobType}"",""Method"":""Run"",""ParameterTypes"":""[]"",""Arguments"":null}}', '[]', now(), 'Failed'
+FROM generate_series(1, @Total) g;
+INSERT INTO ""{schema.Name}"".state (id, jobid, name, createdat, data)
+SELECT g, g, 'Failed', now(), @StateData::jsonb FROM generate_series(1, @Total) g;
+UPDATE ""{schema.Name}"".job SET stateid = id;
+INSERT INTO ""{schema.Name}"".jobparameter (jobid, name, value)
+SELECT g, @Name, @Fingerprint FROM generate_series(1, @Stored) g;",
+                    new { Total = total, Stored = storedJobs, StateData, Name = FailureFingerprint.ParameterName, schema.Fingerprint });
+                return schema;
+            }
+            catch
+            {
+                await schema.DisposeAsync();
+                throw;
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(_connectionString);
+                await connection.OpenAsync();
+                await connection.ExecuteAsync($@"DROP SCHEMA IF EXISTS ""{Name}"" CASCADE");
+            }
+            catch
+            {
+                // Best effort, as in PostgreSqlFixture.
+            }
+        }
+    }
+}

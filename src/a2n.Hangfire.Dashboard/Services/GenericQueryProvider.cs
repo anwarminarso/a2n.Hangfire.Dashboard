@@ -1,6 +1,7 @@
 using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
+using a2n.Hangfire.Dashboard.Storage;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.Storage;
@@ -22,11 +23,19 @@ public class GenericQueryProvider : IStorageQueryProvider
 
     private readonly JobStorage _storage;
     private readonly TagsDataReader _tagsReader;
+    private readonly IFailedJobPageSource _failedJobs;
 
-    public GenericQueryProvider(JobStorage storage, TagsDataReader tagsReader)
+    /// <param name="storage">The Hangfire storage.</param>
+    /// <param name="tagsReader">Reads tags for tag filters.</param>
+    /// <param name="failedJobs">
+    /// Optional page source for failed jobs, used for grouping instead of
+    /// <see cref="IMonitoringApi.FailedJobs"/> when a storage adapter registers one.
+    /// </param>
+    public GenericQueryProvider(JobStorage storage, TagsDataReader tagsReader, IFailedJobPageSource failedJobs = null)
     {
         _storage = storage;
         _tagsReader = tagsReader;
+        _failedJobs = failedJobs;
     }
 
     /// <inheritdoc />
@@ -210,6 +219,109 @@ public class GenericQueryProvider : IStorageQueryProvider
 
         return Task.FromResult<IReadOnlyList<SlowestJobDto>>(result);
     }
+
+    /// <inheritdoc />
+    public bool SupportsFailureGrouping => true;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Without SQL access to job parameters, every fingerprint is computed here from the failed job's
+    /// state, with the same function the filter uses, so it equals the value the filter stored. The
+    /// newest <see cref="JobFilterCriteria.CountLimit"/> failed jobs are read; beyond that the result
+    /// is partial.
+    /// </remarks>
+    public async Task<FailureGroupsResult> GetFailureGroupsAsync(int labelCount, CancellationToken ct)
+    {
+        var monitoringApi = _storage.GetMonitoringApi();
+        var failedCount = monitoringApi.FailedCount();
+
+        var read = new List<(string JobId, FailedJobDto Dto)>();
+        while (read.Count < JobFilterCriteria.CountLimit)
+        {
+            ct.ThrowIfCancellationRequested();
+            var batch = FetchFailed(monitoringApi, read.Count, Math.Min(BatchSize, JobFilterCriteria.CountLimit - read.Count));
+            if (batch == null || batch.Count == 0)
+                break;
+            read.AddRange(batch.Select(entry => (entry.Key, entry.Value)));
+        }
+
+        // Unlike ScanFailed, a job whose type can't be loaded is kept: the fingerprint only needs the
+        // state, and a dashboard deployed apart from the job host often can't resolve job types. The
+        // job type is still known from the stored invocation data.
+        //
+        // Storages differ in which end of the list is newest, so jobs are ordered by when they failed;
+        // a job without that time counts as the oldest.
+        var computed = read
+            .Select((entry, index) => (entry.JobId, entry.Dto, Index: index))
+            .Where(e => e.Dto != null)
+            .OrderByDescending(e => e.Dto.FailedAt ?? DateTime.MinValue)
+            .ThenBy(e => e.Index)
+            .Select((e, rank) => new ComputedFailure(
+                e.JobId,
+                read.Count - rank,
+                FailureFingerprint.Compute(
+                    e.Dto.ExceptionType, e.Dto.ExceptionMessage, e.Dto.ExceptionDetails,
+                    e.Dto.InvocationData?.Type ?? e.Dto.Job?.Type.FullName),
+                e.Dto.FailedAt))
+            .ToList();
+
+        var result = await FailureGrouping.BuildAsync(
+            stored: null, unfingerprintedCount: failedCount, computed, labelCount, loadNewestJobs: null, ct);
+
+        // Every job that was read counts as covered, including one whose details the storage no
+        // longer had: it can't be fingerprinted, but reading further wouldn't change that.
+        result.FallbackCount = read.Count;
+        return result;
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<JobSummaryDto>> GetFailureGroupJobsAsync(
+        FailureGroupDto group, int count, CancellationToken ct)
+    {
+        var jobs = new List<JobSummaryDto>();
+        if (group == null || count <= 0)
+            return Task.FromResult<IReadOnlyList<JobSummaryDto>>(jobs);
+
+        using var connection = _storage.GetReadOnlyConnection();
+        foreach (var jobId in group.ComputedJobIds ?? Array.Empty<string>())
+        {
+            if (jobs.Count >= count)
+                break;
+            ct.ThrowIfCancellationRequested();
+
+            // The group lists the jobs as they were when it was read; skip any that has left the
+            // Failed state since.
+            var jobData = connection.GetJobData(jobId);
+            if (jobData == null || !string.Equals(jobData.State, "Failed", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var state = connection.GetStateData(jobId);
+            var invocationData = jobData.InvocationData
+                ?? (jobData.Job != null ? InvocationData.SerializeJob(jobData.Job) : null);
+
+            jobs.Add(new JobSummaryDto
+            {
+                JobId = jobId,
+                JobName = JobNameHelper.GetDisplayName(jobData.Job, invocationData),
+                State = jobData.State,
+                Queue = jobData.Job?.Queue,
+                CreatedAt = jobData.CreatedAt,
+                LastStateChange = FailureGrouping.ReadFailedAt(state?.Data, null),
+                ExceptionType = GetValue(state?.Data, "ExceptionType"),
+                ExceptionMessage = GetValue(state?.Data, "ExceptionMessage"),
+                Reason = state?.Reason,
+                InvocationData = invocationData,
+            });
+        }
+
+        return Task.FromResult<IReadOnlyList<JobSummaryDto>>(jobs);
+    }
+
+    private JobList<FailedJobDto> FetchFailed(IMonitoringApi monitoringApi, int from, int count)
+        => _failedJobs != null ? _failedJobs.GetFailedJobs(from, count) : monitoringApi.FailedJobs(from, count);
+
+    private static string GetValue(IDictionary<string, string> data, string key)
+        => data != null && data.TryGetValue(key, out var value) ? value : null;
 
     // ─── Private Helpers ───────────────────────────────────────────────────────
 

@@ -17,6 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Lets the suite EXPLAIN the grouping query the provider actually runs. -->
+    <InternalsVisibleTo Include="a2n.Hangfire.Dashboard.PostgreSql.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

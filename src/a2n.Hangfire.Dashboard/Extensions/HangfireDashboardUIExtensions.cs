@@ -175,7 +175,8 @@ public static class HangfireDashboardUIExtensions
             {
                 var storage = sp.GetRequiredService<JobStorage>();
                 var tagsReader = sp.GetRequiredService<TagsDataReader>();
-                return new GenericQueryProvider(storage, tagsReader);
+                var failedJobs = sp.GetService<IFailedJobPageSource>();
+                return new GenericQueryProvider(storage, tagsReader, failedJobs);
             });
         }
 
