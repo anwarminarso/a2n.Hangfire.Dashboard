@@ -40,13 +40,13 @@ else
                 <i class="bi bi-trash"></i> Delete
             </button>
         </div>
-        <div class="d-flex align-items-center gap-2 ms-auto">
+        <div class="d-flex align-items-center gap-2 ms-auto hf-toolbar-end">
             @* Client-side filter over the loaded recurring jobs (Issue #13). Matches the job id and
                the resolved job name; also narrows the Stopped Jobs section. *@
             @* Uncontrolled input: we intentionally do NOT bind the value back to the element while
                typing. Echoing a server-side value on every keystroke is what dropped characters when
                typing quickly over the Blazor Server circuit (Issue #19); filtering is debounced. *@
-            <div class="input-group input-group-sm" style="width: 18rem;">
+            <div class="input-group input-group-sm hf-filter-input">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input type="search" class="form-control" id="recurring-filter" placeholder="Filter by id or job name"
                        @oninput="OnFilterInput" aria-label="Filter recurring jobs" />
@@ -63,15 +63,15 @@ else
                 <h6 class="mb-0">Stopped Jobs</h6>
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <SortableHeader Label="Id" IsActive="@_stoppedSort.IsActive(StoppedJobSortColumn.Id)"
                                                 Descending="@_stoppedSort.Descending"
                                                 OnSort="() => SortStoppedBy(StoppedJobSortColumn.Id)" />
-                                <th>Cron</th>
-                                <th>Time Zone</th>
+                                <th class="hf-col-p1">Cron</th>
+                                <th class="hf-col-p3">Time Zone</th>
                                 <SortableHeader Label="Job" IsActive="@_stoppedSort.IsActive(StoppedJobSortColumn.Job)"
                                                 Descending="@_stoppedSort.Descending"
                                                 OnSort="() => SortStoppedBy(StoppedJobSortColumn.Job)" />
@@ -85,17 +85,17 @@ else
                             @foreach (var stopped in PagedStopped)
                             {
                                 <tr class="table-secondary">
-                                    <td><span class="hf-job-name font-monospace" title="@stopped.Id">@stopped.Id</span></td>
-                                    <td><code class="font-monospace">@stopped.Cron</code></td>
-                                    <td>@(stopped.TimeZone ?? "UTC")</td>
-                                    <td class="hf-job-cell"><span class="hf-job-name" title="@($"{stopped.TypeName}.{stopped.MethodName}")">@stopped.TypeName.@stopped.MethodName</span></td>
-                                    <td>
+                                    <td class="hf-cell-title"><span class="hf-job-name font-monospace" title="@stopped.Id">@stopped.Id</span></td>
+                                    <td class="hf-cell-meta hf-nowrap hf-col-p1" data-label="Cron"><code class="font-monospace">@stopped.Cron</code></td>
+                                    <td class="hf-cell-meta hf-col-p3" data-label="Time Zone">@(stopped.TimeZone ?? "UTC")</td>
+                                    <td class="hf-job-cell hf-cell-primary"><span class="hf-job-name" title="@($"{stopped.TypeName}.{stopped.MethodName}")">@stopped.TypeName.@stopped.MethodName</span></td>
+                                    <td class="hf-cell-meta hf-nowrap" data-label="Stopped At">
                                         @if (stopped.StoppedAt.HasValue)
                                         {
                                             <RelativeTime UtcTime="@stopped.StoppedAt.Value" />
                                         }
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-actions">
                                         <button class="btn btn-primary btn-sm" @onclick="() => StartJob(stopped.Id)">
                                             <i class="bi bi-play-fill"></i> Start
                                         </button>
@@ -120,29 +120,29 @@ else
     {
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <th style="width: 2rem;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" /></th>
+                                <th style="width: 2rem;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" /></th>
                                 <SortableHeader Label="Id" IsActive="@_sort.IsActive(RecurringJobSortColumn.Id)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.Id)" />
-                                <th>Cron</th>
-                                <th>Time Zone</th>
+                                <th class="hf-col-p1">Cron</th>
+                                <th class="hf-col-p4">Time Zone</th>
                                 <SortableHeader Label="Job" IsActive="@_sort.IsActive(RecurringJobSortColumn.Job)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.Job)" />
                                 <SortableHeader Label="Next Execution" CssClass="text-end"
                                                 IsActive="@_sort.IsActive(RecurringJobSortColumn.NextExecution)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.NextExecution)" />
-                                <SortableHeader Label="Last Execution" CssClass="text-end"
+                                <SortableHeader Label="Last Execution" CssClass="text-end hf-col-p2"
                                                 IsActive="@_sort.IsActive(RecurringJobSortColumn.LastExecution)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.LastExecution)" />
-                                <SortableHeader Label="Created" CssClass="text-end"
+                                <SortableHeader Label="Created" CssClass="text-end hf-col-p3"
                                                 IsActive="@_sort.IsActive(RecurringJobSortColumn.Created)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.Created)" />
                                 @if (Options.EnableJobManagement)
                                 {
-                                    <th>Actions</th>
+                                    <th class="hf-cell-actions">Actions</th>
                                 }
                             </tr>
                         </thead>
@@ -150,10 +150,10 @@ else
                             @foreach (var job in PagedJobs)
                             {
                                 <tr>
-                                    <td>
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" />
+                                    <td class="hf-cell-select">
+                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" aria-label="Select @job.Id" />
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-title">
                                         @if (!string.IsNullOrEmpty(job.LastJobId))
                                         {
                                             <a class="hf-job-name font-monospace text-decoration-none" href="jobs/details/@job.LastJobId" title="@job.Id">@job.Id</a>
@@ -163,10 +163,10 @@ else
                                             <span class="hf-job-name font-monospace" title="@job.Id">@job.Id</span>
                                         }
                                     </td>
-                                    <td><code class="font-monospace">@job.Cron</code></td>
-                                    <td>@(job.TimeZoneId ?? "UTC")</td>
-                                    <td class="hf-job-cell"><JobNameDisplay Job="@job.Job" Name="@GetJobName(job)" /></td>
-                                    <td class="text-end">
+                                    <td class="hf-cell-meta hf-nowrap hf-col-p1" data-label="Cron"><code class="font-monospace">@job.Cron</code></td>
+                                    <td class="hf-cell-meta hf-col-p4" data-label="Time Zone">@(job.TimeZoneId ?? "UTC")</td>
+                                    <td class="hf-job-cell hf-cell-primary"><JobNameDisplay Job="@job.Job" Name="@GetJobName(job)" /></td>
+                                    <td class="text-end hf-cell-meta hf-nowrap" data-label="Next Execution">
                                         @if (job.NextExecution.HasValue)
                                         {
                                             <RelativeTime UtcTime="@job.NextExecution.Value" IsFuture="true" />
@@ -180,7 +180,7 @@ else
                                             <span class="badge bg-secondary">Disabled</span>
                                         }
                                     </td>
-                                    <td class="text-end">
+                                    <td class="text-end hf-cell-meta hf-nowrap hf-col-p2" data-label="Last Execution">
                                         @if (job.LastExecution.HasValue)
                                         {
                                             @if (!string.IsNullOrEmpty(job.LastJobId))
@@ -201,7 +201,7 @@ else
                                             <em class="text-body-secondary">N/A</em>
                                         }
                                     </td>
-                                    <td class="text-end">
+                                    <td class="text-end hf-cell-meta hf-nowrap hf-col-p3" data-label="Created">
                                         @if (job.CreatedAt.HasValue)
                                         {
                                             <RelativeTime UtcTime="@job.CreatedAt.Value" />
@@ -211,7 +211,7 @@ else
                                             <em class="text-body-secondary">N/A</em>
                                         }
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-actions">
                                         @if (Options.EnableJobManagement)
                                         {
                                             <a class="btn btn-outline-secondary btn-sm" href="recurring/edit/@Uri.EscapeDataString(job.Id)" title="Edit this recurring job">
@@ -225,7 +225,7 @@ else
                                 </tr>
                                 @if (job.Error is not null)
                                 {
-                                    <tr>
+                                    <tr class="hf-row-detail">
                                         <td></td>
                                         <td colspan="@(Options.EnableJobManagement ? 8 : 7)">
                                             <div class="alert alert-danger py-2 mb-0">

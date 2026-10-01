@@ -60,8 +60,8 @@
                         }
                         else
                         {
-                            <div class="table-responsive">
-                                <table class="table table-hover table-sm mb-0">
+                            <div class="table-responsive hf-grid">
+                                <table class="table table-hover table-sm mb-0 hf-stack">
                                     <thead>
                                         <tr>
                                             <SortableHeader Label="Queue Name" IsActive="@_queueSort.IsActive(QueueSort.Name)"
@@ -80,11 +80,11 @@
                                         @foreach (var row in SortedQueueStatusRows)
                                         {
                                             <tr>
-                                                <td><code>@row.QueueName</code></td>
-                                                <td class="text-end">@row.EnqueuedCount.ToString("N0")</td>
-                                                <td class="text-end">@row.FetchedCount.ToString("N0")</td>
-                                                <td class="text-end">@FormatDuration(row.AvgWaitMs)</td>
-                                                <td>
+                                                <td class="hf-cell-title"><code>@row.QueueName</code></td>
+                                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Enqueued">@row.EnqueuedCount.ToString("N0")</td>
+                                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Fetched">@row.FetchedCount.ToString("N0")</td>
+                                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Avg Wait">@FormatDuration(row.AvgWaitMs)</td>
+                                                <td class="hf-cell-meta hf-cell-wide" data-label="Throughput/hr">
                                                     <div class="d-flex align-items-center gap-2">
                                                         <div class="progress flex-grow-1" style="height: 8px;" role="progressbar"
                                                              aria-valuenow="@row.ThroughputPerHour" aria-valuemin="0" aria-valuemax="@_maxThroughput">
@@ -124,8 +124,8 @@
                         }
                         else
                         {
-                            <div class="table-responsive">
-                                <table class="table table-hover table-sm mb-0">
+                            <div class="table-responsive hf-grid">
+                                <table class="table table-hover table-sm mb-0 hf-stack">
                                     <thead>
                                         <tr>
                                             <SortableHeader Label="Server Name" IsActive="@_serverSort.IsActive(ServerSort.Name)"
@@ -142,10 +142,10 @@
                                         @foreach (var server in SortedServerUtilization)
                                         {
                                             <tr>
-                                                <td><code>@server.ServerName</code></td>
-                                                <td class="text-end">@server.TotalWorkers</td>
-                                                <td class="text-end">@server.BusyWorkers</td>
-                                                <td>
+                                                <td class="hf-cell-title" style="overflow-wrap: anywhere;"><code>@server.ServerName</code></td>
+                                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Total Workers">@server.TotalWorkers</td>
+                                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Busy Workers">@server.BusyWorkers</td>
+                                                <td class="hf-cell-meta hf-cell-wide" data-label="Utilization %">
                                                     <div class="d-flex align-items-center gap-2">
                                                         <div class="progress flex-grow-1" style="height: 8px;" role="progressbar"
                                                              aria-valuenow="@((int)server.UtilizationPercent)" aria-valuemin="0" aria-valuemax="100">

@@ -49,7 +49,7 @@ else
     }
     else
     {
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <small class="text-body-secondary">
                 @_taggedJobs.TotalCount job@(_taggedJobs.TotalCount != 1 ? "s" : "") tagged
             </small>
@@ -58,28 +58,29 @@ else
 
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <th>Id</th>
                                 <th>Job</th>
                                 <th>State</th>
-                                <th class="text-end">Created</th>
+                                <th class="text-end hf-col-p1">Created</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var job in _taggedJobs.Items)
                             {
                                 <tr>
-                                    <td class="font-monospace">
+                                    <td class="font-monospace hf-cell-title hf-nowrap">
                                         <a href="jobs/details/@job.JobId">@ShortenId(job.JobId)</a>
                                     </td>
-                                    <td>@(job.JobName ?? "Unknown")</td>
-                                    <td>
+                                    @* Same wrapping name cell as the other job lists (#55). *@
+                                    <td class="hf-job-cell hf-cell-primary"><span class="hf-job-name" title="@(job.JobName ?? "Unknown")">@(job.JobName ?? "Unknown")</span></td>
+                                    <td class="hf-cell-meta" data-label="State">
                                         <span class="badge @GetStateBadgeClass(job.State)">@(job.State ?? "Unknown")</span>
                                     </td>
-                                    <td class="text-end">
+                                    <td class="text-end hf-cell-meta hf-nowrap hf-col-p1" data-label="Created">
                                         @if (job.CreatedAt.HasValue)
                                         {
                                             <RelativeTime UtcTime="@job.CreatedAt.Value" />

@@ -22,7 +22,7 @@
 
     <!-- Dashboard (standalone, no group label) -->
     <div class="hf-nav-section">
-        <NavLink class="hf-nav-item" href="" Match="NavLinkMatch.All">
+        <NavLink class="hf-nav-item" href="" Match="NavLinkMatch.All" title="Dashboard">
             <i class="bi bi-grid hf-nav-icon"></i>
             <span>Dashboard</span>
         </NavLink>
@@ -31,7 +31,7 @@
     <!-- Jobs -->
     <div class="hf-nav-section">
         <NavMenuGroup Title="Jobs" GroupId="jobs" ExpandPaths="@_jobsExpandPaths">
-        <NavLink class="hf-nav-item" href="jobs/enqueued">
+        <NavLink class="hf-nav-item" href="jobs/enqueued" title="Enqueued">
             <i class="bi bi-inbox hf-nav-icon"></i>
             <span>Enqueued</span>
             @if (_stats?.Enqueued > 0)
@@ -39,7 +39,7 @@
                 <span class="hf-nav-counter">@_stats.Enqueued</span>
             }
         </NavLink>
-        <NavLink class="hf-nav-item" href="jobs/processing">
+        <NavLink class="hf-nav-item" href="jobs/processing" title="Processing">
             <i class="bi bi-gear hf-nav-icon"></i>
             <span>Processing</span>
             @if (_stats?.Processing > 0)
@@ -47,7 +47,7 @@
                 <span class="hf-nav-counter">@_stats.Processing</span>
             }
         </NavLink>
-        <NavLink class="hf-nav-item" href="jobs/scheduled">
+        <NavLink class="hf-nav-item" href="jobs/scheduled" title="Scheduled">
             <i class="bi bi-clock hf-nav-icon"></i>
             <span>Scheduled</span>
             @if (_stats?.Scheduled > 0)
@@ -55,11 +55,11 @@
                 <span class="hf-nav-counter">@_stats.Scheduled</span>
             }
         </NavLink>
-        <NavLink class="hf-nav-item" href="jobs/succeeded">
+        <NavLink class="hf-nav-item" href="jobs/succeeded" title="Succeeded">
             <i class="bi bi-check-circle hf-nav-icon"></i>
             <span>Succeeded</span>
         </NavLink>
-        <NavLink class="hf-nav-item" href="jobs/failed">
+        <NavLink class="hf-nav-item" href="jobs/failed" title="Failed">
             <i class="bi bi-x-circle hf-nav-icon"></i>
             <span>Failed</span>
             @if (_stats?.Failed > 0)
@@ -67,11 +67,11 @@
                 <span class="hf-nav-counter hf-nav-counter--alert">@_stats.Failed</span>
             }
         </NavLink>
-        <NavLink class="hf-nav-item" href="jobs/deleted">
+        <NavLink class="hf-nav-item" href="jobs/deleted" title="Deleted">
             <i class="bi bi-trash hf-nav-icon"></i>
             <span>Deleted</span>
         </NavLink>
-        <NavLink class="hf-nav-item" href="jobs/awaiting">
+        <NavLink class="hf-nav-item" href="jobs/awaiting" title="Awaiting">
             <i class="bi bi-hourglass-split hf-nav-icon"></i>
             <span>Awaiting</span>
         </NavLink>
@@ -81,7 +81,7 @@
     <!-- Management -->
     <div class="hf-nav-section">
         <NavMenuGroup Title="Management" GroupId="management" ExpandPaths="@_managementExpandPaths">
-        <NavLink class="hf-nav-item" href="recurring">
+        <NavLink class="hf-nav-item" href="recurring" title="Recurring">
             <i class="bi bi-arrow-repeat hf-nav-icon"></i>
             <span>Recurring</span>
             @if (_stats?.Recurring > 0)
@@ -91,12 +91,12 @@
         </NavLink>
         @if (Options.Heatmap.Enabled)
         {
-            <NavLink class="hf-nav-item" href="heatmap">
+            <NavLink class="hf-nav-item" href="heatmap" title="Schedule Heatmap">
                 <i class="bi bi-grid-3x3 hf-nav-icon"></i>
                 <span>Schedule Heatmap</span>
             </NavLink>
         }
-        <NavLink class="hf-nav-item" href="servers">
+        <NavLink class="hf-nav-item" href="servers" title="Servers">
             <i class="bi bi-hdd-stack hf-nav-icon"></i>
             <span>Servers</span>
             @if (_stats?.Servers > 0)
@@ -104,7 +104,7 @@
                 <span class="hf-nav-counter">@_stats.Servers</span>
             }
         </NavLink>
-        <NavLink class="hf-nav-item" href="queues">
+        <NavLink class="hf-nav-item" href="queues" title="Queues">
             <i class="bi bi-collection hf-nav-icon"></i>
             <span>Queues</span>
             @if (_pausedQueueCount > 0)
@@ -112,18 +112,18 @@
                 <span class="hf-nav-counter hf-nav-counter--alert">@_pausedQueueCount</span>
             }
         </NavLink>
-        <NavLink class="hf-nav-item" href="retries">
+        <NavLink class="hf-nav-item" href="retries" title="Retries">
             <i class="bi bi-arrow-counterclockwise hf-nav-icon"></i>
             <span>Retries</span>
         </NavLink>
         @if (_hasThrottling)
         {
-            <NavLink class="hf-nav-item" href="throttling">
+            <NavLink class="hf-nav-item" href="throttling" title="Throttling">
                 <i class="bi bi-sliders hf-nav-icon"></i>
                 <span>Throttling</span>
             </NavLink>
         }
-        <NavLink class="hf-nav-item" href="tags">
+        <NavLink class="hf-nav-item" href="tags" title="Tags">
             <i class="bi bi-tag hf-nav-icon"></i>
             <span>Tags</span>
             @if (_tagsCount > 0)
@@ -131,11 +131,11 @@
                 <span class="hf-nav-counter">@_tagsCount</span>
             }
         </NavLink>
-        <NavLink class="hf-nav-item" href="search">
+        <NavLink class="hf-nav-item" href="search" title="Search">
             <i class="bi bi-search hf-nav-icon"></i>
             <span>Search</span>
         </NavLink>
-        <NavLink class="hf-nav-item" href="audit">
+        <NavLink class="hf-nav-item" href="audit" title="Audit Log">
             <i class="bi bi-clipboard-check hf-nav-icon"></i>
             <span>Audit Log</span>
         </NavLink>
@@ -147,23 +147,23 @@
     {
         <div class="hf-nav-section">
             <NavMenuGroup Title="Analytics" GroupId="analytics" ExpandPaths="@_analyticsExpandPaths">
-            <NavLink class="hf-nav-item" href="analytics" Match="NavLinkMatch.All">
+            <NavLink class="hf-nav-item" href="analytics" Match="NavLinkMatch.All" title="Overview">
                 <i class="bi bi-graph-up hf-nav-icon"></i>
                 <span>Overview</span>
             </NavLink>
-            <NavLink class="hf-nav-item" href="analytics/performance">
+            <NavLink class="hf-nav-item" href="analytics/performance" title="Performance">
                 <i class="bi bi-speedometer2 hf-nav-icon"></i>
                 <span>Performance</span>
             </NavLink>
-            <NavLink class="hf-nav-item" href="analytics/failures">
+            <NavLink class="hf-nav-item" href="analytics/failures" title="Failures">
                 <i class="bi bi-x-circle hf-nav-icon"></i>
                 <span>Failures</span>
             </NavLink>
-            <NavLink class="hf-nav-item" href="analytics/queues">
+            <NavLink class="hf-nav-item" href="analytics/queues" title="Queues">
                 <i class="bi bi-inbox hf-nav-icon"></i>
                 <span>Queues</span>
             </NavLink>
-            <NavLink class="hf-nav-item" href="analytics/recurring">
+            <NavLink class="hf-nav-item" href="analytics/recurring" title="Recurring">
                 <i class="bi bi-arrow-repeat hf-nav-icon"></i>
                 <span>Recurring</span>
             </NavLink>

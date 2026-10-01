@@ -19,7 +19,7 @@
     }
     else
     {
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <div class="d-flex gap-2">
                 <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
                     <i class="bi bi-arrow-repeat"></i> Enqueue
@@ -33,15 +33,15 @@
 
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <th style="width: 40px;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" /></th>
+                                <th style="width: 40px;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" /></th>
                                 <th>Id</th>
                                 <th>Job</th>
-                                <th>Options</th>
-                                <th>Parent</th>
+                                <th class="hf-col-p2">Options</th>
+                                <th class="hf-col-p1">Parent</th>
                                 <SortableHeader Label="Since" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
                                                 Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
                             </tr>
@@ -51,14 +51,14 @@
                             {
                                 _jobInfo.TryGetValue(jobId, out var info);
                                 <tr>
-                                    <td>
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(jobId)" @onchange="() => ToggleJob(jobId)" />
+                                    <td class="hf-cell-select">
+                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(jobId)" @onchange="() => ToggleJob(jobId)" aria-label="Select job @jobId" />
                                     </td>
-                                    <td class="font-monospace">
+                                    <td class="font-monospace hf-cell-title hf-nowrap">
                                         <a href="jobs/details/@jobId">@ShortenId(jobId)</a>
                                     </td>
-                                    <td class="hf-job-cell"><JobNameDisplay Name="@(info.jobName ?? "Unknown")" ArgumentsText="@(info.jobArgs ?? "")" /></td>
-                                    <td>
+                                    <td class="hf-job-cell hf-cell-primary"><JobNameDisplay Name="@(info.jobName ?? "Unknown")" ArgumentsText="@(info.jobArgs ?? "")" /></td>
+                                    <td class="hf-cell-meta hf-col-p2" data-label="Options">
                                         @if (!string.IsNullOrEmpty(info.options))
                                         {
                                             <code>@info.options</code>
@@ -68,7 +68,7 @@
                                             <em class="text-body-secondary">N/A</em>
                                         }
                                     </td>
-                                    <td class="font-monospace">
+                                    <td class="font-monospace hf-cell-meta hf-col-p1" data-label="Parent">
                                         @if (!string.IsNullOrEmpty(info.parentId))
                                         {
                                             <a href="jobs/details/@info.parentId">
@@ -87,7 +87,7 @@
                                             <em class="text-body-secondary">N/A</em>
                                         }
                                     </td>
-                                    <td class="text-end">
+                                    <td class="text-end hf-cell-meta hf-nowrap" data-label="Since">
                                         @if (info.createdAt.HasValue)
                                         {
                                             <RelativeTime UtcTime="@info.createdAt.Value" />

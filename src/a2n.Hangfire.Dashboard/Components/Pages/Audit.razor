@@ -76,13 +76,15 @@ else
     {
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm align-middle mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm align-middle mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <th style="width: 14rem;">When</th>
-                                <th style="width: 13rem;">Action</th>
-                                <th style="width: 12rem;">User</th>
+                                @* Columns size to their content: the former fixed widths (39rem together)
+                                   pushed Target and Details off screen below desktop width. *@
+                                <th class="hf-nowrap">When</th>
+                                <th class="hf-nowrap">Action</th>
+                                <th class="hf-col-p1">User</th>
                                 <th>Target</th>
                                 <th>Details</th>
                             </tr>
@@ -91,20 +93,20 @@ else
                             @foreach (var e in _entries)
                             {
                                 <tr>
-                                    <td title="@e.TimestampUtc.ToString("O")">
+                                    <td class="hf-cell-meta hf-nowrap" data-label="When" title="@e.TimestampUtc.ToString("O")">
                                         <RelativeTime UtcTime="@e.TimestampUtc" />
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-title hf-nowrap">
                                         <span class="badge @ActionBadgeClass(e.Action)">@e.Action</span>
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta hf-col-p1" data-label="User">
                                         @e.User
                                         @if (!string.IsNullOrEmpty(e.ClientIp))
                                         {
                                             <br /><small class="text-body-secondary font-monospace">@e.ClientIp</small>
                                         }
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-primary" style="overflow-wrap: anywhere;">
                                         @if (!string.IsNullOrEmpty(e.Target))
                                         {
                                             <code>@e.Target</code>

@@ -4,18 +4,20 @@
 @implements IDisposable
 
 <footer class="hf-footer border-top px-3 py-2 flex-shrink-0">
-    <div class="d-flex flex-wrap align-items-center gap-3 small text-muted">
-        <span>
+    <div class="d-flex flex-nowrap flex-sm-wrap align-items-center gap-3 small text-muted">
+        <span class="text-nowrap">
             <a href="https://www.hangfire.io/" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
                 Hangfire @_hangfireVersion
             </a>
         </span>
         @if (!string.IsNullOrEmpty(_storageInfo))
         {
-            <span>@_storageInfo</span>
+            @* A connection summary can be long; on phones it is cut to one line, with the full text on hover. *@
+            <span class="text-truncate" title="@_storageInfo">@_storageInfo</span>
         }
-        <span>Application Time: @_applicationTime</span>
-        <span>Generated: @_generatedTime</span>
+        @* Diagnostic details; on phones the footer keeps to one line so it doesn't eat the viewport. *@
+        <span class="d-none d-sm-inline">Application Time: @_applicationTime</span>
+        <span class="d-none d-sm-inline">Generated: @_generatedTime</span>
     </div>
 </footer>
 

@@ -18,7 +18,7 @@
     }
     else
     {
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <div class="d-flex gap-2">
                 <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
                     <i class="bi bi-play-fill"></i> Enqueue
@@ -32,36 +32,36 @@
 
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <th style="width: 40px;">
-                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" />
+                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
                                 </th>
                                 <th>Id</th>
                                 <SortableHeader Label="Enqueue" IsActive="@_order.NewestFirst.HasValue"
                                                 Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
                                 <th>Job</th>
-                                <th class="text-end">Scheduled</th>
+                                <th class="text-end hf-col-p1">Scheduled</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var job in _jobs)
                             {
                                 <tr>
-                                    <td>
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" />
+                                    <td class="hf-cell-select">
+                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
                                     </td>
-                                    <td class="font-monospace"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                    <td>
+                                    <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                    <td class="hf-cell-meta hf-nowrap" data-label="Enqueue">
                                         @if (job.Value is not null)
                                         {
                                             <RelativeTime UtcTime="@job.Value.EnqueueAt" IsFuture="true" />
                                         }
                                     </td>
-                                    <td class="hf-job-cell"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
-                                    <td class="text-end">
+                                    <td class="hf-job-cell hf-cell-primary"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
+                                    <td class="text-end hf-cell-meta hf-nowrap hf-col-p1" data-label="Scheduled">
                                         @if (job.Value?.ScheduledAt.HasValue == true)
                                         {
                                             <RelativeTime UtcTime="@job.Value.ScheduledAt.Value" />

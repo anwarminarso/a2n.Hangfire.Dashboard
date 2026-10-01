@@ -173,8 +173,8 @@ else if (_statsExpanded)
     <div class="card">
         <div class="card-body">
             <h6 class="card-title">Servers</h6>
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+            <div class="table-responsive hf-grid">
+                <table class="table table-hover table-sm mb-0 hf-stack">
                     <thead>
                         <tr>
                             <SortableHeader Label="Name" IsActive="@_serverSort.IsActive(ServerSort.Name)"
@@ -182,7 +182,7 @@ else if (_statsExpanded)
                             <SortableHeader Label="Workers" IsActive="@_serverSort.IsActive(ServerSort.Workers)"
                                             Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Workers)" />
                             <th>Queues</th>
-                            <SortableHeader Label="Started" IsActive="@_serverSort.IsActive(ServerSort.Started)"
+                            <SortableHeader Label="Started" CssClass="hf-col-p1" IsActive="@_serverSort.IsActive(ServerSort.Started)"
                                             Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Started)" />
                             <SortableHeader Label="Heartbeat" IsActive="@_serverSort.IsActive(ServerSort.Heartbeat)"
                                             Descending="@_serverSort.Descending" OnSort="() => _serverSort.Toggle(ServerSort.Heartbeat)" />
@@ -192,11 +192,11 @@ else if (_statsExpanded)
                         @foreach (var server in SortedServers)
                         {
                             <tr>
-                                <td><ServerLabel FullId="@server.Name" /></td>
-                                <td>@server.WorkersCount</td>
-                                <td>@string.Join(", ", server.Queues)</td>
-                                <td>@FormatRelativeTime(server.StartedAt)</td>
-                                <td>
+                                <td class="hf-cell-title"><ServerLabel FullId="@server.Name" /></td>
+                                <td class="hf-cell-meta" data-label="Workers">@server.WorkersCount</td>
+                                <td class="hf-cell-meta" data-label="Queues">@string.Join(", ", server.Queues)</td>
+                                <td class="hf-cell-meta hf-nowrap hf-col-p1" data-label="Started">@FormatRelativeTime(server.StartedAt)</td>
+                                <td class="hf-cell-meta hf-nowrap" data-label="Heartbeat">
                                     @if (server.Heartbeat.HasValue)
                                     {
                                         <span class="d-inline-block rounded-circle bg-success me-1" style="width:8px;height:8px;"></span>

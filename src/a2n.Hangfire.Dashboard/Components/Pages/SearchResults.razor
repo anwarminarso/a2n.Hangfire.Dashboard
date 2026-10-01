@@ -289,7 +289,7 @@ else if (_result is not null)
     else
     {
         @* Top toolbar: page size selector *@
-        <div id="search-results" class="d-flex justify-content-between align-items-center mb-2">
+        <div id="search-results" class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <small class="text-body-secondary">
                 Showing @(_from + 1)–@Math.Min(_from + _pageSize, _result.TotalCount) of @TotalLabel
                 @if (_result.TotalCountIsLowerBound)
@@ -303,14 +303,14 @@ else if (_result is not null)
         @* Results table *@
         <div class="card">
             <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <th>Job ID</th>
                                 <th>Job Name</th>
                                 <th>State</th>
-                                <th>Queue</th>
+                                <th class="hf-col-p1">Queue</th>
                                 <th class="text-end">Last State Change</th>
                             </tr>
                         </thead>
@@ -318,11 +318,11 @@ else if (_result is not null)
                             @foreach (var item in _result.Items)
                             {
                                 <tr>
-                                    <td class="font-monospace">
+                                    <td class="font-monospace hf-cell-title hf-nowrap">
                                         <a href="@GetJobDetailsUrl(item.JobId)">@ShortenJobId(item.JobId)</a>
                                     </td>
-                                    <td>
-                                        <div>@(item.JobName ?? "Unknown")</div>
+                                    <td class="hf-job-cell hf-cell-primary">
+                                        <span class="hf-job-name" title="@(item.JobName ?? "Unknown")">@(item.JobName ?? "Unknown")</span>
                                         @if (item.Tags is not null && item.Tags.Length > 0)
                                         {
                                             <div class="d-flex flex-wrap gap-1 mt-1">
@@ -340,10 +340,10 @@ else if (_result is not null)
                                             </div>
                                         }
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta" data-label="State">
                                         <span class="badge @GetStateBadgeClass(item.State)">@(item.State ?? "Unknown")</span>
                                     </td>
-                                    <td>
+                                    <td class="hf-cell-meta hf-col-p1" data-label="Queue">
                                         @if (string.IsNullOrEmpty(item.Queue))
                                         {
                                             <span class="text-body-secondary">—</span>
@@ -353,7 +353,7 @@ else if (_result is not null)
                                             <QueueBadge Queue="@item.Queue" />
                                         }
                                     </td>
-                                    <td class="text-end">
+                                    <td class="text-end hf-cell-meta hf-nowrap" data-label="Last change">
                                         @if (item.LastStateChange.HasValue)
                                         {
                                             <RelativeTime UtcTime="@item.LastStateChange.Value" />

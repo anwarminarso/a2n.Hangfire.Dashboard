@@ -7,14 +7,13 @@
 @implements IDisposable
 
 <div class="d-flex vh-100 overflow-hidden">
-    <!-- Sidebar: fixed di desktop, hidden di mobile -->
-    <aside class="d-none d-lg-flex flex-column flex-shrink-0 hf-sidebar"
-           style="width: 240px; overflow-y: auto;" id="sidebar">
+    <!-- Sidebar: full width from 1400px, an icon rail from 992px (hf-sidebar-desktop), off-canvas below -->
+    <aside class="d-none d-lg-flex flex-column flex-shrink-0 hf-sidebar hf-sidebar-desktop" id="sidebar">
         <NavMenu />
     </aside>
 
     <!-- Offcanvas sidebar untuk mobile -->
-    <div class="offcanvas offcanvas-start hf-sidebar" tabindex="-1" id="mobileSidebar">
+    <div class="offcanvas offcanvas-start hf-sidebar hf-sidebar-offcanvas" tabindex="-1" id="mobileSidebar">
         <div class="offcanvas-header">
             <h5 class="offcanvas-title" style="color: var(--hf-nav-brand-color);">@Options.DashboardTitle</h5>
             <button type="button" class="btn-close btn-close-white"
@@ -27,21 +26,27 @@
 
     <!-- Main content area -->
     <div class="flex-grow-1 d-flex flex-column overflow-hidden">
-        <header class="navbar bg-body border-bottom px-3 flex-shrink-0">
-            <div class="d-flex align-items-center gap-2">
+        @* One line at every width: a long page title is truncated rather than pushing the buttons
+           onto a second line. *@
+        <header class="navbar flex-nowrap bg-body border-bottom px-3 flex-shrink-0">
+            <div class="d-flex align-items-center gap-2" style="min-width: 0;">
                 <button class="btn btn-link d-lg-none p-1"
                         data-bs-toggle="offcanvas" data-bs-target="#mobileSidebar"
                         aria-label="Toggle navigation">
                     <i class="bi bi-list fs-4"></i>
                 </button>
-                <h1 class="navbar-text fw-semibold fs-6 mb-0">@_pageTitle</h1>
+                <h1 class="navbar-text fw-semibold fs-6 mb-0 text-truncate" title="@_pageTitle">@_pageTitle</h1>
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-shrink-0 ms-2">
                 @if (!_isSearchPage)
                 {
                     <div class="d-none d-md-block">
                         <SearchBar />
                     </div>
+                    @* The inline search box doesn't fit a phone's header; the Search page does the same job. *@
+                    <a href="search" class="btn btn-sm btn-outline-secondary d-md-none" title="Search" aria-label="Search">
+                        <i class="bi bi-search"></i>
+                    </a>
                 }
                 @if (Options.AppPath is not null)
                 {
@@ -54,7 +59,7 @@
             </div>
         </header>
 
-        <main class="flex-grow-1 overflow-auto p-3 p-lg-4">
+        <main class="flex-grow-1 overflow-auto hf-main">
             <MaintenanceBanner />
             @Body
         </main>
@@ -160,6 +165,7 @@
             "/jobs/deleted" => "Deleted Jobs",
             "/jobs/awaiting" => "Awaiting Jobs",
             "/recurring" => "Recurring Jobs",
+            "/heatmap" => "Schedule Heatmap",
             "/servers" => "Servers",
             "/queues" => "Queues",
             "/retries" => "Retries",

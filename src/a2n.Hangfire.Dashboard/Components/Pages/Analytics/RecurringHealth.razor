@@ -45,8 +45,8 @@ else
     <div class="card mb-4">
         <div class="card-body">
             <h6 class="card-title mb-3">Health Status</h6>
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+            <div class="table-responsive hf-grid">
+                <table class="table table-hover table-sm mb-0 hf-stack">
                     <thead>
                         <tr>
                             <SortableHeader Label="Job ID" IsActive="@_sort.IsActive(HealthSort.JobId)" Descending="@_sort.Descending"
@@ -57,21 +57,21 @@ else
                                             OnSort="() => _sort.Toggle(HealthSort.LastRun)" />
                             <SortableHeader Label="Avg Duration" IsActive="@_sort.IsActive(HealthSort.AvgDuration)" Descending="@_sort.Descending"
                                             OnSort="() => _sort.Toggle(HealthSort.AvgDuration)" />
-                            <th>Last 5 Results</th>
+                            <th class="hf-nowrap">Last 5 Results</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var job in SortedHealthData)
                         {
                             <tr>
-                                <td class="font-monospace small">@job.JobId</td>
-                                <td>
+                                <td class="font-monospace small hf-cell-title" style="overflow-wrap: anywhere;">@job.JobId</td>
+                                <td class="hf-cell-meta hf-nowrap" data-label="Status">
                                     <span class="d-inline-block rounded-circle me-1 @GetStatusDotClass(job.Status)"
                                           style="width:10px;height:10px;"
                                           title="@job.Status.ToString()"></span>
                                     <span class="small">@job.Status.ToString()</span>
                                 </td>
-                                <td class="small">
+                                <td class="small hf-cell-meta hf-nowrap" data-label="Last Run">
                                     @if (job.LastRunTime.HasValue)
                                     {
                                         @FormatRelativeTime(job.LastRunTime.Value)
@@ -81,7 +81,7 @@ else
                                         <span class="text-muted">Never</span>
                                     }
                                 </td>
-                                <td class="small">
+                                <td class="small hf-cell-meta hf-nowrap" data-label="Avg Duration">
                                     @if (job.AverageDurationMs > 0)
                                     {
                                         @FormatDuration(job.AverageDurationMs)
@@ -91,7 +91,7 @@ else
                                         <span class="text-muted">—</span>
                                     }
                                 </td>
-                                <td>
+                                <td class="hf-cell-meta hf-nowrap" data-label="Last 5">
                                     @if (job.LastExecutionResults is not null && job.LastExecutionResults.Count > 0)
                                     {
                                         @foreach (var result in job.LastExecutionResults.Take(5))
@@ -129,8 +129,8 @@ else
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm mb-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
                                 <th style="width:200px;">Job ID</th>
@@ -141,8 +141,8 @@ else
                             @foreach (var entry in _executionHistories)
                             {
                                 <tr>
-                                    <td class="font-monospace small align-middle">@entry.Key</td>
-                                    <td>
+                                    <td class="font-monospace small align-middle hf-cell-title" style="overflow-wrap: anywhere;">@entry.Key</td>
+                                    <td class="hf-cell-meta hf-cell-wide">
                                         <div class="d-flex align-items-end gap-1" style="height:32px;">
                                             @if (entry.Value.Count > 0)
                                             {
