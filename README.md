@@ -637,7 +637,15 @@ Hangfire keeps only the first 100 lines of a failure's exception details. In a v
 
 Only failures that end in the Failed state are fingerprinted, not the attempts that `AutomaticRetry` retries. The parameter stays on the job after it is requeued or deleted, and a later failure overwrites it. It is stored as a plain string and is visible under **Parameters** on the Job Details page.
 
-Grouping on the Failed page, which is coming next, uses this parameter. Failures without it (recorded before the filter was registered, or on a server without it) will be fingerprinted from their stored exception data when the page is read. That only covers a bounded number of jobs, so register the filter on every server.
+#### Grouping on the Failed page
+
+The **Exception** filter next to the page-size selector on **Jobs → Failed** groups the failed jobs by fingerprint, most failed jobs first. Each entry shows the short exception type, as `Outer → Inner` when one exception wraps another (full names in the tooltip), the normalized message, the top frame and the number of failed jobs. Selecting one shows that exception's total and its newest jobs; the page-size selector sets how many. The group view is read-only. A group can be linked: the address becomes `jobs/failed?exception=v1:…`.
+
+"All exceptions" is the default and shows the page as before. The groups are only read when the filter is opened or a group is linked, and they are refreshed when the failed count changes. Grouping is stopped after `DashboardUIOptions.SearchTimeoutSeconds`, like a search.
+
+Fingerprints stored by the filter are counted exactly, by a query over the `Job` and `JobParameter` tables. Failures without one (recorded before the filter was registered, or on a server without it) are fingerprinted from their stored exception data and job type when the page is read. Only the newest 1,000 of those are read. When there are more, the page says so, the counts are shown as lower bounds (`1,000+`), and older failures may be missing from the list. Registering the filter on every server gives exact counts. Nothing is written back, so grouping also works in read-only mode.
+
+Only the 50 largest groups are labeled, each from its newest job. Storages without the SQL Server or PostgreSQL adapter (Redis and others) have no fast way to query job parameters. On those, the newest 1,000 failed jobs are fingerprinted in memory, with or without the filter. A custom `IStorageQueryProvider` doesn't offer the filter unless it implements `SupportsFailureGrouping`, `GetFailureGroupsAsync` and `GetFailureGroupJobsAsync`.
 
 ### Audit log
 
