@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.5.7 — Responsive layout, wrapping job names, failure fingerprints
+
+> **Patch release.** The dashboard now fits every screen from a 375px phone to a 2560px monitor: list tables hide their least important columns as they narrow and turn into cards on phones, and laptops get an icon-rail sidebar. Long job names wrap instead of being cut off ([#55](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/55)). Failed jobs can record a failure fingerprint through a new opt-in server filter, the first step toward grouping failures by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53), contributed by [@hnalpha323](https://github.com/hnalpha323) in [#54](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/54)). Adds the public `FailureFingerprint` helper and `UseDashboardFailureFingerprintFilter()`; no public API removals; no migration.
 
 ### Added
 
