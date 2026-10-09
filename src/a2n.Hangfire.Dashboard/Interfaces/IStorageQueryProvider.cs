@@ -97,9 +97,15 @@ public interface IStorageQueryProvider
     /// <see cref="GetFailureGroupsAsync"/> that are still in the Failed state, newest first.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Takes the group rather than its fingerprint because the group carries the ids of the jobs the
     /// fallback fingerprinted (<see cref="FailureGroupDto.ComputedJobIds"/>), so they are not read and
     /// fingerprinted again. This is a default interface method that returns no jobs.
+    /// </para>
+    /// <para>
+    /// "Newest" is by job id, that is creation order, on the SQL Server and PostgreSQL adapters, and by
+    /// failure time on the generic provider. For a delayed or requeued job the two can differ.
+    /// </para>
     /// </remarks>
     /// <param name="group">A group returned by <see cref="GetFailureGroupsAsync"/>.</param>
     /// <param name="count">Maximum number of jobs to return.</param>

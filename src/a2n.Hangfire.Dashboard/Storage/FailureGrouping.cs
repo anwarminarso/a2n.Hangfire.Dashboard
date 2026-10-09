@@ -11,6 +11,10 @@ namespace a2n.Hangfire.Dashboard.Storage;
 /// a failed job's stored strings, and merging stored and computed fingerprints into groups. The
 /// providers only supply the queries, so every storage groups, counts and labels the same way.
 /// </summary>
+/// <remarks>
+/// Intended for <see cref="IStorageQueryProvider"/> implementations (the bundled storage adapters, or a
+/// custom one); it is public only because those live in other assemblies.
+/// </remarks>
 public static class FailureGrouping
 {
     /// <summary>
@@ -250,11 +254,13 @@ public static class FailureGrouping
 
 /// <summary>
 /// A fingerprint stored on failed jobs: how many failed jobs carry it, and the id of the newest.
+/// Intended for storage adapters, as input to <see cref="FailureGrouping.BuildAsync"/>.
 /// </summary>
 public readonly record struct StoredFailureGroup(string Fingerprint, long Count, long NewestJobId);
 
 /// <summary>
-/// A failed job fingerprinted from its stored strings.
+/// A failed job fingerprinted from its stored strings. Intended for storage adapters, as input to
+/// <see cref="FailureGrouping.BuildAsync"/>.
 /// </summary>
 /// <param name="JobId">The job id.</param>
 /// <param name="Sequence">Orders jobs by age, higher is newer: the job id on storages with numeric ids.</param>
@@ -264,7 +270,8 @@ public readonly record struct ComputedFailure(string JobId, long Sequence, Failu
 
 /// <summary>
 /// A failed job as the SQL Server and PostgreSQL adapters read it for grouping: the job row joined
-/// with its current state. Column names match the properties, so Dapper maps it directly.
+/// with its current state. Column names match the properties, so Dapper maps it directly. Intended
+/// for storage adapters only.
 /// </summary>
 public sealed class FailedJobRow
 {

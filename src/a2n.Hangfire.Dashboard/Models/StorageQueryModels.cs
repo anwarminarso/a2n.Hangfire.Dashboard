@@ -137,7 +137,8 @@ public class JobSummaryDto
     /// <summary>
     /// The job's stored invocation data, including its arguments, so a list can show the job the way
     /// the other job lists do (display name attributes, argument summary). Only set by
-    /// <see cref="Interfaces.IStorageQueryProvider.GetFailureGroupJobsAsync"/>.
+    /// <see cref="Interfaces.IStorageQueryProvider.GetFailureGroupJobsAsync"/>; meant for rendering,
+    /// not as a stable contract of the Hangfire type it exposes.
     /// </summary>
     public InvocationData InvocationData { get; set; }
 }
