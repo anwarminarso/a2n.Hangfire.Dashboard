@@ -7,6 +7,7 @@
 @inject DashboardUIOptions Options
 @inject NavigationManager Navigation
 @inject IServiceProvider Services
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Failed Jobs</PageTitle>
@@ -40,44 +41,43 @@ else
         <div class="d-flex flex-wrap align-items-center justify-content-sm-end flex-grow-1 gap-2">
             @if (ShowExceptionFilter)
             {
-                @* A list rather than a native select: each entry needs several lines and a tooltip. *@
+                @* A select-only combobox rather than a native select, since each entry needs several lines
+                   and a tooltip. Focus stays on the toggle: the arrow keys move the active option, which
+                   aria-activedescendant points to, and Enter or Space selects it. data-hf-listbox-keys lets
+                   nav.js cancel the page scroll for those keys only, so Tab still moves on. *@
                 <div class="hf-combobox position-relative hf-exception-filter">
-                    <button type="button" id="exception-filter" class="form-select form-select-sm text-start text-truncate"
-                            aria-label="Exception" aria-haspopup="listbox"
-                            aria-expanded="@(_menuOpen ? "true" : "false")" aria-controls="exception-filter-list"
-                            @onfocus="EnsureGroupsLoaded" @onclick="ToggleMenu" @onfocusout="() => _menuOpen = false">
+                    <div id="exception-filter" role="combobox" tabindex="0" data-hf-listbox-keys
+                         class="form-select form-select-sm text-start text-truncate"
+                         aria-label="Exception" aria-haspopup="listbox"
+                         aria-expanded="@(_menuOpen ? "true" : "false")" aria-controls="exception-filter-list"
+                         aria-activedescendant="@(_menuOpen ? OptionId(ActiveOption) : null)"
+                         @onfocus="EnsureGroupsLoaded" @onclick="ToggleMenu" @onkeydown="HandleFilterKeyDown"
+                         @onfocusout="CloseMenu">
                         @SelectedLabel
-                    </button>
+                    </div>
                     @if (_menuOpen)
                     {
-                        <div class="list-group hf-combobox-menu hf-exception-menu shadow-sm" id="exception-filter-list" role="listbox">
-                            <button type="button" role="option" aria-selected="@(!InGroupView ? "true" : "false")"
-                                    class="list-group-item list-group-item-action @(!InGroupView ? "active" : null)"
-                                    @onmousedown:preventDefault="true" @onclick="() => SelectGroup(null)">
-                                All exceptions
-                            </button>
-                            @switch (_groupsStatus)
-                            {
-                                case LoadStatus.Loading:
-                                    <div class="list-group-item text-muted small">
-                                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Loading exceptions…
-                                    </div>
-                                    break;
-                                case LoadStatus.TimedOut:
-                                    <div class="list-group-item text-warning-emphasis small">@TimedOutMessage</div>
-                                    break;
-                                case LoadStatus.Failed:
-                                    <div class="list-group-item text-danger small">Exceptions could not be loaded.</div>
-                                    break;
-                                case LoadStatus.Loaded:
-                                    @foreach (var group in LabeledGroups)
-                                    {
-                                        var fingerprint = group.Fingerprint;
-                                        var selected = fingerprint == _selectedFingerprint;
-                                        <button type="button" role="option" aria-selected="@(selected ? "true" : "false")"
-                                                class="list-group-item list-group-item-action hf-exception-option @(selected ? "active" : null)"
-                                                title="@FullTypeName(group)"
-                                                @onmousedown:preventDefault="true" @onclick="() => SelectGroup(fingerprint)">
+                        var options = MenuOptions;
+                        @* tabindex="-1": Chromium makes a scroll container with no focusable children a Tab
+                           stop, so Tab would land here instead of moving past the filter. *@
+                        <div class="hf-combobox-menu hf-exception-menu bg-body border rounded shadow-sm" tabindex="-1">
+                            <div class="list-group list-group-flush" id="exception-filter-list" role="listbox" aria-label="Exceptions">
+                                @for (var i = 0; i < options.Count; i++)
+                                {
+                                    var index = i;
+                                    var group = options[i];
+                                    var fingerprint = group?.Fingerprint;
+                                    var selected = fingerprint == _selectedFingerprint;
+                                    <div id="@OptionId(index)" role="option" aria-selected="@(selected ? "true" : "false")"
+                                         class="list-group-item list-group-item-action @(group is null ? null : "hf-exception-option") @(selected ? "active" : null) @(index == ActiveOption ? "hf-option-active" : null)"
+                                         title="@(group is null ? null : FullTypeName(group))"
+                                         @onmousedown:preventDefault="true" @onclick="() => SelectGroup(fingerprint)">
+                                        @if (group is null)
+                                        {
+                                            <span>All exceptions</span>
+                                        }
+                                        else
+                                        {
                                             <span class="d-flex justify-content-between align-items-start gap-2">
                                                 <span class="fw-semibold text-break">@ShortTypeName(group)</span>
                                                 <span class="badge text-bg-danger rounded-pill flex-shrink-0">@CountText(group)</span>
@@ -90,16 +90,30 @@ else
                                             {
                                                 <span class="d-block small font-monospace text-truncate opacity-75">@group.TopFrame</span>
                                             }
-                                        </button>
-                                    }
-                                    @if (UnlabeledGroupCount > 0)
-                                    {
-                                        <div class="list-group-item text-muted small">
-                                            @UnlabeledGroupCount.ToString("N0") more @(UnlabeledGroupCount == 1 ? "exception" : "exceptions") with fewer failures not listed.
-                                        </div>
-                                    }
-                                    break;
-                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @* Not options, so outside the listbox. The region stays in place while empty so a
+                               screen reader announces what appears in it. *@
+                            <div class="small @MenuStatusClass" role="status" data-testid="filter-status">
+                                @switch (_groupsStatus)
+                                {
+                                    case LoadStatus.Loading:
+                                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                        <span>Loading exceptions…</span>
+                                        break;
+                                    case LoadStatus.TimedOut:
+                                        @TimedOutMessage
+                                        break;
+                                    case LoadStatus.Failed:
+                                        <span>Exceptions could not be loaded.</span>
+                                        break;
+                                    case LoadStatus.Loaded when UnlabeledGroupCount > 0:
+                                        <span>@UnlabeledGroupCount.ToString("N0") more @(UnlabeledGroupCount == 1 ? "exception" : "exceptions") with fewer failures not listed.</span>
+                                        break;
+                                }
+                            </div>
                         </div>
                     }
                 </div>
@@ -108,14 +122,28 @@ else
         </div>
     </div>
 
-    @if (_groupsStatus == LoadStatus.Loaded && _groups.IsPartial)
+    @if ((InGroupView || _menuOpen) && _groupsStatus == LoadStatus.Loaded && _groups.IsPartial)
     {
         <p class="small text-body-secondary mb-2" data-testid="partial-notice">
             <i class="bi bi-info-circle"></i>
-            Exceptions are grouped from the latest @_groups.FallbackCount.ToString("N0") of
-            @_groups.UnfingerprintedCount.ToString("N0") failed jobs that were not grouped when they failed, so counts
-            are lower bounds. Registering <code>UseDashboardFailureFingerprintFilter()</code> on the Hangfire servers
-            gives exact counts.
+            @if (_groups.UsesStoredFingerprints)
+            {
+                <span>
+                    Exceptions are grouped from the latest @_groups.FallbackCount.ToString("N0") of
+                    @_groups.UnfingerprintedCount.ToString("N0") failed jobs that were not grouped when they failed, so
+                    counts are lower bounds. Registering <code>UseDashboardFailureFingerprintFilter()</code> on the
+                    Hangfire servers gives exact counts.
+                </span>
+            }
+            else
+            {
+                @* This storage's provider fingerprints every job it reads, with or without the filter, so
+                   registering the filter wouldn't help here. *@
+                <span>
+                    Exceptions are grouped from the latest @_groups.FallbackCount.ToString("N0") of
+                    @_groups.UnfingerprintedCount.ToString("N0") failed jobs, so counts are lower bounds.
+                </span>
+            }
         </p>
     }
 
@@ -335,6 +363,10 @@ else
     private CancellationTokenSource _groupsCts;
     private bool _menuOpen;
 
+    // Index into MenuOptions of the option the arrow keys have moved to; 0 is "All exceptions".
+    private int _activeOption;
+    private bool _scrollActiveOption;
+
     private string _selectedFingerprint;
     private FailureGroupDto _selectedGroup;
     private int _groupSize = 10;
@@ -347,6 +379,33 @@ else
 
     private IEnumerable<FailureGroupDto> LabeledGroups => _groups.Groups.Where(g => g.IsLabeled);
     private int UnlabeledGroupCount => _groups.Groups.Count(g => !g.IsLabeled);
+
+    // The list's options: null for "All exceptions", then the labeled groups once they are loaded.
+    private List<FailureGroupDto> MenuOptions
+    {
+        get
+        {
+            var options = new List<FailureGroupDto> { null };
+            if (_groupsStatus == LoadStatus.Loaded)
+                options.AddRange(LabeledGroups);
+            return options;
+        }
+    }
+
+    private static string OptionId(int index) => $"exception-option-{index}";
+
+    // The active option, kept inside the list in case a refresh shortened it.
+    private int ActiveOption => Math.Clamp(_activeOption, 0, MenuOptions.Count - 1);
+
+    private bool HasMenuStatus => _groupsStatus is LoadStatus.Loading or LoadStatus.TimedOut or LoadStatus.Failed
+        || (_groupsStatus == LoadStatus.Loaded && UnlabeledGroupCount > 0);
+
+    private string MenuStatusClass => !HasMenuStatus ? null : "px-3 py-2 border-top " + _groupsStatus switch
+    {
+        LoadStatus.TimedOut => "text-warning-emphasis",
+        LoadStatus.Failed => "text-danger",
+        _ => "text-muted",
+    };
 
     private string SelectedLabel => !InGroupView
         ? "All exceptions"
@@ -375,9 +434,13 @@ else
                         _jobs = jobs;
                         StateHasChanged();
 
-                        // Groups are only kept current once they have been asked for.
-                        if (_groupsStatus != LoadStatus.NotLoaded)
+                        // Grouping reads up to 1,000 failed jobs, so it is only redone while someone is
+                        // looking at it. Otherwise the groups are dropped and read again the next time
+                        // the filter gets focus.
+                        if (InGroupView || _menuOpen)
                             await LoadGroupsAndSelection();
+                        else
+                            MarkGroupsStale();
                     });
                 }
             }
@@ -419,10 +482,103 @@ else
             await LoadGroupsAndSelection();
     }
 
+    private void MarkGroupsStale()
+    {
+        if (_groupsStatus == LoadStatus.NotLoaded)
+            return;
+        // Dropping the source makes a load still in flight discard its result.
+        _groupsCts?.Cancel();
+        _groupsCts = null;
+        _groupsStatus = LoadStatus.NotLoaded;
+    }
+
     private async Task ToggleMenu()
     {
-        _menuOpen = !_menuOpen;
+        if (_menuOpen)
+            CloseMenu();
+        else
+            await OpenMenu();
+    }
+
+    private async Task OpenMenu()
+    {
+        _menuOpen = true;
+        _activeOption = SelectedOptionIndex();
+        _scrollActiveOption = true;
         await EnsureGroupsLoaded();
+    }
+
+    private void CloseMenu() => _menuOpen = false;
+
+    private int SelectedOptionIndex()
+    {
+        var index = MenuOptions.FindIndex(g => g?.Fingerprint == _selectedFingerprint);
+        return index < 0 ? 0 : index;
+    }
+
+    // The select-only combobox keys (WAI-ARIA APG). nav.js cancels the browser's own handling of the
+    // keys used here, apart from Escape and Tab: Tab leaves the combobox, and focusout closes the list.
+    private async Task HandleFilterKeyDown(KeyboardEventArgs e)
+    {
+        if (e.AltKey || e.CtrlKey || e.MetaKey)
+            return;
+
+        if (!_menuOpen)
+        {
+            if (e.Key is "ArrowDown" or "ArrowUp" or "Enter" or " " or "Home" or "End")
+            {
+                await OpenMenu();
+                // After OpenMenu, which loads the groups the first time, so End can reach the last one.
+                if (e.Key == "Home") MoveActiveOption(0);
+                if (e.Key == "End") MoveActiveOption(MenuOptions.Count - 1);
+            }
+            return;
+        }
+
+        var last = MenuOptions.Count - 1;
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                MoveActiveOption(Math.Min(ActiveOption + 1, last));
+                break;
+            case "ArrowUp":
+                MoveActiveOption(Math.Max(ActiveOption - 1, 0));
+                break;
+            case "Home":
+                MoveActiveOption(0);
+                break;
+            case "End":
+                MoveActiveOption(last);
+                break;
+            case "Enter":
+            case " ":
+                await SelectGroup(MenuOptions[ActiveOption]?.Fingerprint);
+                break;
+            case "Escape":
+                CloseMenu();
+                break;
+        }
+    }
+
+    private void MoveActiveOption(int index)
+    {
+        _activeOption = index;
+        _scrollActiveOption = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_scrollActiveOption || !_menuOpen)
+            return;
+        _scrollActiveOption = false;
+        try
+        {
+            await JS.InvokeVoidAsync("hfListbox.scrollIntoView", OptionId(ActiveOption));
+        }
+        catch (Exception)
+        {
+            // Only keeps the option in view; the list still works without it.
+        }
     }
 
     private async Task SelectGroup(string fingerprint)

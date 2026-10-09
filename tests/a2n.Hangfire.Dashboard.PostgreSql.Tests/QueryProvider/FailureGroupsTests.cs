@@ -88,6 +88,7 @@ public class FailureGroupsTests
 
             var result = await GroupsAsync();
 
+            Assert.True(result.UsesStoredFingerprints);
             var group = Assert.Single(result.Groups, g => g.Fingerprint == key);
             Assert.Equal(2, group.Count);
             Assert.Equal(1, group.StoredCount);

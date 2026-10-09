@@ -37,7 +37,10 @@ public class FailureGroupDto
     /// </summary>
     public IReadOnlyList<string> ComputedJobIds { get; set; } = Array.Empty<string>();
 
-    /// <summary>Id of the group's most recently created job.</summary>
+    /// <summary>
+    /// Id of the group's newest job: the most recently created one on storages with numeric ids, the
+    /// most recently failed one on the generic provider.
+    /// </summary>
     public string NewestJobId { get; set; }
 
     /// <summary>
@@ -84,6 +87,14 @@ public class FailureGroupsResult
     /// False when the storage provider doesn't support grouping. The other properties are then empty.
     /// </summary>
     public bool IsSupported { get; set; } = true;
+
+    /// <summary>
+    /// True when fingerprints stored by <c>FailureFingerprintFilter</c> are counted, so registering the
+    /// filter makes the counts exact. The SQL Server and PostgreSQL adapters read them; the generic
+    /// provider (Redis and others) can't query job parameters and fingerprints every job it reads, with
+    /// or without the filter, so the Failed page doesn't suggest the filter there.
+    /// </summary>
+    public bool UsesStoredFingerprints { get; set; }
 
     /// <summary>The groups, most jobs first.</summary>
     public IReadOnlyList<FailureGroupDto> Groups { get; set; } = Array.Empty<FailureGroupDto>();

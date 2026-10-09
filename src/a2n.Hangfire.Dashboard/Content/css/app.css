@@ -1229,6 +1229,11 @@ a.hf-st-link:hover .hf-st-link-icon {
    when a long exception name is selected, and the list is wider than the toggle, right-aligned. */
 .hf-exception-filter > .form-select { width: 18rem; max-width: calc(100vw - 2rem); }
 .hf-exception-menu { right: 0; width: min(36rem, calc(100vw - 2rem)); }
+.hf-exception-menu [role="option"] { cursor: pointer; }
+/* The option the arrow keys are on. An outline rather than a background, so it also shows on the
+   selected (active) option. */
+.hf-exception-menu .hf-option-active { outline: 2px solid var(--bs-emphasis-color); outline-offset: -3px; }
+.hf-exception-menu .hf-option-active:not(.active) { background-color: var(--bs-list-group-action-hover-bg); }
 /* On phones the toolbar wraps and the filter starts at the left edge, so it takes the row and the
    list opens under it at the same width instead of extending off-screen to the left. */
 @media (max-width: 575.98px) {

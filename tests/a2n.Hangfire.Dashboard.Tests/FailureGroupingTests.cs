@@ -89,6 +89,8 @@ public class FailureGroupingTests
         var result = await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None);
 
         Assert.True(result.IsSupported);
+        // Job parameters aren't read here, so the page mustn't suggest the filter for exact counts.
+        Assert.False(result.UsesStoredFingerprints);
         Assert.False(result.IsPartial);
         Assert.Equal(5, result.UnfingerprintedCount);
         Assert.Equal(5, result.FallbackCount);

@@ -271,6 +271,8 @@ public class GenericQueryProvider : IStorageQueryProvider
         // Every job that was read counts as covered, including one whose details the storage no
         // longer had: it can't be fingerprinted, but reading further wouldn't change that.
         result.FallbackCount = read.Count;
+        // Stored fingerprints are never read here, so registering the filter wouldn't change the counts.
+        result.UsesStoredFingerprints = false;
         return result;
     }
 

@@ -376,7 +376,7 @@ WHERE j.id = ANY(@Ids) AND j.statename = 'Failed'";
         var fallback = await connection.QueryAsync<FailedJobRow>(
             new CommandDefinition(fallbackSql, parameters, cancellationToken: ct));
 
-        return await FailureGrouping.BuildAsync(
+        var result = await FailureGrouping.BuildAsync(
             stored,
             unfingerprinted,
             fallback.Select(FailureGrouping.Compute).ToList(),
@@ -388,6 +388,8 @@ WHERE j.id = ANY(@Ids) AND j.statename = 'Failed'";
                 return rows.Select(FailureGrouping.Compute).ToList();
             },
             ct);
+        result.UsesStoredFingerprints = true;
+        return result;
     }
 
     /// <inheritdoc />
