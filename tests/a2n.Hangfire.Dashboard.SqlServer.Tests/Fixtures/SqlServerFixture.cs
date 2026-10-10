@@ -115,7 +115,7 @@ public class SqlServerFixture : IAsyncLifetime
     /// SQL Server has no DROP SCHEMA ... CASCADE, so we drop foreign keys, tables, and other
     /// objects belonging to the schema before dropping the (now empty) schema.
     /// </summary>
-    private static string BuildDropSchemaScript(string schema) => $@"
+    internal static string BuildDropSchemaScript(string schema) => $@"
 DECLARE @sql NVARCHAR(MAX) = N'';
 
 -- Drop foreign keys first so table drops don't fail on dependencies

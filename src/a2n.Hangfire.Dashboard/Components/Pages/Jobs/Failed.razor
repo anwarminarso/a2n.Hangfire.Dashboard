@@ -1,5 +1,13 @@
 @page "/jobs/failed"
+@using a2n.Hangfire.Dashboard.Interfaces
+@using a2n.Hangfire.Dashboard.Models
+@using global::Hangfire.Common
+@using Microsoft.Extensions.DependencyInjection
 @inject HangfireMonitorService Monitor
+@inject DashboardUIOptions Options
+@inject NavigationManager Navigation
+@inject IServiceProvider Services
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Failed Jobs</PageTitle>
@@ -19,75 +27,311 @@ else
 {
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div class="d-flex gap-2">
-            <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
-                <i class="bi bi-arrow-repeat"></i> Requeue
-            </button>
-            <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
-                <i class="bi bi-trash"></i> Delete
-            </button>
+            @* Group actions come with bulk requeue/delete per exception; until then a group is view-only. *@
+            @if (!InGroupView)
+            {
+                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
+                    <i class="bi bi-arrow-repeat"></i> Requeue
+                </button>
+                <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            }
         </div>
-        <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
+        <div class="d-flex flex-wrap align-items-center justify-content-sm-end flex-grow-1 gap-2">
+            @if (ShowExceptionFilter)
+            {
+                // Built once per render; the active option is looked up in it by fingerprint.
+                var options = MenuOptions;
+                var activeOption = ActiveOptionIn(options);
+                @* A select-only combobox rather than a native select, since each entry needs several lines
+                   and a tooltip. Focus stays on the toggle: the arrow keys move the active option, which
+                   aria-activedescendant points to, and Enter or Space selects it. data-hf-listbox-keys lets
+                   nav.js cancel the page scroll for those keys only, so Tab still moves on. *@
+                <div class="hf-combobox position-relative hf-exception-filter">
+                    <div id="exception-filter" role="combobox" tabindex="0" data-hf-listbox-keys
+                         class="form-select form-select-sm text-start text-truncate"
+                         aria-label="Exception" aria-haspopup="listbox"
+                         aria-expanded="@(_menuOpen ? "true" : "false")" aria-controls="exception-filter-list"
+                         aria-activedescendant="@(_menuOpen ? OptionId(activeOption) : null)"
+                         @onfocus="EnsureGroupsLoaded" @onclick="ToggleMenu" @onkeydown="HandleFilterKeyDown"
+                         @onfocusout="CloseMenu">
+                        @SelectedLabel
+                    </div>
+                    @if (_menuOpen)
+                    {
+                        @* tabindex="-1": Chromium makes a scroll container with no focusable children a Tab
+                           stop, so Tab would land here instead of moving past the filter. That also makes it
+                           focusable by mouse, so mousedown is cancelled on the whole container: pressing an
+                           option, the scrollbar or the status line then leaves focus on the toggle, whose
+                           focusout would otherwise close the list mid-click or mid-drag. *@
+                        <div class="hf-combobox-menu hf-exception-menu bg-body border rounded shadow-sm" tabindex="-1"
+                             @onmousedown:preventDefault="true">
+                            <div class="list-group list-group-flush" id="exception-filter-list" role="listbox" aria-label="Exceptions">
+                                @for (var i = 0; i < options.Count; i++)
+                                {
+                                    var index = i;
+                                    var group = options[i];
+                                    var fingerprint = group?.Fingerprint;
+                                    var selected = fingerprint == _selectedFingerprint;
+                                    <div id="@OptionId(index)" role="option" aria-selected="@(selected ? "true" : "false")"
+                                         class="list-group-item list-group-item-action @(group is null ? null : "hf-exception-option") @(selected ? "active" : null) @(index == activeOption ? "hf-option-active" : null)"
+                                         title="@(group is null ? null : FullTypeName(group))"
+                                         @onclick="() => SelectGroup(fingerprint)">
+                                        @if (group is null)
+                                        {
+                                            <span>All exceptions</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="d-flex justify-content-between align-items-start gap-2">
+                                                <span class="fw-semibold text-break">@ShortTypeName(group)</span>
+                                                <span class="badge text-bg-danger rounded-pill flex-shrink-0">@CountText(group)</span>
+                                            </span>
+                                            @if (!string.IsNullOrEmpty(group.NormalizedMessage))
+                                            {
+                                                <span class="d-block small text-truncate">@Truncate(group.NormalizedMessage, 120)</span>
+                                            }
+                                            @if (!string.IsNullOrEmpty(group.TopFrame))
+                                            {
+                                                <span class="d-block small font-monospace text-truncate opacity-75">@group.TopFrame</span>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @* Not options, so outside the listbox. The region stays in place while empty so a
+                               screen reader announces what appears in it. *@
+                            <div class="small @MenuStatusClass" role="status" data-testid="filter-status">
+                                @switch (_groupsStatus)
+                                {
+                                    case LoadStatus.Loading:
+                                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                        <span>Loading exceptions…</span>
+                                        break;
+                                    case LoadStatus.TimedOut:
+                                        @TimedOutMessage
+                                        break;
+                                    case LoadStatus.Failed:
+                                        <span>Exceptions could not be loaded.</span>
+                                        break;
+                                    case LoadStatus.Loaded when UnlabeledGroupCount > 0:
+                                        <span>@UnlabeledGroupCount.ToString("N0") more @(UnlabeledGroupCount == 1 ? "exception" : "exceptions") with fewer failures not listed.</span>
+                                        break;
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            <PageSizeSelector PageSize="@(InGroupView ? _groupSize : _pageSize)" OnPageSizeChanged="HandlePageSizeChanged" />
+        </div>
     </div>
 
-    <div class="card">
-        <div class="card-body p-0">
-            <div class="table-responsive hf-grid">
-                <table class="table table-hover table-sm mb-0 hf-stack">
-                    <thead>
-                        <tr>
-                            <th style="width: 40px;">
-                                <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
-                            </th>
-                            <th>Id</th>
-                            <th>Job</th>
-                            <SortableHeader Label="Failed" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
-                                            Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var job in _jobs)
-                        {
-                            <tr class="@(IsSelected(job.Key) ? "table-active" : "")">
-                                <td class="hf-cell-select">
-                                    <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
-                                           @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
-                                </td>
-                                <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
-                                <td class="hf-job-cell hf-cell-primary">
-                                    <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
-                                    @if (!string.IsNullOrEmpty(job.Value?.Reason))
-                                    {
-                                        <div class="text-muted small">@TruncateReason(job.Value.Reason)</div>
-                                    }
-                                </td>
-                                <td class="text-end hf-cell-meta hf-nowrap" data-label="Failed">
-                                    @if (job.Value?.FailedAt.HasValue == true)
-                                    {
-                                        <RelativeTime UtcTime="@job.Value.FailedAt.Value" />
-                                    }
-                                </td>
-                            </tr>
-                            @if (job.Value?.ExceptionMessage is not null)
+    @if ((InGroupView || _menuOpen) && _groupsStatus == LoadStatus.Loaded && _groups.IsPartial)
+    {
+        <p class="small text-body-secondary mb-2" data-testid="partial-notice">
+            <i class="bi bi-info-circle"></i>
+            @if (_groups.UsesStoredFingerprints)
+            {
+                <span>
+                    Exceptions are grouped from the latest @_groups.FallbackCount.ToString("N0") of
+                    @_groups.UnfingerprintedCount.ToString("N0") failed jobs that were not grouped when they failed, so
+                    counts are lower bounds. Registering <code>UseDashboardFailureFingerprintFilter()</code> on the
+                    Hangfire servers gives exact counts.
+                </span>
+            }
+            else
+            {
+                @* This storage's provider fingerprints every job it reads, with or without the filter, so
+                   registering the filter wouldn't help here. *@
+                <span>
+                    Exceptions are grouped from the latest @_groups.FallbackCount.ToString("N0") of
+                    @_groups.UnfingerprintedCount.ToString("N0") failed jobs, so counts are lower bounds.
+                </span>
+            }
+        </p>
+    }
+
+    @if (InGroupView)
+    {
+        <div class="card mb-2">
+            <div class="card-body py-2">
+                @if (_selectedGroup is null)
+                {
+                    @if (_groupsStatus == LoadStatus.Loading)
+                    {
+                        <span class="text-muted small">Loading…</span>
+                    }
+                    else if (_groupsStatus == LoadStatus.TimedOut)
+                    {
+                        <span class="text-warning-emphasis small">@TimedOutMessage</span>
+                    }
+                    else if (_groupsStatus == LoadStatus.Failed)
+                    {
+                        <span class="text-danger small">Exceptions could not be loaded.</span>
+                    }
+                    else
+                    {
+                        <span class="small">No failed jobs with this exception.</span>
+                    }
+                }
+                else
+                {
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                        <div class="text-break">
+                            @if (_selectedGroup.IsLabeled)
                             {
-                                <tr class="hf-row-detail @(IsSelected(job.Key) ? "table-active" : "")">
-                                    <td></td>
-                                    <td colspan="3">
-                                        <div class="alert alert-danger py-2 px-3 mb-0 small hf-exception">
-                                            <strong>@job.Value.ExceptionType</strong>
-                                            <p class="mb-0 mt-1 hf-exception-message">@job.Value.ExceptionMessage</p>
-                                        </div>
-                                    </td>
-                                </tr>
+                                <strong title="@FullTypeName(_selectedGroup)">@ShortTypeName(_selectedGroup)</strong>
+                                @if (!string.IsNullOrEmpty(_selectedGroup.NormalizedMessage))
+                                {
+                                    <div class="small">@_selectedGroup.NormalizedMessage</div>
+                                }
+                                @if (!string.IsNullOrEmpty(_selectedGroup.TopFrame))
+                                {
+                                    <div class="small font-monospace text-body-secondary">@_selectedGroup.TopFrame</div>
+                                }
                             }
-                        }
-                    </tbody>
-                </table>
+                            else
+                            {
+                                <strong>Exception</strong>
+                            }
+                        </div>
+                        <span class="fw-semibold text-nowrap" data-testid="group-total">
+                            @CountText(_selectedGroup) failed @(_selectedGroup.Count == 1 ? "job" : "jobs")
+                        </span>
+                    </div>
+                }
             </div>
         </div>
-    </div>
 
-    <Pager TotalCount="@_totalCount" PageSize="@_pageSize" From="@_from"
-           OnPageChanged="HandlePageChanged" />
+        @if (_groupJobsStatus == LoadStatus.TimedOut)
+        {
+            <p class="small text-warning-emphasis">@TimedOutMessage</p>
+        }
+        else if (_groupJobsStatus == LoadStatus.Failed)
+        {
+            <p class="small text-danger">The jobs could not be loaded.</p>
+        }
+        else if (_groupJobsStatus == LoadStatus.Loading && _groupRows.Count == 0)
+        {
+            <p class="text-muted">Loading...</p>
+        }
+        else if (_groupRows.Count > 0)
+        {
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive hf-grid">
+                        <table class="table table-hover table-sm mb-0 hf-stack">
+                            <thead>
+                                <tr>
+                                    <th>Id</th>
+                                    <th>Job</th>
+                                    <th class="text-end">Failed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in _groupRows)
+                                {
+                                    var job = row.Summary;
+                                    <tr>
+                                        <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.JobId">@ShortenId(job.JobId)</a></td>
+                                        <td class="hf-job-cell hf-cell-primary">
+                                            <JobNameDisplay Job="@row.Job" InvocationData="@job.InvocationData"
+                                                            Name="@(row.Job is null && job.InvocationData is null ? job.JobName : null)" />
+                                            @if (!string.IsNullOrEmpty(job.Reason))
+                                            {
+                                                <div class="text-muted small">@TruncateReason(job.Reason)</div>
+                                            }
+                                        </td>
+                                        <td class="text-end hf-cell-meta hf-nowrap" data-label="Failed">
+                                            @if (job.LastStateChange.HasValue)
+                                            {
+                                                <RelativeTime UtcTime="@job.LastStateChange.Value" />
+                                            }
+                                        </td>
+                                    </tr>
+                                    @if (job.ExceptionMessage is not null)
+                                    {
+                                        <tr class="hf-row-detail">
+                                            <td colspan="3">
+                                                <div class="alert alert-danger py-2 px-3 mb-0 small hf-exception">
+                                                    <strong>@job.ExceptionType</strong>
+                                                    <p class="mb-0 mt-1 hf-exception-message">@job.ExceptionMessage</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive hf-grid">
+                    <table class="table table-hover table-sm mb-0 hf-stack">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">
+                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
+                                </th>
+                                <th>Id</th>
+                                <th>Job</th>
+                                <SortableHeader Label="Failed" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
+                                                Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var job in _jobs)
+                            {
+                                <tr class="@(IsSelected(job.Key) ? "table-active" : "")">
+                                    <td class="hf-cell-select">
+                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
+                                               @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
+                                    </td>
+                                    <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
+                                    <td class="hf-job-cell hf-cell-primary">
+                                        <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
+                                        @if (!string.IsNullOrEmpty(job.Value?.Reason))
+                                        {
+                                            <div class="text-muted small">@TruncateReason(job.Value.Reason)</div>
+                                        }
+                                    </td>
+                                    <td class="text-end hf-cell-meta hf-nowrap" data-label="Failed">
+                                        @if (job.Value?.FailedAt.HasValue == true)
+                                        {
+                                            <RelativeTime UtcTime="@job.Value.FailedAt.Value" />
+                                        }
+                                    </td>
+                                </tr>
+                                @if (job.Value?.ExceptionMessage is not null)
+                                {
+                                    <tr class="hf-row-detail @(IsSelected(job.Key) ? "table-active" : "")">
+                                        <td></td>
+                                        <td colspan="3">
+                                            <div class="alert alert-danger py-2 px-3 mb-0 small hf-exception">
+                                                <strong>@job.Value.ExceptionType</strong>
+                                                <p class="mb-0 mt-1 hf-exception-message">@job.Value.ExceptionMessage</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <Pager TotalCount="@_totalCount" PageSize="@_pageSize" From="@_from"
+               OnPageChanged="HandlePageChanged" />
+    }
 }
 
 <ConfirmModal Visible="@_showDeleteConfirm"
@@ -96,6 +340,13 @@ else
               OnCancel="CancelDelete" />
 
 @code {
+    /// <summary>
+    /// The exception group to show (<c>?exception=…</c>), so a group view can be linked. A value that
+    /// isn't a current exception key is ignored and the page shows all failed jobs.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "exception")]
+    public string ExceptionQuery { get; set; }
+
     private JobList<FailedJobDto> _jobs;
     private long _totalCount;
     private readonly ReversibleOrder _order = new();
@@ -105,8 +356,80 @@ else
     private bool _selectAll;
     private Timer _refreshTimer;
 
+    // ── Exception groups ──
+    // Loaded the first time the Exception filter gets focus, or when the page opens on a group, so
+    // the default view costs no more than it did before grouping existed.
+    private enum LoadStatus { NotLoaded, Loading, Loaded, TimedOut, Failed }
+
+    private sealed record GroupRow(JobSummaryDto Summary, Job Job);
+
+    private IStorageQueryProvider _queryProvider;
+    private FailureGroupsResult _groups = new();
+    private LoadStatus _groupsStatus = LoadStatus.NotLoaded;
+    private CancellationTokenSource _groupsCts;
+    private bool _menuOpen;
+
+    // The option the arrow keys have moved to, by fingerprint (null is "All exceptions"), so it stays on
+    // the same group if a refresh reorders the list. Its index is the fallback when that group is gone.
+    private string _activeFingerprint;
+    private int _activeIndex;
+    private bool _scrollActiveOption;
+
+    private string _selectedFingerprint;
+    private FailureGroupDto _selectedGroup;
+    private int _groupSize = 10;
+    private List<GroupRow> _groupRows = new();
+    private LoadStatus _groupJobsStatus = LoadStatus.NotLoaded;
+    private CancellationTokenSource _groupJobsCts;
+
+    private bool ShowExceptionFilter => _queryProvider is { SupportsFailureGrouping: true } && _groups.IsSupported;
+    private bool InGroupView => _selectedFingerprint is not null && ShowExceptionFilter;
+
+    private IEnumerable<FailureGroupDto> LabeledGroups => _groups.Groups.Where(g => g.IsLabeled);
+    private int UnlabeledGroupCount => _groups.Groups.Count(g => !g.IsLabeled);
+
+    // The list's options: null for "All exceptions", then the labeled groups once they are loaded.
+    private List<FailureGroupDto> MenuOptions
+    {
+        get
+        {
+            var options = new List<FailureGroupDto> { null };
+            if (_groupsStatus == LoadStatus.Loaded)
+                options.AddRange(LabeledGroups);
+            return options;
+        }
+    }
+
+    private static string OptionId(int index) => $"exception-option-{index}";
+
+    private int ActiveOptionIn(List<FailureGroupDto> options)
+    {
+        var index = options.FindIndex(g => g?.Fingerprint == _activeFingerprint);
+        // The group has gone in a refresh: stay at the same position, inside the list.
+        return index >= 0 ? index : Math.Clamp(_activeIndex, 0, options.Count - 1);
+    }
+
+    private bool HasMenuStatus => _groupsStatus is LoadStatus.Loading or LoadStatus.TimedOut or LoadStatus.Failed
+        || (_groupsStatus == LoadStatus.Loaded && UnlabeledGroupCount > 0);
+
+    private string MenuStatusClass => !HasMenuStatus ? null : "px-3 py-2 border-top " + _groupsStatus switch
+    {
+        LoadStatus.TimedOut => "text-warning-emphasis",
+        LoadStatus.Failed => "text-danger",
+        _ => "text-muted",
+    };
+
+    private string SelectedLabel => !InGroupView
+        ? "All exceptions"
+        : _selectedGroup is { IsLabeled: true } ? ShortTypeName(_selectedGroup) : "Exception";
+
+    private string TimedOutMessage => Options.SearchTimeoutSeconds > 0
+        ? $"Grouping by exception took longer than {Options.SearchTimeoutSeconds} {(Options.SearchTimeoutSeconds == 1 ? "second" : "seconds")} and was stopped."
+        : "Grouping by exception was stopped.";
+
     protected override async Task OnInitializedAsync()
     {
+        _queryProvider = Services.GetService<IStorageQueryProvider>();
         await LoadData();
 
         _refreshTimer = new Timer(async _ =>
@@ -117,16 +440,40 @@ else
                 if (newCount != _totalCount)
                 {
                     var jobs = FetchPage(newCount);
-                    await InvokeAsync(() =>
+                    await InvokeAsync(async () =>
                     {
                         _totalCount = newCount;
                         _jobs = jobs;
                         StateHasChanged();
+
+                        // Grouping reads up to 1,000 failed jobs, so it is only redone while someone is
+                        // looking at it. Otherwise the groups are dropped and read again the next time
+                        // the filter gets focus.
+                        if (InGroupView || _menuOpen)
+                            await LoadGroupsAndSelection();
+                        else
+                            MarkGroupsStale();
                     });
                 }
             }
             catch { }
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var requested = FailureFingerprint.IsCurrentVersion(ExceptionQuery) ? ExceptionQuery : null;
+        if (requested == _selectedFingerprint)
+            return;
+
+        if (requested is null || _queryProvider is not { SupportsFailureGrouping: true })
+        {
+            ClearSelection();
+            return;
+        }
+
+        _selectedFingerprint = requested;
+        await LoadGroupsAndSelection();
     }
 
     private async Task LoadData()
@@ -140,6 +487,291 @@ else
 
     private JobList<FailedJobDto> FetchPage(long total) =>
         _order.Fetch(Monitor.GetFailedJobs, total, _from, _pageSize, j => j.FailedAt);
+
+    private async Task EnsureGroupsLoaded()
+    {
+        if (_groupsStatus == LoadStatus.NotLoaded)
+            await LoadGroupsAndSelection();
+    }
+
+    private void MarkGroupsStale()
+    {
+        if (_groupsStatus == LoadStatus.NotLoaded)
+            return;
+        // Dropping the source makes a load still in flight discard its result.
+        _groupsCts?.Cancel();
+        _groupsCts = null;
+        _groupsStatus = LoadStatus.NotLoaded;
+    }
+
+    private async Task ToggleMenu()
+    {
+        if (_menuOpen)
+            CloseMenu();
+        else
+            await OpenMenu();
+    }
+
+    private async Task OpenMenu()
+    {
+        _menuOpen = true;
+        _activeFingerprint = _selectedFingerprint;
+        _activeIndex = 0;
+        _scrollActiveOption = true;
+        await EnsureGroupsLoaded();
+    }
+
+    private void CloseMenu() => _menuOpen = false;
+
+    // The select-only combobox keys (WAI-ARIA APG). nav.js cancels the browser's own handling of the
+    // keys used here, apart from Escape and Tab: Tab leaves the combobox, and focusout closes the list.
+    private async Task HandleFilterKeyDown(KeyboardEventArgs e)
+    {
+        if (e.AltKey || e.CtrlKey || e.MetaKey)
+            return;
+
+        if (!_menuOpen)
+        {
+            if (e.Key is "ArrowDown" or "ArrowUp" or "Enter" or " " or "Home" or "End")
+            {
+                await OpenMenu();
+                // After OpenMenu, which loads the groups the first time, so End can reach the last one.
+                if (e.Key is "Home" or "End")
+                {
+                    var loaded = MenuOptions;
+                    MoveActiveOption(loaded, e.Key == "Home" ? 0 : loaded.Count - 1);
+                }
+            }
+            return;
+        }
+
+        var options = MenuOptions;
+        var active = ActiveOptionIn(options);
+        var last = options.Count - 1;
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                MoveActiveOption(options, Math.Min(active + 1, last));
+                break;
+            case "ArrowUp":
+                MoveActiveOption(options, Math.Max(active - 1, 0));
+                break;
+            case "Home":
+                MoveActiveOption(options, 0);
+                break;
+            case "End":
+                MoveActiveOption(options, last);
+                break;
+            case "Enter":
+            case " ":
+                await SelectGroup(options[active]?.Fingerprint);
+                break;
+            case "Escape":
+                CloseMenu();
+                break;
+        }
+    }
+
+    private void MoveActiveOption(List<FailureGroupDto> options, int index)
+    {
+        _activeFingerprint = options[index]?.Fingerprint;
+        _activeIndex = index;
+        _scrollActiveOption = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_scrollActiveOption || !_menuOpen)
+            return;
+        _scrollActiveOption = false;
+        try
+        {
+            await JS.InvokeVoidAsync("hfListbox.scrollIntoView", OptionId(ActiveOptionIn(MenuOptions)));
+        }
+        catch (Exception)
+        {
+            // Only keeps the option in view; the list still works without it.
+        }
+    }
+
+    private async Task SelectGroup(string fingerprint)
+    {
+        _menuOpen = false;
+        if (fingerprint == _selectedFingerprint)
+            return;
+
+        if (fingerprint is null)
+        {
+            ClearSelection();
+            Navigation.NavigateTo("jobs/failed", replace: true);
+            return;
+        }
+
+        _selectedFingerprint = fingerprint;
+        _selectedGroup = FindGroup(fingerprint);
+        _groupRows = new();
+        // Set before navigating, so the parameter update the navigation causes finds nothing to do.
+        // The key is a current fingerprint (prefix and hex digits only), so it needs no escaping.
+        Navigation.NavigateTo($"jobs/failed?exception={fingerprint}", replace: true);
+        await LoadGroupJobs();
+    }
+
+    private void ClearSelection()
+    {
+        // Dropping the source as well makes a load still in flight discard its result.
+        _groupJobsCts?.Cancel();
+        _groupJobsCts = null;
+        _selectedFingerprint = null;
+        _selectedGroup = null;
+        _groupRows = new();
+        _groupJobsStatus = LoadStatus.NotLoaded;
+    }
+
+    private async Task LoadGroupsAndSelection()
+    {
+        await LoadGroups();
+        if (_selectedFingerprint is not null)
+        {
+            _selectedGroup = FindGroup(_selectedFingerprint);
+            await LoadGroupJobs();
+        }
+    }
+
+    private async Task LoadGroups()
+    {
+        if (_queryProvider is not { SupportsFailureGrouping: true })
+            return;
+
+        _groupsCts?.Cancel();
+        using var cts = NewTimeoutSource();
+        _groupsCts = cts;
+
+        // A refresh keeps the current list on screen until the new one arrives.
+        if (_groupsStatus != LoadStatus.Loaded)
+        {
+            _groupsStatus = LoadStatus.Loading;
+            StateHasChanged();
+        }
+
+        FailureGroupsResult result = null;
+        var status = LoadStatus.Loaded;
+        try
+        {
+            // Off the render thread: a provider may do its work before its first await.
+            result = await Task.Run(() => _queryProvider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, cts.Token));
+        }
+        catch (Exception)
+        {
+            // SqlClient reports a cancelled command as a SqlException, so the token tells a timeout
+            // apart from a real error.
+            status = cts.IsCancellationRequested ? LoadStatus.TimedOut : LoadStatus.Failed;
+        }
+
+        // A newer load, or disposal, has taken over.
+        if (!ReferenceEquals(_groupsCts, cts))
+            return;
+        _groupsCts = null;
+
+        if (status == LoadStatus.Loaded)
+            _groups = result ?? FailureGroupsResult.Unsupported();
+        _groupsStatus = status;
+        if (!_groups.IsSupported)
+            ClearSelection();
+        StateHasChanged();
+    }
+
+    private async Task LoadGroupJobs()
+    {
+        _groupJobsCts?.Cancel();
+        var group = _selectedGroup;
+        if (group is null || !ShowExceptionFilter)
+        {
+            _groupRows = new();
+            _groupJobsStatus = LoadStatus.Loaded;
+            return;
+        }
+
+        using var cts = NewTimeoutSource();
+        _groupJobsCts = cts;
+        _groupJobsStatus = LoadStatus.Loading;
+        StateHasChanged();
+
+        List<GroupRow> rows = null;
+        var status = LoadStatus.Loaded;
+        try
+        {
+            var size = _groupSize;
+            rows = await Task.Run(async () =>
+            {
+                var jobs = await _queryProvider.GetFailureGroupJobsAsync(group, size, cts.Token);
+                return (jobs ?? Array.Empty<JobSummaryDto>())
+                    .Select(j => new GroupRow(j, TryLoadJob(j.InvocationData)))
+                    .ToList();
+            });
+        }
+        catch (Exception)
+        {
+            status = cts.IsCancellationRequested ? LoadStatus.TimedOut : LoadStatus.Failed;
+        }
+
+        if (!ReferenceEquals(_groupJobsCts, cts))
+            return;
+        _groupJobsCts = null;
+
+        _groupRows = rows ?? new();
+        _groupJobsStatus = status;
+        StateHasChanged();
+    }
+
+    private CancellationTokenSource NewTimeoutSource()
+    {
+        var cts = new CancellationTokenSource();
+        if (Options.SearchTimeoutSeconds > 0)
+            cts.CancelAfter(TimeSpan.FromSeconds(Options.SearchTimeoutSeconds));
+        return cts;
+    }
+
+    private FailureGroupDto FindGroup(string fingerprint)
+        => _groups.Groups.FirstOrDefault(g => string.Equals(g.Fingerprint, fingerprint, StringComparison.Ordinal));
+
+    // The job as the other lists show it (display name attributes, arguments); null when the dashboard
+    // can't load the job's type, in which case the invocation data is shown instead.
+    private static Job TryLoadJob(InvocationData invocationData)
+    {
+        if (invocationData is null)
+            return null;
+        try
+        {
+            return invocationData.DeserializeJob();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    // ── Labels: the same short names as Analytics → Failures and the retry summary ──
+
+    private static string ShortTypeName(FailureGroupDto group)
+    {
+        var outer = string.IsNullOrEmpty(group.ExceptionType) ? "Unknown" : ExceptionTypeNames.Short(group.ExceptionType);
+        return string.IsNullOrEmpty(group.InnerExceptionType)
+            ? outer
+            : $"{outer} → {ExceptionTypeNames.Short(group.InnerExceptionType)}";
+    }
+
+    private static string FullTypeName(FailureGroupDto group)
+    {
+        var outer = string.IsNullOrEmpty(group.ExceptionType) ? "Unknown" : group.ExceptionType;
+        return string.IsNullOrEmpty(group.InnerExceptionType) ? outer : $"{outer} → {group.InnerExceptionType}";
+    }
+
+    // When the result is partial, older failures of every group may not have been read.
+    private string CountText(FailureGroupDto group)
+        => group.Count.ToString("N0") + (_groups.IsPartial ? "+" : "");
+
+    private static string Truncate(string text, int length)
+        => text.Length > length ? text[..length] + "…" : text;
 
     private async Task ToggleOrder()
     {
@@ -161,6 +793,14 @@ else
 
     private async Task HandlePageSizeChanged(int newSize)
     {
+        // The group view has no pager: its size is how many of the group's newest jobs are shown.
+        if (InGroupView)
+        {
+            _groupSize = newSize;
+            await LoadGroupJobs();
+            return;
+        }
+
         _pageSize = newSize;
         _from = 0;
         _selectedJobs.Clear();
@@ -233,5 +873,7 @@ else
     public void Dispose()
     {
         _refreshTimer?.Dispose();
+        _groupsCts?.Cancel();
+        _groupJobsCts?.Cancel();
     }
 }
