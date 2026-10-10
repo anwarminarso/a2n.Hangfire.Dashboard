@@ -172,51 +172,119 @@ public class HangfireMonitorService
     }
 
     /// <summary>
+    /// How many jobs <see cref="RequeueJobsInBatchesAsync"/> and <see cref="DeleteJobsInBatchesAsync"/>
+    /// change per batch, and so per audit entry.
+    /// </summary>
+    public const int BulkActionBatchSize = 500;
+
+    /// <summary>
     /// Requeue multiple jobs.
     /// </summary>
-    public int RequeueJobs(IEnumerable<string> jobIds)
-    {
-        var client = new BackgroundJobClient(_storage);
-        var idList = jobIds?.ToList() ?? [];
-        var count = 0;
-        foreach (var jobId in idList)
-        {
-            if (client.ChangeState(jobId, new EnqueuedState()))
-                count++;
-        }
-        if (idList.Count > 0)
-        {
-            _audit?.Log(AuditAction.JobsRequeuedBatch, metadata: new Dictionary<string, string>
-            {
-                ["requested"] = idList.Count.ToString(),
-                ["succeeded"] = count.ToString(),
-            });
-        }
-        return count;
-    }
+    /// <param name="jobIds">The jobs to requeue.</param>
+    /// <param name="fromState">
+    /// When set, a job is only requeued while it is still in this state (Hangfire's
+    /// <c>expectedState</c>); one that has moved on is skipped and not counted.
+    /// </param>
+    /// <param name="auditMetadata">
+    /// Extra metadata for the batch's audit entry, next to <c>requested</c> and <c>succeeded</c>,
+    /// which always hold the counts.
+    /// </param>
+    /// <returns>How many jobs were requeued.</returns>
+    public int RequeueJobs(IEnumerable<string> jobIds, string fromState = null,
+        IReadOnlyDictionary<string, string> auditMetadata = null)
+        => ChangeStates(jobIds, () => new EnqueuedState(), fromState, AuditAction.JobsRequeuedBatch, auditMetadata);
 
     /// <summary>
     /// Delete multiple jobs.
     /// </summary>
-    public int DeleteJobs(IEnumerable<string> jobIds)
+    /// <param name="jobIds">The jobs to delete.</param>
+    /// <param name="fromState">
+    /// When set, a job is only deleted while it is still in this state (Hangfire's
+    /// <c>expectedState</c>); one that has moved on is skipped and not counted.
+    /// </param>
+    /// <param name="auditMetadata">
+    /// Extra metadata for the batch's audit entry, next to <c>requested</c> and <c>succeeded</c>,
+    /// which always hold the counts.
+    /// </param>
+    /// <returns>How many jobs were deleted.</returns>
+    public int DeleteJobs(IEnumerable<string> jobIds, string fromState = null,
+        IReadOnlyDictionary<string, string> auditMetadata = null)
+        => ChangeStates(jobIds, () => new DeletedState { Reason = "Deleted via Dashboard" }, fromState,
+            AuditAction.JobsDeletedBatch, auditMetadata);
+
+    /// <summary>
+    /// Requeues the jobs <see cref="BulkActionBatchSize"/> at a time through
+    /// <see cref="RequeueJobs"/>, so each batch is one audit entry. Cancelling stops after the batch
+    /// in progress; the result then says how far it got.
+    /// </summary>
+    /// <param name="jobIds">The jobs to requeue, in the order to process them.</param>
+    /// <param name="fromState">Passed to <see cref="RequeueJobs"/> for every batch.</param>
+    /// <param name="auditMetadata">Passed to <see cref="RequeueJobs"/> for every batch.</param>
+    /// <param name="progress">Reported after each batch.</param>
+    /// <param name="ct">Stops before the next batch; it is not passed into a batch.</param>
+    public Task<BulkJobActionResult> RequeueJobsInBatchesAsync(IReadOnlyList<string> jobIds, string fromState = null,
+        IReadOnlyDictionary<string, string> auditMetadata = null, IProgress<BulkJobActionResult> progress = null,
+        CancellationToken ct = default)
+        => RunInBatchesAsync(jobIds, batch => RequeueJobs(batch, fromState, auditMetadata), progress, ct);
+
+    /// <summary>
+    /// Deletes the jobs <see cref="BulkActionBatchSize"/> at a time through <see cref="DeleteJobs"/>,
+    /// so each batch is one audit entry. Cancelling stops after the batch in progress; the result
+    /// then says how far it got.
+    /// </summary>
+    /// <param name="jobIds">The jobs to delete, in the order to process them.</param>
+    /// <param name="fromState">Passed to <see cref="DeleteJobs"/> for every batch.</param>
+    /// <param name="auditMetadata">Passed to <see cref="DeleteJobs"/> for every batch.</param>
+    /// <param name="progress">Reported after each batch.</param>
+    /// <param name="ct">Stops before the next batch; it is not passed into a batch.</param>
+    public Task<BulkJobActionResult> DeleteJobsInBatchesAsync(IReadOnlyList<string> jobIds, string fromState = null,
+        IReadOnlyDictionary<string, string> auditMetadata = null, IProgress<BulkJobActionResult> progress = null,
+        CancellationToken ct = default)
+        => RunInBatchesAsync(jobIds, batch => DeleteJobs(batch, fromState, auditMetadata), progress, ct);
+
+    private int ChangeStates(IEnumerable<string> jobIds, Func<IState> newState, string fromState,
+        string auditAction, IReadOnlyDictionary<string, string> auditMetadata)
     {
         var client = new BackgroundJobClient(_storage);
         var idList = jobIds?.ToList() ?? [];
         var count = 0;
         foreach (var jobId in idList)
         {
-            if (client.ChangeState(jobId, new DeletedState { Reason = "Deleted via Dashboard" }))
+            // A null expectedState changes the job whatever state it is in, as before.
+            if (client.ChangeState(jobId, newState(), fromState))
                 count++;
         }
         if (idList.Count > 0)
         {
-            _audit?.Log(AuditAction.JobsDeletedBatch, metadata: new Dictionary<string, string>
-            {
-                ["requested"] = idList.Count.ToString(),
-                ["succeeded"] = count.ToString(),
-            });
+            var metadata = auditMetadata is null
+                ? new Dictionary<string, string>()
+                : new Dictionary<string, string>(auditMetadata);
+            metadata["requested"] = idList.Count.ToString();
+            metadata["succeeded"] = count.ToString();
+            _audit?.Log(auditAction, metadata: metadata);
         }
         return count;
+    }
+
+    private static async Task<BulkJobActionResult> RunInBatchesAsync(IReadOnlyList<string> jobIds,
+        Func<IReadOnlyList<string>, int> runBatch, IProgress<BulkJobActionResult> progress, CancellationToken ct)
+    {
+        var ids = jobIds ?? Array.Empty<string>();
+        var processed = 0;
+        var succeeded = 0;
+        while (processed < ids.Count)
+        {
+            if (ct.IsCancellationRequested)
+                return new BulkJobActionResult(ids.Count, processed, succeeded, Cancelled: true);
+
+            var batch = ids.Skip(processed).Take(BulkActionBatchSize).ToList();
+            // Off the caller's thread, since the storage calls are synchronous. A batch always runs to
+            // the end, so its audit entry matches what it changed.
+            succeeded += await Task.Run(() => runBatch(batch), CancellationToken.None).ConfigureAwait(false);
+            processed += batch.Count;
+            progress?.Report(new BulkJobActionResult(ids.Count, processed, succeeded, Cancelled: false));
+        }
+        return new BulkJobActionResult(ids.Count, processed, succeeded, Cancelled: false);
     }
 
     /// <summary>
