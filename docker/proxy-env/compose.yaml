@@ -25,6 +25,7 @@
 #   DASHBOARD_LOGIN_PATH   default empty    (unauthorized -> 401, as in the issue; /Account/Login -> 302)
 #   STATS_POLLING_INTERVAL default 2000     (DashboardUIOptions.StatsPollingInterval, ms)
 #   ENABLE_PRERENDERING    default empty    (library default; false = DashboardUIOptions.EnablePrerendering=false)
+#   DEMAND_ROLLUP_ENABLED  default empty    (library default; false = Heatmap.DemandRollupEnabled=false)
 
 name: hangfire-proxy-env
 
@@ -72,6 +73,7 @@ services:
       Dashboard__LoginPath: ${DASHBOARD_LOGIN_PATH:-}
       Dashboard__StatsPollingInterval: ${STATS_POLLING_INTERVAL:-2000}
       Dashboard__EnablePrerendering: ${ENABLE_PRERENDERING:-}
+      Dashboard__DemandRollupEnabled: ${DEMAND_ROLLUP_ENABLED:-}
       App__UseForwardedHeaders: ${USE_FORWARDED_HEADERS:-false}
       App__WorkerCount: "4"
       App__DataProtectionKeysPath: /keys

@@ -27,6 +27,7 @@ var statsPollingInterval = config.GetValue("Dashboard:StatsPollingInterval", 200
 // Applied through reflection so this host still builds against dashboard versions that predate
 // DashboardUIOptions.EnablePrerendering (useful for before/after comparisons).
 var enablePrerendering = config.GetValue<bool?>("Dashboard:EnablePrerendering");
+var demandRollupEnabled = config.GetValue<bool?>("Dashboard:DemandRollupEnabled");
 // Off by default: reproduces a proxy setup where the app sees http:// and the proxy's Host header.
 var useForwardedHeaders = config.GetValue("App:UseForwardedHeaders", false);
 var workerCount = config.GetValue("App:WorkerCount", 4);
@@ -168,6 +169,14 @@ if (enablePrerendering is bool prerender)
         app.Logger.LogWarning("Dashboard:EnablePrerendering ignored: this dashboard version has no such option");
     else
         property.SetValue(dashboardOptions, prerender);
+}
+if (demandRollupEnabled is bool rollup)
+{
+    var property = typeof(HeatmapOptions).GetProperty("DemandRollupEnabled");
+    if (property is null)
+        app.Logger.LogWarning("Dashboard:DemandRollupEnabled ignored: this dashboard version has no such option");
+    else
+        property.SetValue(dashboardOptions.Heatmap, rollup);
 }
 app.UseHangfireDashboardUI(pathPrefix, dashboardOptions);
 
