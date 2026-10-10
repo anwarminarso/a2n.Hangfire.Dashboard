@@ -14,7 +14,7 @@ fi
 apk add --no-cache openssl >/dev/null
 
 openssl req -x509 -newkey rsa:2048 -nodes -days 825 -sha256 \
-    -keyout ca.key -out ca.crt -subj "/CN=Hangfire proxy-env local CA" \
+    -keyout ca.key -out ca.crt -subj "/CN=Hangfire reverse-proxy test CA" \
     -addext "basicConstraints=critical,CA:TRUE" \
     -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
 

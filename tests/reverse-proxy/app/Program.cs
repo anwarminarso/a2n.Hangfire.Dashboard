@@ -38,7 +38,7 @@ if (!string.IsNullOrWhiteSpace(keysPath))
 {
     builder.Services.AddDataProtection()
         .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
-        .SetApplicationName("hangfire-proxy-env");
+        .SetApplicationName("hangfire-reverse-proxy-test");
 }
 
 builder.Services.AddAntiforgery();

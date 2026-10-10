@@ -14,7 +14,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$jar = Join-Path ([IO.Path]::GetTempPath()) "proxy-env-cookies-$PID.txt"
+$jar = Join-Path ([IO.Path]::GetTempPath()) "reverse-proxy-test-cookies-$PID.txt"
 try {
     $login = curl.exe -sk -c $jar "$BaseUrl/Account/Login"
     $token = [regex]::Match(($login -join ''), 'name="__RequestVerificationToken" value="([^"]+)"').Groups[1].Value

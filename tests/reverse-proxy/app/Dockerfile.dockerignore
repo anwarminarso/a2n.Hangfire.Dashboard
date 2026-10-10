@@ -2,6 +2,6 @@
 *
 !Directory.Build.props
 !src/
-!docker/proxy-env/app/
+!tests/reverse-proxy/app/
 **/bin/
 **/obj/

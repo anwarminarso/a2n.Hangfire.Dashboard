@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!--
-    Test host for the docker/proxy-env stack: dashboard mounted under a path prefix,
+    Test host for the tests/reverse-proxy stack (not part of the solution or CI): dashboard mounted under a path prefix,
     cookie auth + role-based dashboard filter, PostgreSQL storage, behind nginx (TLS termination).
     Target framework defaults to net8.0 (matches issue #61); override with -p:AppTargetFramework=net10.0.
   -->

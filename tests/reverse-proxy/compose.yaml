@@ -1,4 +1,5 @@
-# Production-like test stack for the dashboard (issue #61):
+# Test environment only (not a deployment template): a production-like stack for the dashboard (issue #61).
+# See README.md in this folder.
 #   browser -> nginx (TLS termination, HTTP->HTTPS redirect) -> app (.NET 8, Linux) -> PostgreSQL
 #
 # The app resolves PUBLIC_HOST to the Docker host gateway, so any server-side request the app
@@ -14,7 +15,7 @@
 #
 # The certificate comes from a local CA in .generated/certs. To avoid browser warnings, trust it for the current user:
 #   certutil -user -addstore Root .generated\certs\ca.crt
-#   (undo: certutil -user -delstore Root "Hangfire proxy-env local CA")
+#   (undo: certutil -user -delstore Root "Hangfire reverse-proxy test CA")
 #   docker compose down        (keep data)   |   docker compose down -v   (also drop the database)
 #
 # Optional env (shell or .env file next to this file):
@@ -27,7 +28,7 @@
 #   ENABLE_PRERENDERING    default empty    (library default; false = DashboardUIOptions.EnablePrerendering=false)
 #   DEMAND_ROLLUP_ENABLED  default empty    (library default; false = Heatmap.DemandRollupEnabled=false)
 
-name: hangfire-proxy-env
+name: hangfire-reverse-proxy-test
 
 services:
   certs:
@@ -59,11 +60,11 @@ services:
   app:
     build:
       context: ../..
-      dockerfile: docker/proxy-env/app/Dockerfile
+      dockerfile: tests/reverse-proxy/app/Dockerfile
       args:
         TARGET_FRAMEWORK: ${TARGET_FRAMEWORK:-net8.0}
         RUNTIME_TAG: ${RUNTIME_TAG:-8.0}
-    image: hangfire-proxy-env-app
+    image: hangfire-reverse-proxy-test-app
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Hangfire: "Host=postgres;Database=hangfire;Username=hangfire;Password=hangfire;Application Name=hangfire-main"
