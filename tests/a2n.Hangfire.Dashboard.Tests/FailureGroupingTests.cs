@@ -245,13 +245,51 @@ public class FailureGroupingTests
     }
 
     [Fact]
+    public async Task GenericProvider_GroupJobIds_AreEveryMemberStillFailed_NewestFirst()
+    {
+        var (storage, client, provider) = InMemory();
+        var ids = Enumerable.Range(1, 12)
+            .Select(i => client.Create(OrderJob, Fail(new InvalidOperationException($"Order {i} is locked"))))
+            .ToList();
+        var other = client.Create(OrderJob, Fail(new TimeoutException("The operation has timed out.")));
+        var groups = await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None);
+        var group = Assert.Single(groups.Groups, g => g.Fingerprint == ExpectedFingerprint(storage, ids[0]));
+
+        // Left the Failed state after the groups were read.
+        client.Requeue(ids[^1]);
+        client.ChangeState(ids[0], new SucceededState(null, 0, 0));
+        var jobIds = await provider.GetFailureGroupJobIdsAsync(group, CancellationToken.None);
+
+        // More than the page shows: every member, unlike GetFailureGroupJobsAsync.
+        Assert.Equal(ids.Skip(1).Take(10).Reverse(), jobIds);
+        Assert.DoesNotContain(other, jobIds);
+    }
+
+    [Fact]
     public async Task ProviderWithoutGrouping_ReportsItUnsupported()
     {
         IStorageQueryProvider provider = new Mock<IStorageQueryProvider> { CallBase = true }.Object;
+        var group = new FailureGroupDto { Fingerprint = "v1:0123456789abcdef" };
 
         Assert.False(provider.SupportsFailureGrouping);
         Assert.False((await provider.GetFailureGroupsAsync(10, CancellationToken.None)).IsSupported);
-        Assert.Empty(await provider.GetFailureGroupJobsAsync(new FailureGroupDto { Fingerprint = "v1:0123456789abcdef" }, 10, CancellationToken.None));
+        Assert.Empty(await provider.GetFailureGroupJobsAsync(group, 10, CancellationToken.None));
+        Assert.Empty(await provider.GetFailureGroupJobIdsAsync(group, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GroupJobIds_DefaultsToEveryJobFromGetFailureGroupJobsAsync()
+    {
+        // A custom provider written before GetFailureGroupJobIdsAsync existed still gets group actions.
+        var mock = new Mock<IStorageQueryProvider> { CallBase = true };
+        var group = new FailureGroupDto { Fingerprint = "v1:0123456789abcdef", Count = 3 };
+        mock.Setup(p => p.GetFailureGroupJobsAsync(group, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { "9", "7", "4" }.Select(id => new JobSummaryDto { JobId = id }).ToList());
+
+        var ids = await mock.Object.GetFailureGroupJobIdsAsync(group, CancellationToken.None);
+
+        Assert.Equal(new[] { "9", "7", "4" }, ids);
+        mock.Verify(p => p.GetFailureGroupJobsAsync(group, int.MaxValue, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static GenericQueryProvider ProviderOver(Mock<IMonitoringApi> monitoring, IFailedJobPageSource failedJobs = null)

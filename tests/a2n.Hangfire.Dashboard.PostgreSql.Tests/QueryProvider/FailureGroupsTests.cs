@@ -290,6 +290,64 @@ public class FailureGroupsTests
     }
 
     [SkippableFact]
+    public async Task GroupJobIds_AreEveryStoredAndComputedMemberStillFailed_NewestFirst()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        try
+        {
+            var members = new List<string>();
+            for (var i = 0; i < 3; i++)
+            {
+                members.Add(CreateWithoutFilter(Fail("Order 51 is locked")));
+                members.Add(CreateWithFilter(Fail("Order 52 is locked")));
+            }
+            using var connection = _storage.GetConnection();
+            var key = connection.GetJobParameter(members[1], FailureFingerprint.ParameterName);
+            // Not a current value, so the job counts as unfingerprinted and is a fallback member.
+            var otherForm = CreateWithoutFilter(Fail("Order 53 is locked"));
+            connection.SetJobParameter(otherForm, FailureFingerprint.ParameterName, key.ToUpperInvariant());
+            members.Add(otherForm);
+            var requeuedLater = CreateWithFilter(Fail("Order 54 is locked"));
+            var succeeded = CreateWithoutFilter(new SucceededState(null, 0, 0));
+            connection.SetJobParameter(succeeded, FailureFingerprint.ParameterName, key);
+            var otherGroup = CreateWithFilter(Fail("Order 55 could not be found"));
+            var group = Assert.Single((await GroupsAsync()).Groups, g => g.Fingerprint == key);
+            Assert.Equal(4, group.StoredCount);
+            Assert.Equal(4, group.ComputedCount);
+
+            new BackgroundJobClient(_storage, new JobFilterCollection()).Requeue(requeuedLater);
+            var ids = await _provider.GetFailureGroupJobIdsAsync(group, CancellationToken.None);
+
+            // Neither the seeded failures, the job in another group, the succeeded job carrying the key
+            // nor the requeued one.
+            Assert.Equal(members.AsEnumerable().Reverse(), ids);
+            Assert.DoesNotContain(otherGroup, ids);
+        }
+        finally
+        {
+            DeleteCreated();
+        }
+    }
+
+    [SkippableFact]
+    public async Task GroupJobIds_OfAPartialResult_AreTheStoredMembersAndTheFallbackMembersRead()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        const int storedJobs = 3;
+        const int total = storedJobs + JobFilterCriteria.CountLimit + 5;
+        await using var schema = await ThrowawaySchema.CreateAsync(_fixture.ConnectionString, total, storedJobs);
+        var provider = new PostgreSqlQueryProvider(_fixture.ConnectionString, schema.Name);
+        var group = Assert.Single((await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None)).Groups);
+
+        var ids = await provider.GetFailureGroupJobIdsAsync(group, CancellationToken.None);
+
+        // Every stored member (the oldest jobs, 1 to 3) and the 1,000 newest unfingerprinted ones the
+        // grouping read; jobs 4 to 8 weren't read, so they aren't included.
+        var fallback = Enumerable.Range(total - JobFilterCriteria.CountLimit + 1, JobFilterCriteria.CountLimit).Reverse();
+        Assert.Equal(fallback.Concat(new[] { 3, 2, 1 }).Select(id => id.ToString()), ids);
+    }
+
+    [SkippableFact]
     public async Task StoredGroupsQuery_UsesTheJobAndParameterIndexes_AndNeverReadsState()
     {
         PostgreSqlFixture.RequireAvailable();
@@ -303,6 +361,33 @@ public class FailureGroupsTests
         var plan = string.Join("\n", await connection.QueryAsync<string>(
             "EXPLAIN " + _provider.StoredFingerprintGroupsSql,
             new { ParameterName = FailureFingerprint.ParameterName, StoredPattern = PostgreSqlQueryProvider.StoredFingerprintPattern },
+            transaction: tx));
+
+        Assert.Contains("ix_hangfire_job_statename", plan);
+        Assert.Contains("ix_hangfire_jobparameter_jobidandname", plan);
+        Assert.DoesNotContain("on state", plan);
+        Assert.DoesNotContain("state s", plan);
+    }
+
+    [SkippableFact]
+    public async Task GroupJobIdsQuery_UsesTheJobAndParameterIndexes_AndNeverReadsState()
+    {
+        PostgreSqlFixture.RequireAvailable();
+
+        // As above: what matters is that the ids of a group, however large, come from the indexes.
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
+        await connection.OpenAsync();
+        await using var tx = await connection.BeginTransactionAsync();
+        await connection.ExecuteAsync("SET LOCAL enable_seqscan = off", transaction: tx);
+        var plan = string.Join("\n", await connection.QueryAsync<string>(
+            "EXPLAIN " + _provider.FailureGroupMembersSql,
+            new
+            {
+                ParameterName = FailureFingerprint.ParameterName,
+                Fingerprint = "v1:0123456789abcdef",
+                StoredPattern = PostgreSqlQueryProvider.StoredFingerprintPattern,
+                ComputedIds = new long[] { 41, 42 },
+            },
             transaction: tx));
 
         Assert.Contains("ix_hangfire_job_statename", plan);

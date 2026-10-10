@@ -319,6 +319,29 @@ public class GenericQueryProvider : IStorageQueryProvider
         return Task.FromResult<IReadOnlyList<JobSummaryDto>>(jobs);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Every member of a group here is one the grouping read (<see cref="FailureGroupDto.ComputedJobIds"/>),
+    /// so this only checks which of them are still failed, one state lookup per job.
+    /// </remarks>
+    public Task<IReadOnlyList<string>> GetFailureGroupJobIdsAsync(FailureGroupDto group, CancellationToken ct)
+    {
+        var ids = new List<string>();
+        if (group == null)
+            return Task.FromResult<IReadOnlyList<string>>(ids);
+
+        using var connection = _storage.GetReadOnlyConnection();
+        foreach (var jobId in group.ComputedJobIds ?? Array.Empty<string>())
+        {
+            ct.ThrowIfCancellationRequested();
+            var state = connection.GetStateData(jobId);
+            if (string.Equals(state?.Name, "Failed", StringComparison.OrdinalIgnoreCase))
+                ids.Add(jobId);
+        }
+
+        return Task.FromResult<IReadOnlyList<string>>(ids);
+    }
+
     private JobList<FailedJobDto> FetchFailed(IMonitoringApi monitoringApi, int from, int count)
         => _failedJobs != null ? _failedJobs.GetFailedJobs(from, count) : monitoringApi.FailedJobs(from, count);
 

@@ -112,4 +112,33 @@ public interface IStorageQueryProvider
     /// <param name="ct">Cancellation token</param>
     Task<IReadOnlyList<JobSummaryDto>> GetFailureGroupJobsAsync(FailureGroupDto group, int count, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<JobSummaryDto>>(Array.Empty<JobSummaryDto>());
+
+    /// <summary>
+    /// Returns the ids of every job in a group from <see cref="GetFailureGroupsAsync"/> that is still
+    /// in the Failed state, newest first: all the jobs carrying the group's stored fingerprint, plus
+    /// the fallback members the group carries. The Failed page's group actions requeue or delete
+    /// exactly these.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Takes the group for the same reason as <see cref="GetFailureGroupJobsAsync"/>: the jobs without
+    /// a stored fingerprint are the ones the grouping already read
+    /// (<see cref="FailureGroupDto.ComputedJobIds"/>, at most <see cref="JobFilterCriteria.CountLimit"/>),
+    /// so they are not read and fingerprinted a second time. When that result was partial, older
+    /// failures without a stored fingerprint are not included.
+    /// </para>
+    /// <para>
+    /// "Newest" means the same as in <see cref="GetFailureGroupJobsAsync"/>. The default implementation
+    /// takes the ids from <see cref="GetFailureGroupJobsAsync"/> without a limit, so a provider that
+    /// implements only that still gets the group actions; it returns no ids for providers without
+    /// grouping.
+    /// </para>
+    /// </remarks>
+    /// <param name="group">A group returned by <see cref="GetFailureGroupsAsync"/>.</param>
+    /// <param name="ct">Cancellation token</param>
+    async Task<IReadOnlyList<string>> GetFailureGroupJobIdsAsync(FailureGroupDto group, CancellationToken ct)
+    {
+        var jobs = await GetFailureGroupJobsAsync(group, int.MaxValue, ct).ConfigureAwait(false);
+        return (jobs ?? Array.Empty<JobSummaryDto>()).Select(j => j.JobId).ToList();
+    }
 }
