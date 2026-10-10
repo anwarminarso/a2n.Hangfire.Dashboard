@@ -292,6 +292,25 @@ public class FailedPageGroupActionsTests : IDisposable
     }
 
     [Fact]
+    public async Task AFailedBatch_IsReportedWithTheExactNumberOfJobsChanged()
+    {
+        var ids = AddGroupJobs(600);
+        var cut = await RenderGroupView();
+        await ClickAndWaitForModal(cut, "requeue-all");
+
+        // The first batch opens 500 connections and its audit entry one more; the second batch's
+        // 51st state change then fails, after 50 jobs of that batch were requeued.
+        _storage.FailOnConnection(500 + 1 + 51);
+        await ModalButton(cut, "Requeue all").ClickAsync(new MouseEventArgs());
+        WaitForSummary(cut);
+
+        Assert.Equal($"Requeue all stopped with an error: requeued 550 of 600 jobs with {GroupLabel}.", Summary(cut));
+        Assert.Contains("alert-danger", cut.Find("[data-testid=group-action-summary]").ClassName);
+        Assert.Equal(550, ids.Count(id => StateOf(id) == EnqueuedState.StateName));
+        Assert.Equal(2, AuditEntries().Count);
+    }
+
+    [Fact]
     public async Task LeavingThePage_StopsBeforeTheNextBatch()
     {
         var ids = AddGroupJobs(1200);
@@ -360,14 +379,15 @@ public class FailedPageGroupActionsTests : IDisposable
 
     /// <summary>
     /// Hangfire.InMemory with a gate on <see cref="JobStorage.GetConnection"/>, which every state
-    /// change opens, so a test can hold a batch in progress. Read-only connections, which the page and
-    /// the test's own checks use, are never held.
+    /// change opens, so a test can hold a batch in progress, or make one fail. Read-only connections,
+    /// which the page and the test's own checks use, are never held.
     /// </summary>
     private sealed class GatedStorage : JobStorage
     {
         private readonly JobStorage _inner;
         private readonly ManualResetEventSlim _gate = new(initialState: true);
         private readonly ManualResetEventSlim _blocked = new(initialState: false);
+        private int _failIn;
 
         public GatedStorage(JobStorage inner) => _inner = inner;
 
@@ -379,6 +399,9 @@ public class FailedPageGroupActionsTests : IDisposable
 
         public void Open() => _gate.Set();
 
+        // The n-th connection opened from now on throws.
+        public void FailOnConnection(int n) => _failIn = n;
+
         public void WaitUntilBlocked()
         {
             if (!_blocked.Wait(TestTimeouts.RenderWait))
@@ -389,6 +412,8 @@ public class FailedPageGroupActionsTests : IDisposable
 
         public override IStorageConnection GetConnection()
         {
+            if (_failIn > 0 && Interlocked.Decrement(ref _failIn) == 0)
+                throw new InvalidOperationException("The storage is unavailable.");
             if (!_gate.IsSet)
             {
                 _blocked.Set();

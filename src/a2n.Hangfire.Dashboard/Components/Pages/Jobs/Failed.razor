@@ -1033,7 +1033,7 @@ else
         }
         catch (Exception)
         {
-            // Reported below from the last batch that completed.
+            // A failed batch comes back in the result with exact counts; this is anything else.
         }
 
         _groupActionCts = null;
@@ -1042,8 +1042,8 @@ else
         if (_disposed)
             return;
 
-        if (result is null)
-            ShowGroupActionMessage(GroupActionErrorMessage(action, _groupActionProgress), "alert-danger");
+        if (result is null || result.Error is not null)
+            ShowGroupActionMessage(GroupActionErrorMessage(action, result), "alert-danger");
         else
             ShowGroupActionMessage(GroupActionSummary(action, result), result.Cancelled ? "alert-warning" : "alert-success");
         _groupActionProgress = null;
@@ -1071,17 +1071,24 @@ else
         var summary = result.Cancelled
             ? $"Cancelled after {result.Processed:N0} of {result.Total:N0} jobs with {action.Label}: {done.ToLowerInvariant()} {result.Succeeded:N0}."
             : $"{done} {result.Succeeded:N0} of {result.Total:N0} jobs with {action.Label}.";
-        if (result.Skipped > 0)
-            summary += $" {result.Skipped:N0} {(result.Skipped == 1 ? "was" : "were")} skipped because {(result.Skipped == 1 ? "it" : "they")} had left Failed.";
-        return summary;
+        return summary + SkippedText(result);
     }
 
-    private static string GroupActionErrorMessage(GroupAction action, BulkJobActionResult lastBatch)
+    // The result of a failed batch counts the jobs it changed before the error, so the numbers are
+    // exact. Without a result (not expected), nothing is known beyond the audit log.
+    private static string GroupActionErrorMessage(GroupAction action, BulkJobActionResult result)
     {
         var verb = action.Kind == GroupActionKind.Requeue ? "Requeue all" : "Delete all";
-        var processed = lastBatch?.Processed ?? 0;
-        return $"{verb} stopped with an error after {processed:N0} of {action.JobIds.Count:N0} jobs with {action.Label}.";
+        if (result is null)
+            return $"{verb} stopped with an error. The audit log lists the batches that ran.";
+        var done = action.Kind == GroupActionKind.Requeue ? "requeued" : "deleted";
+        return $"{verb} stopped with an error: {done} {result.Succeeded:N0} of {result.Total:N0} jobs with {action.Label}."
+            + SkippedText(result);
     }
+
+    private static string SkippedText(BulkJobActionResult result) => result.Skipped > 0
+        ? $" {result.Skipped:N0} {(result.Skipped == 1 ? "was" : "were")} skipped because {(result.Skipped == 1 ? "it" : "they")} had left Failed."
+        : "";
 
     private static string ProgressText(GroupAction action, BulkJobActionResult progress)
         => $"{(action.Kind == GroupActionKind.Requeue ? "Requeued" : "Deleted")} {progress.Processed:N0} of {progress.Total:N0}";

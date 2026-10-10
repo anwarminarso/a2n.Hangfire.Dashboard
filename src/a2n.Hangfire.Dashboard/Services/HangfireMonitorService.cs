@@ -180,94 +180,161 @@ public class HangfireMonitorService
     /// <summary>
     /// Requeue multiple jobs.
     /// </summary>
+    /// <remarks>
+    /// Kept as its own overload, rather than as optional parameters on the one below, so assemblies
+    /// compiled against earlier versions still find it.
+    /// </remarks>
+    public int RequeueJobs(IEnumerable<string> jobIds)
+        => RequeueJobs(jobIds, fromState: null);
+
+    /// <summary>
+    /// Requeue multiple jobs that are still in a given state.
+    /// </summary>
     /// <param name="jobIds">The jobs to requeue.</param>
     /// <param name="fromState">
     /// When set, a job is only requeued while it is still in this state (Hangfire's
-    /// <c>expectedState</c>); one that has moved on is skipped and not counted.
+    /// <c>expectedState</c>); one that has moved on is skipped and not counted. Null requeues the
+    /// jobs whatever state they are in, like <see cref="RequeueJobs(IEnumerable{string})"/>.
     /// </param>
     /// <param name="auditMetadata">
     /// Extra metadata for the batch's audit entry, next to <c>requested</c> and <c>succeeded</c>,
     /// which always hold the counts.
     /// </param>
     /// <returns>How many jobs were requeued.</returns>
-    public int RequeueJobs(IEnumerable<string> jobIds, string fromState = null,
+    /// <remarks>
+    /// If a state change throws, the audit entry is still written with the jobs requeued before it,
+    /// and the exception is rethrown.
+    /// </remarks>
+    public int RequeueJobs(IEnumerable<string> jobIds, string fromState,
         IReadOnlyDictionary<string, string> auditMetadata = null)
-        => ChangeStates(jobIds, () => new EnqueuedState(), fromState, AuditAction.JobsRequeuedBatch, auditMetadata);
+        => ThrowIfFailed(ChangeStates(jobIds, () => new EnqueuedState(), fromState, AuditAction.JobsRequeuedBatch, auditMetadata));
 
     /// <summary>
     /// Delete multiple jobs.
     /// </summary>
+    /// <remarks>
+    /// Kept as its own overload, rather than as optional parameters on the one below, so assemblies
+    /// compiled against earlier versions still find it.
+    /// </remarks>
+    public int DeleteJobs(IEnumerable<string> jobIds)
+        => DeleteJobs(jobIds, fromState: null);
+
+    /// <summary>
+    /// Delete multiple jobs that are still in a given state.
+    /// </summary>
     /// <param name="jobIds">The jobs to delete.</param>
     /// <param name="fromState">
     /// When set, a job is only deleted while it is still in this state (Hangfire's
-    /// <c>expectedState</c>); one that has moved on is skipped and not counted.
+    /// <c>expectedState</c>); one that has moved on is skipped and not counted. Null deletes the
+    /// jobs whatever state they are in, like <see cref="DeleteJobs(IEnumerable{string})"/>.
     /// </param>
     /// <param name="auditMetadata">
     /// Extra metadata for the batch's audit entry, next to <c>requested</c> and <c>succeeded</c>,
     /// which always hold the counts.
     /// </param>
     /// <returns>How many jobs were deleted.</returns>
-    public int DeleteJobs(IEnumerable<string> jobIds, string fromState = null,
+    /// <remarks>
+    /// If a state change throws, the audit entry is still written with the jobs deleted before it,
+    /// and the exception is rethrown.
+    /// </remarks>
+    public int DeleteJobs(IEnumerable<string> jobIds, string fromState,
         IReadOnlyDictionary<string, string> auditMetadata = null)
-        => ChangeStates(jobIds, () => new DeletedState { Reason = "Deleted via Dashboard" }, fromState,
-            AuditAction.JobsDeletedBatch, auditMetadata);
+        => ThrowIfFailed(ChangeStates(jobIds, DeletedForDashboard, fromState, AuditAction.JobsDeletedBatch, auditMetadata));
 
     /// <summary>
-    /// Requeues the jobs <see cref="BulkActionBatchSize"/> at a time through
-    /// <see cref="RequeueJobs"/>, so each batch is one audit entry. Cancelling stops after the batch
-    /// in progress; the result then says how far it got.
+    /// Requeues the jobs <see cref="BulkActionBatchSize"/> at a time, as
+    /// <see cref="RequeueJobs(IEnumerable{string}, string, IReadOnlyDictionary{string, string})"/>
+    /// does, so each batch is one audit entry. Cancelling stops after the batch in progress, and a
+    /// batch that fails stops the run; the result then says how far it got. It doesn't throw for a
+    /// failed batch: <see cref="BulkJobActionResult.Error"/> holds the exception, and the counts
+    /// include the jobs that batch changed before it failed.
     /// </summary>
     /// <param name="jobIds">The jobs to requeue, in the order to process them.</param>
-    /// <param name="fromState">Passed to <see cref="RequeueJobs"/> for every batch.</param>
-    /// <param name="auditMetadata">Passed to <see cref="RequeueJobs"/> for every batch.</param>
-    /// <param name="progress">Reported after each batch.</param>
+    /// <param name="fromState">Only jobs still in this state are requeued; see <c>RequeueJobs</c>.</param>
+    /// <param name="auditMetadata">Added to every batch's audit entry.</param>
+    /// <param name="progress">Reported after each batch that completes.</param>
     /// <param name="ct">Stops before the next batch; it is not passed into a batch.</param>
     public Task<BulkJobActionResult> RequeueJobsInBatchesAsync(IReadOnlyList<string> jobIds, string fromState = null,
         IReadOnlyDictionary<string, string> auditMetadata = null, IProgress<BulkJobActionResult> progress = null,
         CancellationToken ct = default)
-        => RunInBatchesAsync(jobIds, batch => RequeueJobs(batch, fromState, auditMetadata), progress, ct);
+        => RunInBatchesAsync(jobIds,
+            batch => ChangeStates(batch, () => new EnqueuedState(), fromState, AuditAction.JobsRequeuedBatch, auditMetadata),
+            progress, ct);
 
     /// <summary>
-    /// Deletes the jobs <see cref="BulkActionBatchSize"/> at a time through <see cref="DeleteJobs"/>,
-    /// so each batch is one audit entry. Cancelling stops after the batch in progress; the result
-    /// then says how far it got.
+    /// Deletes the jobs <see cref="BulkActionBatchSize"/> at a time, as
+    /// <see cref="DeleteJobs(IEnumerable{string}, string, IReadOnlyDictionary{string, string})"/>
+    /// does, so each batch is one audit entry. Cancelling stops after the batch in progress, and a
+    /// batch that fails stops the run; the result then says how far it got. It doesn't throw for a
+    /// failed batch: <see cref="BulkJobActionResult.Error"/> holds the exception, and the counts
+    /// include the jobs that batch changed before it failed.
     /// </summary>
     /// <param name="jobIds">The jobs to delete, in the order to process them.</param>
-    /// <param name="fromState">Passed to <see cref="DeleteJobs"/> for every batch.</param>
-    /// <param name="auditMetadata">Passed to <see cref="DeleteJobs"/> for every batch.</param>
-    /// <param name="progress">Reported after each batch.</param>
+    /// <param name="fromState">Only jobs still in this state are deleted; see <c>DeleteJobs</c>.</param>
+    /// <param name="auditMetadata">Added to every batch's audit entry.</param>
+    /// <param name="progress">Reported after each batch that completes.</param>
     /// <param name="ct">Stops before the next batch; it is not passed into a batch.</param>
     public Task<BulkJobActionResult> DeleteJobsInBatchesAsync(IReadOnlyList<string> jobIds, string fromState = null,
         IReadOnlyDictionary<string, string> auditMetadata = null, IProgress<BulkJobActionResult> progress = null,
         CancellationToken ct = default)
-        => RunInBatchesAsync(jobIds, batch => DeleteJobs(batch, fromState, auditMetadata), progress, ct);
+        => RunInBatchesAsync(jobIds,
+            batch => ChangeStates(batch, DeletedForDashboard, fromState, AuditAction.JobsDeletedBatch, auditMetadata),
+            progress, ct);
 
-    private int ChangeStates(IEnumerable<string> jobIds, Func<IState> newState, string fromState,
+    private static IState DeletedForDashboard() => new DeletedState { Reason = "Deleted via Dashboard" };
+
+    // What one batch of state changes did. Completed leaves out the job whose change threw, if one did.
+    private readonly record struct BatchOutcome(int Completed, int Succeeded, Exception Error);
+
+    private static int ThrowIfFailed(BatchOutcome outcome)
+    {
+        if (outcome.Error != null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(outcome.Error).Throw();
+        return outcome.Succeeded;
+    }
+
+    private BatchOutcome ChangeStates(IEnumerable<string> jobIds, Func<IState> newState, string fromState,
         string auditAction, IReadOnlyDictionary<string, string> auditMetadata)
     {
         var client = new BackgroundJobClient(_storage);
         var idList = jobIds?.ToList() ?? [];
+        var completed = 0;
         var count = 0;
-        foreach (var jobId in idList)
+        Exception error = null;
+        try
         {
-            // A null expectedState changes the job whatever state it is in, as before.
-            if (client.ChangeState(jobId, newState(), fromState))
-                count++;
+            foreach (var jobId in idList)
+            {
+                // A null expectedState changes the job whatever state it is in, as before.
+                if (client.ChangeState(jobId, newState(), fromState))
+                    count++;
+                completed++;
+            }
         }
-        if (idList.Count > 0)
+        catch (Exception ex)
         {
-            var metadata = auditMetadata is null
-                ? new Dictionary<string, string>()
-                : new Dictionary<string, string>(auditMetadata);
-            metadata["requested"] = idList.Count.ToString();
-            metadata["succeeded"] = count.ToString();
-            _audit?.Log(auditAction, metadata: metadata);
+            error = ex;
         }
-        return count;
+        finally
+        {
+            // Written even when a state change threw, so the jobs changed before it are on record.
+            if (idList.Count > 0)
+            {
+                var metadata = auditMetadata is null
+                    ? new Dictionary<string, string>()
+                    : new Dictionary<string, string>(auditMetadata);
+                metadata["requested"] = idList.Count.ToString();
+                metadata["succeeded"] = count.ToString();
+                if (error != null)
+                    metadata["error"] = error.GetType().Name;
+                _audit?.Log(auditAction, metadata: metadata);
+            }
+        }
+        return new BatchOutcome(completed, count, error);
     }
 
     private static async Task<BulkJobActionResult> RunInBatchesAsync(IReadOnlyList<string> jobIds,
-        Func<IReadOnlyList<string>, int> runBatch, IProgress<BulkJobActionResult> progress, CancellationToken ct)
+        Func<IReadOnlyList<string>, BatchOutcome> runBatch, IProgress<BulkJobActionResult> progress, CancellationToken ct)
     {
         var ids = jobIds ?? Array.Empty<string>();
         var processed = 0;
@@ -279,8 +346,14 @@ public class HangfireMonitorService
 
             var batch = ids.Skip(processed).Take(BulkActionBatchSize).ToList();
             // Off the caller's thread, since the storage calls are synchronous. A batch always runs to
-            // the end, so its audit entry matches what it changed.
-            succeeded += await Task.Run(() => runBatch(batch), CancellationToken.None).ConfigureAwait(false);
+            // the end, or to the job that failed, so its audit entry matches what it changed.
+            var outcome = await Task.Run(() => runBatch(batch), CancellationToken.None).ConfigureAwait(false);
+            succeeded += outcome.Succeeded;
+            if (outcome.Error != null)
+            {
+                processed += outcome.Completed;
+                return new BulkJobActionResult(ids.Count, processed, succeeded, Cancelled: false) { Error = outcome.Error };
+            }
             processed += batch.Count;
             progress?.Report(new BulkJobActionResult(ids.Count, processed, succeeded, Cancelled: false));
         }
