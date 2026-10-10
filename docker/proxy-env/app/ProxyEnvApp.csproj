@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Test host for the docker/proxy-env stack: dashboard mounted under a path prefix,
+    cookie auth + role-based dashboard filter, PostgreSQL storage, behind nginx (TLS termination).
+    Target framework defaults to net8.0 (matches issue #61); override with -p:AppTargetFramework=net10.0.
+  -->
+  <PropertyGroup>
+    <AppTargetFramework Condition="'$(AppTargetFramework)' == ''">net8.0</AppTargetFramework>
+    <TargetFramework>$(AppTargetFramework)</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ProxyEnvApp</RootNamespace>
+    <!-- Project reference (not NuGet), so the package's buildTransitive props aren't imported. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hangfire.PostgreSql" Version="1.20.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
+    <ProjectReference Include="..\..\..\src\a2n.Hangfire.Dashboard.PostgreSql\a2n.Hangfire.Dashboard.PostgreSql.csproj" />
+  </ItemGroup>
+
+</Project>

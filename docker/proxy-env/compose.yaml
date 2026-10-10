@@ -1,0 +1,110 @@
+# Production-like test stack for the dashboard (issue #61):
+#   browser -> nginx (TLS termination, HTTP->HTTPS redirect) -> app (.NET 8, Linux) -> PostgreSQL
+#
+# The app resolves PUBLIC_HOST to the Docker host gateway, so any server-side request the app
+# makes to its own public URL goes back out through the published nginx ports, like NAT hairpin
+# in a real deployment.
+#
+# Usage (from this folder):
+#   docker compose up -d --build
+#   open https://hangfire.127.0.0.1.nip.io/   (login admin/admin; viewer/viewer has no role)
+#   powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1         (login + 1 prerender, then hub summary)
+#   powershell -ExecutionPolicy Bypass -File scripts/hub-summary.ps1   (summarize hub negotiate requests; -Clear to reset)
+#   docker compose logs -f app                                         (HubRequests lines = hub calls reaching the app)
+#
+# The certificate comes from a local CA in .generated/certs. To avoid browser warnings, trust it for the current user:
+#   certutil -user -addstore Root .generated\certs\ca.crt
+#   (undo: certutil -user -delstore Root "Hangfire proxy-env local CA")
+#   docker compose down        (keep data)   |   docker compose down -v   (also drop the database)
+#
+# Optional env (shell or .env file next to this file):
+#   PUBLIC_HOST            default hangfire.127.0.0.1.nip.io (must resolve to 127.0.0.1 on the host)
+#   TARGET_FRAMEWORK       default net8.0   (net9.0 / net10.0, set RUNTIME_TAG to match)
+#   RUNTIME_TAG            default 8.0
+#   USE_FORWARDED_HEADERS  default false    (true = app honors X-Forwarded-Proto)
+#   DASHBOARD_LOGIN_PATH   default empty    (unauthorized -> 401, as in the issue; /Account/Login -> 302)
+#   STATS_POLLING_INTERVAL default 2000     (DashboardUIOptions.StatsPollingInterval, ms)
+#   ENABLE_PRERENDERING    default empty    (library default; false = DashboardUIOptions.EnablePrerendering=false)
+
+name: hangfire-proxy-env
+
+services:
+  certs:
+    image: alpine:3.20
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-hangfire.127.0.0.1.nip.io}
+    volumes:
+      - ./certs/gen-certs.sh:/scripts/gen-certs.sh:ro
+      - ./.generated/certs:/certs
+    # tr strips CRLF in case git converted the script on checkout.
+    command: ["/bin/sh", "-c", "tr -d '\\r' < /scripts/gen-certs.sh | sh"]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hangfire
+      POSTGRES_USER: hangfire
+      POSTGRES_PASSWORD: hangfire
+    ports:
+      - "127.0.0.1:55432:5432"   # 5432 is taken by the local PostgreSQL
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hangfire -d hangfire"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: ../..
+      dockerfile: docker/proxy-env/app/Dockerfile
+      args:
+        TARGET_FRAMEWORK: ${TARGET_FRAMEWORK:-net8.0}
+        RUNTIME_TAG: ${RUNTIME_TAG:-8.0}
+    image: hangfire-proxy-env-app
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Hangfire: "Host=postgres;Database=hangfire;Username=hangfire;Password=hangfire;Application Name=hangfire-main"
+      ConnectionStrings__Dashboard: "Host=postgres;Database=hangfire;Username=hangfire;Password=hangfire;Maximum Pool Size=5;Application Name=hangfire-dashboard"
+      Dashboard__PathPrefix: /jobs
+      Dashboard__RequiredRole: HangfireAdmin
+      Dashboard__LoginPath: ${DASHBOARD_LOGIN_PATH:-}
+      Dashboard__StatsPollingInterval: ${STATS_POLLING_INTERVAL:-2000}
+      Dashboard__EnablePrerendering: ${ENABLE_PRERENDERING:-}
+      App__UseForwardedHeaders: ${USE_FORWARDED_HEADERS:-false}
+      App__WorkerCount: "4"
+      App__DataProtectionKeysPath: /keys
+      Seed__TargetJobs: "8000"
+      Seed__EnqueueIntervalSeconds: "3"
+    extra_hosts:
+      - "${PUBLIC_HOST:-hangfire.127.0.0.1.nip.io}:host-gateway"
+    volumes:
+      - ./.generated/certs:/certs:ro
+      - dpkeys:/keys
+    ports:
+      - "127.0.0.1:5180:8080"    # direct access, bypassing nginx
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.generated/certs:/certs:ro
+      - ./.generated/nginx-logs:/var/log/nginx/proxy
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+      app:
+        condition: service_started
+
+volumes:
+  pgdata:
+  dpkeys:

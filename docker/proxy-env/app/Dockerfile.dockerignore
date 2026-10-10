@@ -1,0 +1,7 @@
+# Allow-list for the repo-root build context used by app/Dockerfile.
+*
+!Directory.Build.props
+!src/
+!docker/proxy-env/app/
+**/bin/
+**/obj/
