@@ -1,11 +1,10 @@
 @page "/analytics"
 @using a2n.Hangfire.Dashboard.Interfaces
 @using a2n.Hangfire.Dashboard.Models
-@using Microsoft.AspNetCore.SignalR.Client
 @inject AnalyticsService Analytics
-@inject NavigationManager Navigation
+@inject DashboardMetricsFeed MetricsFeed
 @inject IJSRuntime JS
-@implements IAsyncDisposable
+@implements IDisposable
 
 <PageTitle>Analytics Overview</PageTitle>
 
@@ -15,18 +14,11 @@
     <TimeRangeSelector SelectedPreset="@_selectedPreset" OnRangeChanged="OnTimeRangeChanged" />
     @if (_selectedPreset == TimeRangePreset.Last1h)
     {
-        @if (_connectionStatus == ConnectionStatus.Connected)
+        @if (_analyticsSubscription is not null)
         {
             <span class="badge bg-success d-flex align-items-center gap-1">
                 <span class="spinner-grow spinner-grow-sm" style="width: 0.5rem; height: 0.5rem;" aria-hidden="true"></span>
                 Live
-            </span>
-        }
-        else if (_connectionStatus == ConnectionStatus.Reconnecting)
-        {
-            <span class="badge bg-warning text-dark d-flex align-items-center gap-1">
-                <span class="spinner-border spinner-border-sm" style="width: 0.5rem; height: 0.5rem;" aria-hidden="true"></span>
-                Reconnecting
             </span>
         }
     }
@@ -116,16 +108,8 @@ else
     private DateTimeOffset _to;
     private bool _loading = true;
 
-    // SignalR realtime connection
-    private HubConnection _hubConnection;
-    private ConnectionStatus _connectionStatus = ConnectionStatus.Disconnected;
-
-    private enum ConnectionStatus
-    {
-        Disconnected,
-        Connected,
-        Reconnecting
-    }
+    // Realtime analytics from the in-process feed (non-null while "Last 1h" is selected).
+    private IDisposable _analyticsSubscription;
 
     // Stat card values
     private long _totalProcessed;
@@ -165,158 +149,68 @@ else
         _to = selection.To;
         _loading = true;
 
-        // Manage SignalR connection based on time range
+        // Realtime updates only for the "Last 1h" range.
         if (selection.Preset == TimeRangePreset.Last1h)
         {
-            await ConnectToSignalRAsync();
+            _analyticsSubscription ??= MetricsFeed.SubscribeAnalytics(OnAnalyticsAsync);
         }
         else
         {
-            await DisconnectFromSignalRAsync();
+            _analyticsSubscription?.Dispose();
+            _analyticsSubscription = null;
         }
 
         await LoadDataAsync();
     }
 
-    private async Task ConnectToSignalRAsync()
+    private Task OnAnalyticsAsync(AnalyticsBroadcastPayload payload) => InvokeAsync(async () =>
     {
-        // Already connected
-        if (_hubConnection is not null &&
-            _hubConnection.State == HubConnectionState.Connected)
-            return;
-
-        // Dispose any existing connection before creating a new one
-        if (_hubConnection is not null)
+        try
         {
-            await DisposeHubConnectionAsync();
-        }
-
-        _hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri("hubs/dashboard"))
-            .WithAutomaticReconnect()
-            .Build();
-
-        // Handle incoming analytics updates
-        _hubConnection.On<AnalyticsBroadcastPayload>("AnalyticsUpdate", async (payload) =>
-        {
-            await InvokeAsync(async () =>
+            // Update throughput data and rebuild charts
+            if (payload.Throughput is not null && payload.Throughput.Count > 0)
             {
-                try
+                _throughputData = payload.Throughput;
+
+                // Recompute stat cards with new throughput data
+                long totalSucceeded = 0, totalFailed = 0, totalDeleted = 0;
+                foreach (var dp in _throughputData)
                 {
-                    // Update throughput data and rebuild charts
-                    if (payload.Throughput is not null && payload.Throughput.Count > 0)
-                    {
-                        _throughputData = payload.Throughput;
-
-                        // Recompute stat cards with new throughput data
-                        long totalSucceeded = 0, totalFailed = 0, totalDeleted = 0;
-                        foreach (var dp in _throughputData)
-                        {
-                            totalSucceeded += dp.Succeeded;
-                            totalFailed += dp.Failed;
-                            totalDeleted += dp.Deleted;
-                        }
-                        _totalProcessed = totalSucceeded + totalFailed + totalDeleted;
-                        _failureRatePercent = AnalyticsService.ComputeFailureRatePercent(
-                            totalFailed, totalSucceeded + totalFailed);
-
-                        // Update server count from snapshot
-                        if (payload.ServerUtilization?.Data is not null)
-                        {
-                            _activeServers = payload.ServerUtilization.Data.Count;
-                        }
-
-                        // Update throughput chart via JS interop
-                        BuildThroughputChart();
-                        BuildFailureRateChart();
-
-                        if (_throughputChartData is not null)
-                        {
-                            await JS.InvokeVoidAsync("analyticsCharts.updateChartData",
-                                GetChartCanvasId("throughput"), _throughputChartData);
-                        }
-                        if (_failureRateChartData is not null)
-                        {
-                            await JS.InvokeVoidAsync("analyticsCharts.updateChartData",
-                                GetChartCanvasId("failure-rate"), _failureRateChartData);
-                        }
-                    }
-
-                    StateHasChanged();
+                    totalSucceeded += dp.Succeeded;
+                    totalFailed += dp.Failed;
+                    totalDeleted += dp.Deleted;
                 }
-                catch (JSDisconnectedException) { }
-                catch (ObjectDisposedException) { }
-            });
-        });
+                _totalProcessed = totalSucceeded + totalFailed + totalDeleted;
+                _failureRatePercent = AnalyticsService.ComputeFailureRatePercent(
+                    totalFailed, totalSucceeded + totalFailed);
 
-        // Handle reconnection events
-        _hubConnection.Reconnecting += (ex) =>
-        {
-            _connectionStatus = ConnectionStatus.Reconnecting;
-            InvokeAsync(StateHasChanged);
-            return Task.CompletedTask;
-        };
+                // Update server count from snapshot
+                if (payload.ServerUtilization?.Data is not null)
+                {
+                    _activeServers = payload.ServerUtilization.Data.Count;
+                }
 
-        _hubConnection.Reconnected += async (connectionId) =>
-        {
-            _connectionStatus = ConnectionStatus.Connected;
-            // Re-subscribe after reconnection
-            try
-            {
-                await _hubConnection.InvokeAsync("SubscribeToAnalytics");
+                // Update throughput chart via JS interop
+                BuildThroughputChart();
+                BuildFailureRateChart();
+
+                if (_throughputChartData is not null)
+                {
+                    await JS.InvokeVoidAsync("analyticsCharts.updateChartData",
+                        GetChartCanvasId("throughput"), _throughputChartData);
+                }
+                if (_failureRateChartData is not null)
+                {
+                    await JS.InvokeVoidAsync("analyticsCharts.updateChartData",
+                        GetChartCanvasId("failure-rate"), _failureRateChartData);
+                }
             }
-            catch { }
-            await InvokeAsync(StateHasChanged);
-        };
 
-        _hubConnection.Closed += (ex) =>
-        {
-            _connectionStatus = ConnectionStatus.Disconnected;
-            InvokeAsync(StateHasChanged);
-            return Task.CompletedTask;
-        };
-
-        try
-        {
-            await _hubConnection.StartAsync();
-            await _hubConnection.InvokeAsync("SubscribeToAnalytics");
-            _connectionStatus = ConnectionStatus.Connected;
+            StateHasChanged();
         }
-        catch
-        {
-            _connectionStatus = ConnectionStatus.Disconnected;
-        }
-    }
-
-    private async Task DisconnectFromSignalRAsync()
-    {
-        if (_hubConnection is null) return;
-
-        try
-        {
-            if (_hubConnection.State == HubConnectionState.Connected)
-            {
-                await _hubConnection.InvokeAsync("UnsubscribeFromAnalytics");
-            }
-        }
-        catch { }
-
-        await DisposeHubConnectionAsync();
-        _connectionStatus = ConnectionStatus.Disconnected;
-    }
-
-    private async Task DisposeHubConnectionAsync()
-    {
-        if (_hubConnection is not null)
-        {
-            try
-            {
-                await _hubConnection.DisposeAsync();
-            }
-            catch { }
-            _hubConnection = null;
-        }
-    }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    });
 
     /// <summary>
     /// Gets the canvas ID for a specific chart by name.
@@ -651,8 +545,9 @@ else
         return jobType.Length > 40 ? jobType[..37] + "..." : jobType;
     }
 
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
-        await DisposeHubConnectionAsync();
+        _analyticsSubscription?.Dispose();
+        _analyticsSubscription = null;
     }
 }

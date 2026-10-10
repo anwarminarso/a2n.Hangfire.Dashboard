@@ -16,7 +16,7 @@
     <!-- Custom overrides (console viewer, charts) -->
     <link rel="stylesheet" href="_content/css/app.css?v=@V" />
     <link rel="icon" href="@GetFaviconHref()" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="PageRenderMode" />
 </head>
 
 <body>
@@ -31,7 +31,7 @@
     <script src="_content/js/analyticsCharts.js?v=@V"></script>
     <script src="_content/js/heatmap.js?v=@V"></script>
     <script src="_content/js/search-presets.js?v=@V"></script>
-    <DashboardRoutes @rendermode="InteractiveServer" />
+    <DashboardRoutes @rendermode="PageRenderMode" />
     <script src="_content/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
@@ -45,6 +45,12 @@
         .FirstOrDefault()?.InformationalVersion
         ?? typeof(DashboardApp).Assembly.GetName().Version?.ToString()
         ?? "0.0.0";
+
+    private static readonly IComponentRenderMode InteractiveServerNoPrerender =
+        new InteractiveServerRenderMode(prerender: false);
+
+    private IComponentRenderMode PageRenderMode =>
+        Options.EnablePrerendering ? InteractiveServer : InteractiveServerNoPrerender;
 
     private string GetBaseHref()
     {

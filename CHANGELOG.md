@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — Realtime updates without a server-side SignalR client
+
+> **Patch release.** Behind cookie-based authorization, every dashboard page load made the server open SignalR client connections to its own public URL. Those connections carry no user cookie, so they always got HTTP 401. The first response waited for them, and every tab then fell back to polling storage on its own ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)). The dashboard's components now receive broadcasts in-process. Adds `DashboardUIOptions.EnablePrerendering` and the public `DashboardMetricsFeed`; `MetricsBroadcastService` and `AnalyticsBroadcastService` take the feed as a new constructor parameter; no public API removals; no migration.
+
+### Fixed
+
+- **Pages no longer wait for failed hub connections, and tabs no longer poll storage independently ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)).** The sidebar, the Dashboard page and Analytics Overview built a `HubConnection` to `{AppPath}/hubs/dashboard` from inside the server process. `DashboardUIOptions.Authorization` applies to `/hubs/*`, so any filter that checks `HttpContext.User` rejected it. Behind a TLS-terminating proxy the prerender pass also used an `http://` base URL, which added a redirect that turned the negotiate POST into a GET. The failure was swallowed, so each circuit started its own 3-second `GetStatistics()` timer (plus `GetServers()` on the Dashboard page) and `MetricsBroadcastService` never had a subscriber. Even when the connection succeeded (for example with `LocalRequestsOnlyAuthorizationFilter`), it was an unnecessary round trip that required the server to reach its own public URL.
+  - **Components subscribe to `DashboardMetricsFeed`, a singleton in the same process.** No network hop and no credentials are involved. In-process subscriptions count towards the same subscriber gate as hub clients, so the broadcast services still only query storage while someone is watching. `DashboardHub` and its `MetricsUpdated` / `AnalyticsUpdate` messages are unchanged for external clients.
+  - **One storage read per interval, whatever the number of tabs.** The metrics broadcast now carries the server list along with the statistics, and the Dashboard page renders the payload instead of calling `GetStatistics()` and `GetServers()` again on every broadcast. Opening a page reuses the latest snapshot while it is fresh, so the prerender, the interactive render and other tabs opening at the same time share one read.
+  - **Subscriptions and timers start only once the circuit is interactive** (`OnAfterRender`), so the prerender pass no longer sets up connections or timers.
+- **`StatsPollingInterval` is honored.** The option was declared but unused, and the metrics broadcast was hardcoded to 2 seconds. It now sets the broadcast cadence (milliseconds, at least 500, default 2000). The broadcast also moved to a fixed-cadence `PeriodicTimer`, like the analytics broadcast.
+
+### Added
+
+- **`DashboardUIOptions.EnablePrerendering`** (default `true`). Set it to `false` to skip the server prerender pass: the first response is a lightweight shell and each page initializes once, when the circuit connects, instead of twice.
+
 ## 2.5.7 — Responsive layout, wrapping job names, failure fingerprints
 
 > **Patch release.** The dashboard now fits every screen from a 375px phone to a 2560px monitor: list tables hide their least important columns as they narrow and turn into cards on phones, and laptops get an icon-rail sidebar. Long job names wrap instead of being cut off ([#55](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/55)). Failed jobs can record a failure fingerprint through a new opt-in server filter, the first step toward grouping failures by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53), contributed by [@hnalpha323](https://github.com/hnalpha323) in [#54](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/54)). Adds the public `FailureFingerprint` helper and `UseDashboardFailureFingerprintFilter()`; no public API removals; no migration.

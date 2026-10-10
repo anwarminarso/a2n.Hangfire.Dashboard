@@ -268,6 +268,8 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     JobGraphMaxDepth = 5,   // continuation graph traversal depth (default 5)
     JobGraphMaxNodes = 30,  // continuation graph node budget (default 30)
     SearchTimeoutSeconds = 30,  // Search page limit; 0 = no limit, storage command timeout applies (default 30)
+    StatsPollingInterval = 2000,  // realtime metrics cadence in ms, one storage read shared by all tabs (default 2000, min 500)
+    EnablePrerendering = true,  // false = skip the server prerender pass (default true)
     // SourceLink = SourceLinkOptions.GitHub("owner/repo"),  // clickable stack-trace file links
 });
 

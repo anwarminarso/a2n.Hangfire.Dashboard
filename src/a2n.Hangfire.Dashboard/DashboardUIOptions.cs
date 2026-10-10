@@ -30,10 +30,21 @@ public class DashboardUIOptions
     public string DashboardTitle { get; set; } = "Hangfire Dashboard";
 
     /// <summary>
-    /// The interval (in milliseconds) for realtime metric updates via SignalR.
-    /// Default: 2000ms.
+    /// The interval (in milliseconds) at which realtime metrics (sidebar counters, Dashboard page
+    /// stats and realtime graph) are read from storage and pushed to every open tab. One read per
+    /// interval is shared by all tabs. Values below 500 are treated as 500. Read when the host
+    /// starts. Default: 2000ms.
     /// </summary>
     public int StatsPollingInterval { get; set; } = 2000;
+
+    /// <summary>
+    /// Whether dashboard pages are prerendered on the server before the interactive circuit starts.
+    /// Prerendering shows content on the first response, but runs each page's initialization twice
+    /// (once for the prerender, once for the circuit). Set to false to skip the prerender pass: the
+    /// first response is then a lightweight shell and pages render once the circuit connects.
+    /// Default: true.
+    /// </summary>
+    public bool EnablePrerendering { get; set; } = true;
 
     /// <summary>
     /// Whether the dashboard is in read-only mode (hides action buttons).
