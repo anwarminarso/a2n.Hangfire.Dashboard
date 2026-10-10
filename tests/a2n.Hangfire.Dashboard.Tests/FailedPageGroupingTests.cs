@@ -402,6 +402,31 @@ public class FailedPageGroupingTests : IDisposable
     }
 
     [Fact]
+    public async Task Refresh_WhileTheListIsOpen_KeepsTheActiveOptionOnTheSameGroup()
+    {
+        var cut = RenderPage();
+        await KeyDown(cut, "ArrowDown");
+        cut.WaitForState(() => cut.FindAll(".hf-exception-option").Count > 0, TestTimeouts.RenderWait);
+        await KeyDown(cut, "ArrowDown");
+        Assert.Equal("exception-option-1", ActiveDescendant(cut));
+        Assert.Contains("SaveChangesFailedException", cut.Find("#exception-option-1").TextContent);
+
+        // The next read returns the two labeled groups the other way round.
+        var reordered = _groups.Groups.ToArray();
+        (reordered[0], reordered[1]) = (reordered[1], reordered[0]);
+        _groups = new FailureGroupsResult { UsesStoredFingerprints = true, Groups = reordered };
+        AddFailedJob();
+        cut.WaitForState(() => GroupingCalls() == 2, TimeSpan.FromSeconds(15));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("exception-option-2", ActiveDescendant(cut));
+            Assert.Contains("SaveChangesFailedException", cut.Find("#exception-option-2").TextContent);
+            Assert.Contains("hf-option-active", cut.Find("#exception-option-2").ClassName);
+        }, TestTimeouts.RenderWait);
+    }
+
+    [Fact]
     public async Task CompleteResult_HasNoNotice()
     {
         var cut = RenderPage();

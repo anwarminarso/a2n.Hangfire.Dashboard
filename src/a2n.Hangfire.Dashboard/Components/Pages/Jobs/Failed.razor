@@ -41,6 +41,9 @@ else
         <div class="d-flex flex-wrap align-items-center justify-content-sm-end flex-grow-1 gap-2">
             @if (ShowExceptionFilter)
             {
+                // Built once per render; the active option is looked up in it by fingerprint.
+                var options = MenuOptions;
+                var activeOption = ActiveOptionIn(options);
                 @* A select-only combobox rather than a native select, since each entry needs several lines
                    and a tooltip. Focus stays on the toggle: the arrow keys move the active option, which
                    aria-activedescendant points to, and Enter or Space selects it. data-hf-listbox-keys lets
@@ -50,17 +53,20 @@ else
                          class="form-select form-select-sm text-start text-truncate"
                          aria-label="Exception" aria-haspopup="listbox"
                          aria-expanded="@(_menuOpen ? "true" : "false")" aria-controls="exception-filter-list"
-                         aria-activedescendant="@(_menuOpen ? OptionId(ActiveOption) : null)"
+                         aria-activedescendant="@(_menuOpen ? OptionId(activeOption) : null)"
                          @onfocus="EnsureGroupsLoaded" @onclick="ToggleMenu" @onkeydown="HandleFilterKeyDown"
                          @onfocusout="CloseMenu">
                         @SelectedLabel
                     </div>
                     @if (_menuOpen)
                     {
-                        var options = MenuOptions;
                         @* tabindex="-1": Chromium makes a scroll container with no focusable children a Tab
-                           stop, so Tab would land here instead of moving past the filter. *@
-                        <div class="hf-combobox-menu hf-exception-menu bg-body border rounded shadow-sm" tabindex="-1">
+                           stop, so Tab would land here instead of moving past the filter. That also makes it
+                           focusable by mouse, so mousedown is cancelled on the whole container: pressing an
+                           option, the scrollbar or the status line then leaves focus on the toggle, whose
+                           focusout would otherwise close the list mid-click or mid-drag. *@
+                        <div class="hf-combobox-menu hf-exception-menu bg-body border rounded shadow-sm" tabindex="-1"
+                             @onmousedown:preventDefault="true">
                             <div class="list-group list-group-flush" id="exception-filter-list" role="listbox" aria-label="Exceptions">
                                 @for (var i = 0; i < options.Count; i++)
                                 {
@@ -69,9 +75,9 @@ else
                                     var fingerprint = group?.Fingerprint;
                                     var selected = fingerprint == _selectedFingerprint;
                                     <div id="@OptionId(index)" role="option" aria-selected="@(selected ? "true" : "false")"
-                                         class="list-group-item list-group-item-action @(group is null ? null : "hf-exception-option") @(selected ? "active" : null) @(index == ActiveOption ? "hf-option-active" : null)"
+                                         class="list-group-item list-group-item-action @(group is null ? null : "hf-exception-option") @(selected ? "active" : null) @(index == activeOption ? "hf-option-active" : null)"
                                          title="@(group is null ? null : FullTypeName(group))"
-                                         @onmousedown:preventDefault="true" @onclick="() => SelectGroup(fingerprint)">
+                                         @onclick="() => SelectGroup(fingerprint)">
                                         @if (group is null)
                                         {
                                             <span>All exceptions</span>
@@ -363,8 +369,10 @@ else
     private CancellationTokenSource _groupsCts;
     private bool _menuOpen;
 
-    // Index into MenuOptions of the option the arrow keys have moved to; 0 is "All exceptions".
-    private int _activeOption;
+    // The option the arrow keys have moved to, by fingerprint (null is "All exceptions"), so it stays on
+    // the same group if a refresh reorders the list. Its index is the fallback when that group is gone.
+    private string _activeFingerprint;
+    private int _activeIndex;
     private bool _scrollActiveOption;
 
     private string _selectedFingerprint;
@@ -394,8 +402,12 @@ else
 
     private static string OptionId(int index) => $"exception-option-{index}";
 
-    // The active option, kept inside the list in case a refresh shortened it.
-    private int ActiveOption => Math.Clamp(_activeOption, 0, MenuOptions.Count - 1);
+    private int ActiveOptionIn(List<FailureGroupDto> options)
+    {
+        var index = options.FindIndex(g => g?.Fingerprint == _activeFingerprint);
+        // The group has gone in a refresh: stay at the same position, inside the list.
+        return index >= 0 ? index : Math.Clamp(_activeIndex, 0, options.Count - 1);
+    }
 
     private bool HasMenuStatus => _groupsStatus is LoadStatus.Loading or LoadStatus.TimedOut or LoadStatus.Failed
         || (_groupsStatus == LoadStatus.Loaded && UnlabeledGroupCount > 0);
@@ -503,18 +515,13 @@ else
     private async Task OpenMenu()
     {
         _menuOpen = true;
-        _activeOption = SelectedOptionIndex();
+        _activeFingerprint = _selectedFingerprint;
+        _activeIndex = 0;
         _scrollActiveOption = true;
         await EnsureGroupsLoaded();
     }
 
     private void CloseMenu() => _menuOpen = false;
-
-    private int SelectedOptionIndex()
-    {
-        var index = MenuOptions.FindIndex(g => g?.Fingerprint == _selectedFingerprint);
-        return index < 0 ? 0 : index;
-    }
 
     // The select-only combobox keys (WAI-ARIA APG). nav.js cancels the browser's own handling of the
     // keys used here, apart from Escape and Tab: Tab leaves the combobox, and focusout closes the list.
@@ -529,30 +536,35 @@ else
             {
                 await OpenMenu();
                 // After OpenMenu, which loads the groups the first time, so End can reach the last one.
-                if (e.Key == "Home") MoveActiveOption(0);
-                if (e.Key == "End") MoveActiveOption(MenuOptions.Count - 1);
+                if (e.Key is "Home" or "End")
+                {
+                    var loaded = MenuOptions;
+                    MoveActiveOption(loaded, e.Key == "Home" ? 0 : loaded.Count - 1);
+                }
             }
             return;
         }
 
-        var last = MenuOptions.Count - 1;
+        var options = MenuOptions;
+        var active = ActiveOptionIn(options);
+        var last = options.Count - 1;
         switch (e.Key)
         {
             case "ArrowDown":
-                MoveActiveOption(Math.Min(ActiveOption + 1, last));
+                MoveActiveOption(options, Math.Min(active + 1, last));
                 break;
             case "ArrowUp":
-                MoveActiveOption(Math.Max(ActiveOption - 1, 0));
+                MoveActiveOption(options, Math.Max(active - 1, 0));
                 break;
             case "Home":
-                MoveActiveOption(0);
+                MoveActiveOption(options, 0);
                 break;
             case "End":
-                MoveActiveOption(last);
+                MoveActiveOption(options, last);
                 break;
             case "Enter":
             case " ":
-                await SelectGroup(MenuOptions[ActiveOption]?.Fingerprint);
+                await SelectGroup(options[active]?.Fingerprint);
                 break;
             case "Escape":
                 CloseMenu();
@@ -560,9 +572,10 @@ else
         }
     }
 
-    private void MoveActiveOption(int index)
+    private void MoveActiveOption(List<FailureGroupDto> options, int index)
     {
-        _activeOption = index;
+        _activeFingerprint = options[index]?.Fingerprint;
+        _activeIndex = index;
         _scrollActiveOption = true;
     }
 
@@ -573,7 +586,7 @@ else
         _scrollActiveOption = false;
         try
         {
-            await JS.InvokeVoidAsync("hfListbox.scrollIntoView", OptionId(ActiveOption));
+            await JS.InvokeVoidAsync("hfListbox.scrollIntoView", OptionId(ActiveOptionIn(MenuOptions)));
         }
         catch (Exception)
         {
