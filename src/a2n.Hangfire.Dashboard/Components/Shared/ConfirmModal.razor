@@ -13,8 +13,8 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="OnCancel">Cancel</button>
-                    <button type="button" class="btn btn-danger btn-sm" @onclick="OnConfirm">
-                        <i class="bi bi-trash"></i> @ConfirmText
+                    <button type="button" class="btn @ConfirmClass btn-sm" @onclick="OnConfirm">
+                        <i class="bi bi-@ConfirmIcon"></i> @ConfirmText
                     </button>
                 </div>
             </div>
@@ -27,6 +27,10 @@
     [Parameter] public string Title { get; set; } = "Confirm Delete";
     [Parameter] public string Message { get; set; } = "Are you sure?";
     [Parameter] public string ConfirmText { get; set; } = "Delete";
+    /// <summary>Bootstrap Icons name of the confirm button's icon, without the <c>bi-</c> prefix.</summary>
+    [Parameter] public string ConfirmIcon { get; set; } = "trash";
+    /// <summary>Button style of the confirm button.</summary>
+    [Parameter] public string ConfirmClass { get; set; } = "btn-danger";
     [Parameter] public EventCallback OnConfirm { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
 }
