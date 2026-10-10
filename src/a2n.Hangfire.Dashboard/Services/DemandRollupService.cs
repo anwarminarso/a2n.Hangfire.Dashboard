@@ -103,6 +103,7 @@ public class DemandRollupService : IHostedService, IDisposable
     private readonly IStorageMetricsProvider _metricsProvider;
     private readonly JobStorage _storage;
     private readonly IFailedJobPageSource _failedJobs;
+    private readonly DashboardUIOptions _options;
     private readonly ILogger<DemandRollupService> _logger;
 
     private CancellationTokenSource _stoppingCts;
@@ -113,6 +114,16 @@ public class DemandRollupService : IHostedService, IDisposable
     /// available). When false the service is an inert no-op (graceful degradation).
     /// </summary>
     public bool IsAvailable => _metricsProvider != null && _storage != null;
+
+    /// <summary>
+    /// Indicates whether the host has the rollup switched on: the heatmap is enabled and
+    /// <see cref="HeatmapOptions.DemandRollupEnabled"/> is true. Evaluated at start, after
+    /// <c>UseHangfireDashboardUI</c> has applied the host's options.
+    /// </summary>
+    public bool IsEnabled => _options?.Heatmap is not { } heatmap || (heatmap.Enabled && heatmap.DemandRollupEnabled);
+
+    /// <summary>Whether <see cref="StartAsync"/> started the poll loop (tests).</summary>
+    internal bool IsRunning => _loopTask != null;
 
     public DemandRollupService(IServiceProvider serviceProvider)
     {
@@ -125,6 +136,9 @@ public class DemandRollupService : IHostedService, IDisposable
         _metricsProvider = serviceProvider.GetService<IStorageMetricsProvider>();
         _storage = serviceProvider.GetService<JobStorage>();
         _failedJobs = serviceProvider.GetService<IFailedJobPageSource>();
+        // Keep the singleton reference and read it at start: UseHangfireDashboardUI copies the
+        // host's options onto this instance after the service is constructed.
+        _options = serviceProvider.GetService<DashboardUIOptions>();
         _logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<DemandRollupService>()
                   ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DemandRollupService>.Instance;
     }
@@ -138,6 +152,14 @@ public class DemandRollupService : IHostedService, IDisposable
         {
             _logger.LogDebug(
                 "DemandRollupService is inactive: no metrics provider or job storage is registered.");
+            return Task.CompletedTask;
+        }
+
+        if (!IsEnabled)
+        {
+            _logger.LogInformation(
+                "DemandRollupService is disabled (Heatmap.Enabled or Heatmap.DemandRollupEnabled is false); " +
+                "ad-hoc demand is not collected.");
             return Task.CompletedTask;
         }
 

@@ -22,6 +22,18 @@ public class HeatmapOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// Whether the dashboard collects ad-hoc demand for the heatmap's Ad-hoc and Combined layers.
+    /// With the SQL Server and PostgreSQL adapters this is a background poll (every 60 seconds,
+    /// through the host's Hangfire storage) that runs whether or not anyone has the dashboard open.
+    /// Set to false to stop it: no new demand is collected, and the weeks already collected stay
+    /// readable until they fall out of the lookback. The poll also does not run when
+    /// <see cref="Enabled"/> is false. Rollup-metrics adapters (<c>UseRollupMetrics()</c>,
+    /// <c>UseRedisStorage()</c>) are unaffected: their collector also feeds Analytics. Read when the
+    /// host starts. Default: true.
+    /// </summary>
+    public bool DemandRollupEnabled { get; set; } = true;
+
+    /// <summary>
     /// The default Job_Class selection. When a metrics provider is registered the page may prefer
     /// "Combined"; otherwise "Cron" is the storage-agnostic default. (Req 22.5)
     /// </summary>

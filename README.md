@@ -218,6 +218,11 @@ Without a storage adapter package, search and core dashboard features work; the 
 - **SQL Server / PostgreSQL** — `UseSqlServerStorage()` / `UsePostgreSqlStorage()` (direct SQL queries; best accuracy)
 - **Redis / in-memory / other non-SQL** — `UseRedisStorage()` or `UseRollupMetrics()` (incremental rollup; forward-only historical data)
 
+**Which connection each read uses.** The connection string passed to `UseSqlServerStorage()` / `UsePostgreSqlStorage()` is used only by the adapter's own queries: search, the Analytics pages, the heatmap's Historical source and estimated durations, plus the failed-job list on PostgreSQL. Everything else goes through Hangfire's `JobStorage` and therefore the host's main Hangfire connection pool, shared with the workers. That includes the realtime counters, the other job lists, job details, recurring jobs, servers and queues, and the ad-hoc demand rollup (apart from its failed-job reads on PostgreSQL). Giving the adapter a separate connection string (for example one with a small `Maximum Pool Size`) isolates those adapter queries only. To keep the remaining dashboard load low:
+
+- `DashboardUIOptions.StatsPollingInterval` sets how often the realtime counters are read: one read per interval for all open tabs, and none while no tab is open.
+- `DashboardUIOptions.Heatmap.DemandRollupEnabled = false` stops the ad-hoc demand poll (every 60 seconds, runs even with no tab open). The heatmap's Ad-hoc and Combined layers then get no new data. It also doesn't run when the heatmap is disabled (`Heatmap.Enabled = false`).
+
 ```csharp
 // Redis (Hangfire Pro or community StackExchange.Redis storage already configured)
 builder.Services.AddHangfireDashboardUI(options => options.UseRedisStorage());
@@ -270,6 +275,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     SearchTimeoutSeconds = 30,  // Search page limit; 0 = no limit, storage command timeout applies (default 30)
     StatsPollingInterval = 2000,  // realtime metrics cadence in ms, one storage read shared by all tabs (default 2000, min 500)
     EnablePrerendering = true,  // false = skip the server prerender pass (default true)
+    // Heatmap = new HeatmapOptions { DemandRollupEnabled = false },  // stop the 60 s ad-hoc demand poll
     // SourceLink = SourceLinkOptions.GitHub("owner/repo"),  // clickable stack-trace file links
 });
 

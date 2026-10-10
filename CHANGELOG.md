@@ -2,7 +2,7 @@
 
 ## Unreleased — Realtime updates without a server-side SignalR client
 
-> **Patch release.** Behind cookie-based authorization, every dashboard page load made the server open SignalR client connections to its own public URL. Those connections carry no user cookie, so they always got HTTP 401. The first response waited for them, and every tab then fell back to polling storage on its own ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)). The dashboard's components now receive broadcasts in-process. Adds `DashboardUIOptions.EnablePrerendering` and the public `DashboardMetricsFeed`; `MetricsBroadcastService` and `AnalyticsBroadcastService` take the feed as a new constructor parameter; no public API removals; no migration.
+> **Patch release.** Behind cookie-based authorization, every dashboard page load made the server open SignalR client connections to its own public URL. Those connections carry no user cookie, so they always got HTTP 401. The first response waited for them, and every tab then fell back to polling storage on its own ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)). The dashboard's components now receive broadcasts in-process. The ad-hoc demand rollup can be turned off, and the README documents which reads use the adapter's connection string. Adds `DashboardUIOptions.EnablePrerendering`, `HeatmapOptions.DemandRollupEnabled` and the public `DashboardMetricsFeed`; `MetricsBroadcastService` and `AnalyticsBroadcastService` take the feed as a new constructor parameter; no public API removals; no migration.
 
 ### Fixed
 
@@ -15,6 +15,11 @@
 ### Added
 
 - **`DashboardUIOptions.EnablePrerendering`** (default `true`). Set it to `false` to skip the server prerender pass: the first response is a lightweight shell and each page initializes once, when the circuit connects, instead of twice.
+- **`HeatmapOptions.DemandRollupEnabled`** (default `true`) turns off the ad-hoc demand rollup ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)). With the SQL Server and PostgreSQL adapters, `DemandRollupService` polls recent executions every 60 seconds through the host's Hangfire storage, whether or not anyone has the dashboard open, and it couldn't be turned off. With the option set to false the poll doesn't start: the heatmap's Ad-hoc and Combined layers get no new demand, and weeks already collected stay readable until they fall out of the lookback. The poll also no longer runs when the heatmap itself is disabled (`Heatmap.Enabled = false`), since nothing reads its data then. Rollup-metrics adapters are unaffected, because their collector also feeds Analytics.
+
+### Documentation
+
+- **README: which connection each dashboard read uses** ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)). The adapter's connection string serves only the adapter's queries (search, Analytics, heatmap Historical and estimated durations, the failed-job list on PostgreSQL). Realtime counters, the other job lists, job details, recurring jobs, servers, queues and most of the demand rollup go through Hangfire's `JobStorage` and the main pool shared with the workers. This wasn't apparent from the API, so a separate adapter connection string looked like it isolated all dashboard traffic.
 
 ## 2.5.7 — Responsive layout, wrapping job names, failure fingerprints
 
