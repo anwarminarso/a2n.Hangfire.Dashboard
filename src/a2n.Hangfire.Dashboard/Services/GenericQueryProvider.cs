@@ -52,13 +52,17 @@ public class GenericQueryProvider : IStorageQueryProvider
         var states = criteria.GetEffectiveStates();
         var statesToScan = states.Count > 0 ? states : (IReadOnlyList<string>)AllStates;
 
+        // The fingerprint is a job parameter, so it needs a connection; none is opened without it.
+        var fingerprint = criteria.EffectiveFailureFingerprint;
+        using var connection = fingerprint != null ? _storage.GetReadOnlyConnection() : null;
+        var filter = new ScanFilter(criteria.JobNamePattern, criteria.ArgumentsPattern, fingerprint, connection);
+
         foreach (var state in statesToScan)
         {
             if (ct.IsCancellationRequested || candidates.Count >= SafetyCap)
                 break;
 
-            ScanState(monitoringApi, state,
-                new ScanFilter(criteria.JobNamePattern, criteria.ArgumentsPattern), candidates, ct);
+            ScanState(monitoringApi, state, filter, candidates, ct);
         }
 
         // Scanning stops at SafetyCap candidates, so reaching it means there may be more matches.
@@ -424,7 +428,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                     if (candidates.Count >= SafetyCap) break;
                     var dto = entry.Value;
                     if (dto?.Job == null) continue;
-                    if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
+                    if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                     candidates.Add(new JobSummaryDto
                     {
@@ -455,7 +459,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 if (dto?.Job == null) continue;
-                if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
+                if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -486,7 +490,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 if (dto?.Job == null) continue;
-                if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
+                if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -521,7 +525,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 var dto = entry.Value;
                 var job = getJob(dto);
                 if (job == null) continue;
-                if (!filter.Matches(job, getInvocationData(dto))) continue;
+                if (!filter.Matches(entry.Key, job, getInvocationData(dto))) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -676,13 +680,31 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// than in <see cref="ApplyFilters"/> keeps the <see cref="SafetyCap"/> budget available for
     /// rows that can actually be returned.
     /// </summary>
-    private readonly record struct ScanFilter(string NamePattern, string ArgumentsPattern)
+    /// <remarks>
+    /// <see cref="FailureFingerprint"/> is checked last, since it is the only check that reads
+    /// storage: one parameter lookup per job that passes the others.
+    /// </remarks>
+    private readonly record struct ScanFilter(string NamePattern, string ArgumentsPattern,
+        string FailureFingerprint, IStorageConnection Connection)
     {
         /// <summary>No filtering — every scanned job becomes a candidate.</summary>
         public static ScanFilter None => default;
 
-        public bool Matches(Job job, InvocationData invocationData)
+        public bool Matches(string jobId, Job job, InvocationData invocationData)
             => MatchesName(job, NamePattern)
-            && MatchesArguments(job, invocationData, ArgumentsPattern);
+            && MatchesArguments(job, invocationData, ArgumentsPattern)
+            && MatchesFailureFingerprint(jobId, FailureFingerprint, Connection);
+    }
+
+    /// <summary>
+    /// Whether the job carries this stored fingerprint. The parameter is read raw: the filter stores
+    /// it as a plain string, which the typed <c>GetJobParameter&lt;T&gt;</c> would try to parse as JSON.
+    /// </summary>
+    private static bool MatchesFailureFingerprint(string jobId, string fingerprint, IStorageConnection connection)
+    {
+        if (fingerprint == null) return true;
+
+        var stored = connection.GetJobParameter(jobId, Helpers.FailureFingerprint.ParameterName);
+        return string.Equals(stored, fingerprint, StringComparison.Ordinal);
     }
 }
