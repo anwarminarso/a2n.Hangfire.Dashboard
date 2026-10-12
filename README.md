@@ -140,7 +140,7 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 | Retry summary | 🆕 Inline banner above state history showing retry count + exception consistency |
 | Stack trace links | 🆕 File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
 | Job arguments | 🆕 Job lists show each job's arguments, and the Job Details page renders the full method call with type-aware argument formatting — including jobs whose assembly the dashboard does not reference |
-| Global search | Search by job ID, name, queue, tag, exception text, or job arguments (`args:value`) |
+| Global search | Search by job ID, name, queue, tag, exception text, or job arguments (`args:value`), and filter by exception (the Exception filter) |
 | Advanced filters | Filter by date, duration, state, server, and more |
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
 | Health checks | 🆕 `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
@@ -346,6 +346,14 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_hangfire_job_invocationdata_trgm
 ```
 
 `CONCURRENTLY` builds the index without blocking job processing, but it can't run inside a transaction. Trigram indexes only help once the searched value is at least 3 characters long. SQL Server has no equivalent for `LIKE '%value%'` short of Full-Text Search, which the dashboard doesn't use.
+
+### Filter by exception
+
+The **Exception** filter in **Advanced Filters** on the Search page finds every job that failed with one kind of failure, in any state: still failed, requeued and succeeded since, or deleted. It matches the `FailureFingerprint` parameter that `UseDashboardFailureFingerprintFilter()` stores (see [Failure fingerprints](#failure-fingerprints)), with an exact comparison on the `JobParameter` table, so it is an index lookup per job rather than a substring match. It combines with every other filter, and with the 1,000-match count and newest-first paging above.
+
+The list offers the exceptions the Failed page shows, labeled the same way on one line (short type, message, top frame and number of failed jobs), but only those with at least one stored fingerprint, since only those can match. It is loaded when the panel opens, under `SearchTimeoutSeconds`. When no failed job has a stored fingerprint, the list is disabled with a hint to register the filter. The filter can be linked, `search?exception=v1:…`, as the **Search all jobs with this exception** link on a Failed page group does; a fingerprint in the address that isn't in the list (every failed job of it was requeued, say) still shows as selected. A value that isn't a current fingerprint is ignored.
+
+Failures recorded before the filter was registered, or on a server without it, carry no fingerprint, so Search can't find them; only the Failed page's grouping, which computes their fingerprint from the stored exception, knows them. On storages without the SQL Server or PostgreSQL adapter (Redis and others), the filter reads each scanned job's parameter, within the scan's usual limit of 1,000 candidates, and every labeled exception is offered, since stored and computed fingerprints can't be told apart there.
 
 ## Job Builder
 
@@ -658,6 +666,10 @@ The jobs are changed 500 at a time. Each batch is one `jobs.requeued` or `jobs.d
 The ids come from the same data as the counts: every failed job with the stored fingerprint, plus the jobs without one that the grouping read. When the counts are lower bounds, older failures that weren't read are not included, and the confirmation says so; registering the filter on every server avoids that. The group actions are hidden when `DashboardUIOptions.IsReadOnly` is set.
 
 The rows of a group can also be selected and requeued or deleted with **Requeue** and **Delete**, as on the full list. On the Failed page those buttons also change only jobs that are still failed. A requeued or deleted job keeps its `FailureFingerprint` parameter.
+
+#### Search by exception
+
+Because the parameter survives requeues and deletes, the [Exception filter on Search](#filter-by-exception) finds every job that failed with a given exception, whatever its state now. **Search all jobs with this exception** on a Failed page group opens that search.
 
 ### Audit log
 
