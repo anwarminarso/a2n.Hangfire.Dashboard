@@ -230,9 +230,18 @@ else
                                 <strong>Exception</strong>
                             }
                         </div>
-                        <span class="fw-semibold text-nowrap" data-testid="group-total">
-                            @CountText(_selectedGroup) failed @(_selectedGroup.Count == 1 ? "job" : "jobs")
-                        </span>
+                        <div class="text-sm-end">
+                            <span class="fw-semibold text-nowrap" data-testid="group-total">
+                                @CountText(_selectedGroup) failed @(_selectedGroup.Count == 1 ? "job" : "jobs")
+                            </span>
+                            @* Search matches the stored fingerprint, so it also finds the group's jobs that
+                               were requeued and succeeded, or were deleted. The key is a current fingerprint
+                               (prefix and hex digits only), so it needs no escaping. *@
+                            <a class="d-block small text-nowrap" href="search?exception=@_selectedGroup.Fingerprint"
+                               data-testid="search-exception">
+                                <i class="bi bi-search"></i> Search all jobs with this exception
+                            </a>
+                        </div>
                     </div>
                 }
             </div>
@@ -834,28 +843,15 @@ else
         }
     }
 
-    // ── Labels: the same short names as Analytics → Failures and the retry summary ──
+    // ── Labels: the same as the Exception filter on Search (FailureGroupLabels) ──
 
-    private static string ShortTypeName(FailureGroupDto group)
-    {
-        var outer = string.IsNullOrEmpty(group.ExceptionType) ? "Unknown" : ExceptionTypeNames.Short(group.ExceptionType);
-        return string.IsNullOrEmpty(group.InnerExceptionType)
-            ? outer
-            : $"{outer} → {ExceptionTypeNames.Short(group.InnerExceptionType)}";
-    }
+    private static string ShortTypeName(FailureGroupDto group) => FailureGroupLabels.ShortTypeName(group);
 
-    private static string FullTypeName(FailureGroupDto group)
-    {
-        var outer = string.IsNullOrEmpty(group.ExceptionType) ? "Unknown" : group.ExceptionType;
-        return string.IsNullOrEmpty(group.InnerExceptionType) ? outer : $"{outer} → {group.InnerExceptionType}";
-    }
+    private static string FullTypeName(FailureGroupDto group) => FailureGroupLabels.FullTypeName(group);
 
-    // When the result is partial, older failures of every group may not have been read.
-    private string CountText(FailureGroupDto group)
-        => group.Count.ToString("N0") + (_groups.IsPartial ? "+" : "");
+    private string CountText(FailureGroupDto group) => FailureGroupLabels.CountText(group, _groups.IsPartial);
 
-    private static string Truncate(string text, int length)
-        => text.Length > length ? text[..length] + "…" : text;
+    private static string Truncate(string text, int length) => FailureGroupLabels.Truncate(text, length);
 
     private async Task ToggleOrder()
     {

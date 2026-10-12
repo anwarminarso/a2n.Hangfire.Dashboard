@@ -202,6 +202,19 @@ public class FailedPageGroupingTests : IDisposable
     }
 
     [Fact]
+    public async Task AGroup_LinksToASearchForAllItsJobs()
+    {
+        var cut = RenderPage();
+        Assert.Empty(cut.FindAll("[data-testid=search-exception]"));
+
+        await SelectGroup(cut, 1);
+
+        var link = cut.Find("[data-testid=search-exception]");
+        Assert.Equal($"search?exception={TimeoutKey}", link.GetAttribute("href"));
+        Assert.Contains("Search all jobs with this exception", link.TextContent);
+    }
+
+    [Fact]
     public async Task PageSize_ChangesHowManyJobsOfTheGroupAreShown()
     {
         var cut = RenderPage();
