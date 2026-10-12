@@ -2,6 +2,7 @@
 @using a2n.Hangfire.Dashboard.Interfaces
 @using a2n.Hangfire.Dashboard.Models
 @using global::Hangfire.Common
+@using global::Hangfire.States
 @using Microsoft.Extensions.DependencyInjection
 @inject HangfireMonitorService Monitor
 @inject DashboardUIOptions Options
@@ -13,6 +14,29 @@
 <PageTitle>Failed Jobs</PageTitle>
 
 <h2 class="fw-semibold mb-3">Failed Jobs</h2>
+
+@* Above the list rather than in it: deleting a whole group can leave no failed jobs to list. *@
+@if (_runningAction is { } running && _groupActionProgress is { } progress)
+{
+    <div class="alert alert-secondary py-2 px-3 mb-2 d-flex flex-wrap align-items-center gap-2" data-testid="group-action-progress">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span role="status">@ProgressText(running, progress)</span>
+        <div class="progress flex-grow-1" style="height: .5rem; min-width: 6rem;" role="progressbar"
+             aria-label="Progress" aria-valuemin="0" aria-valuemax="@progress.Total" aria-valuenow="@progress.Processed">
+            <div class="progress-bar" style="width: @ProgressPercent(progress)%"></div>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" disabled="@_groupActionCancelRequested" @onclick="CancelGroupAction">
+            <i class="bi bi-x-lg"></i> @(_groupActionCancelRequested ? "Stopping…" : "Cancel")
+        </button>
+    </div>
+}
+else if (_groupActionMessage is not null)
+{
+    <div class="alert @_groupActionMessageClass alert-dismissible py-2 px-3 mb-2 small" role="status" data-testid="group-action-summary">
+        @_groupActionMessage
+        <button type="button" class="btn-close py-2" aria-label="Close" @onclick="() => _groupActionMessage = null"></button>
+    </div>
+}
 
 @if (_jobs is null)
 {
@@ -26,15 +50,24 @@ else if (_jobs.Count == 0)
 else
 {
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <div class="d-flex gap-2">
-            @* Group actions come with bulk requeue/delete per exception; until then a group is view-only. *@
-            @if (!InGroupView)
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any() || GroupActionBusy)" @onclick="RequeueSelected">
+                <i class="bi bi-arrow-repeat"></i> Requeue
+            </button>
+            <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any() || GroupActionBusy)" @onclick="ShowDeleteConfirm">
+                <i class="bi bi-trash"></i> Delete
+            </button>
+            @if (ShowGroupActions)
             {
-                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
-                    <i class="bi bi-arrow-repeat"></i> Requeue
+                <button class="btn btn-primary btn-sm" data-testid="requeue-all"
+                        disabled="@(_selectedGroup is null || GroupActionBusy)"
+                        @onclick="() => PrepareGroupAction(GroupActionKind.Requeue)">
+                    <i class="bi bi-arrow-repeat"></i> Requeue all
                 </button>
-                <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
-                    <i class="bi bi-trash"></i> Delete
+                <button class="btn btn-danger btn-sm" data-testid="delete-all"
+                        disabled="@(_selectedGroup is null || GroupActionBusy)"
+                        @onclick="() => PrepareGroupAction(GroupActionKind.Delete)">
+                    <i class="bi bi-trash"></i> Delete all
                 </button>
             }
         </div>
@@ -225,6 +258,9 @@ else
                         <table class="table table-hover table-sm mb-0 hf-stack">
                             <thead>
                                 <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
+                                    </th>
                                     <th>Id</th>
                                     <th>Job</th>
                                     <th class="text-end">Failed</th>
@@ -234,7 +270,11 @@ else
                                 @foreach (var row in _groupRows)
                                 {
                                     var job = row.Summary;
-                                    <tr>
+                                    <tr class="@(IsSelected(job.JobId) ? "table-active" : "")">
+                                        <td class="hf-cell-select">
+                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.JobId)"
+                                                   @onchange="() => ToggleJob(job.JobId)" aria-label="Select job @job.JobId" />
+                                        </td>
                                         <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.JobId">@ShortenId(job.JobId)</a></td>
                                         <td class="hf-job-cell hf-cell-primary">
                                             <JobNameDisplay Job="@row.Job" InvocationData="@job.InvocationData"
@@ -253,7 +293,8 @@ else
                                     </tr>
                                     @if (job.ExceptionMessage is not null)
                                     {
-                                        <tr class="hf-row-detail">
+                                        <tr class="hf-row-detail @(IsSelected(job.JobId) ? "table-active" : "")">
+                                            <td></td>
                                             <td colspan="3">
                                                 <div class="alert alert-danger py-2 px-3 mb-0 small hf-exception">
                                                     <strong>@job.ExceptionType</strong>
@@ -339,6 +380,19 @@ else
               OnConfirm="ConfirmDelete"
               OnCancel="CancelDelete" />
 
+@if (_pendingGroupAction is { } pending)
+{
+    var requeue = pending.Kind == GroupActionKind.Requeue;
+    <ConfirmModal Visible="true"
+                  Title="@(requeue ? "Confirm Requeue" : "Confirm Delete")"
+                  Message="@GroupActionConfirmMessage(pending)"
+                  ConfirmText="@(requeue ? "Requeue all" : "Delete all")"
+                  ConfirmIcon="@(requeue ? "arrow-repeat" : "trash")"
+                  ConfirmClass="@(requeue ? "btn-primary" : "btn-danger")"
+                  OnConfirm="RunGroupAction"
+                  OnCancel="() => _pendingGroupAction = null" />
+}
+
 @code {
     /// <summary>
     /// The exception group to show (<c>?exception=…</c>), so a group view can be linked. A value that
@@ -384,6 +438,27 @@ else
 
     private bool ShowExceptionFilter => _queryProvider is { SupportsFailureGrouping: true } && _groups.IsSupported;
     private bool InGroupView => _selectedFingerprint is not null && ShowExceptionFilter;
+
+    // ── Group actions: requeue or delete every job of the selected group ──
+    // The group's ids are read first, and only those jobs are touched, in batches, each one only while
+    // it is still failed. Jobs that fail into the group afterwards are left alone.
+    private enum GroupActionKind { Requeue, Delete }
+
+    private sealed record GroupAction(GroupActionKind Kind, string Fingerprint, string Label,
+        IReadOnlyList<string> JobIds, bool IsPartial);
+
+    private GroupAction _pendingGroupAction;
+    private GroupAction _runningAction;
+    private BulkJobActionResult _groupActionProgress;
+    private bool _groupActionCancelRequested;
+    private CancellationTokenSource _groupActionCts;
+    private CancellationTokenSource _snapshotCts;
+    private string _groupActionMessage;
+    private string _groupActionMessageClass;
+    private bool _disposed;
+
+    private bool ShowGroupActions => InGroupView && !Options.IsReadOnly;
+    private bool GroupActionBusy => _snapshotCts is not null || _runningAction is not null;
 
     private IEnumerable<FailureGroupDto> LabeledGroups => _groups.Groups.Where(g => g.IsLabeled);
     private int UnlabeledGroupCount => _groups.Groups.Count(g => !g.IsLabeled);
@@ -446,13 +521,10 @@ else
                         _jobs = jobs;
                         StateHasChanged();
 
-                        // Grouping reads up to 1,000 failed jobs, so it is only redone while someone is
-                        // looking at it. Otherwise the groups are dropped and read again the next time
-                        // the filter gets focus.
-                        if (InGroupView || _menuOpen)
-                            await LoadGroupsAndSelection();
-                        else
-                            MarkGroupsStale();
+                        // A running group action changes the count with every batch; the groups are
+                        // refreshed once it ends instead.
+                        if (_runningAction is null)
+                            await RefreshGroups();
                     });
                 }
             }
@@ -487,6 +559,16 @@ else
 
     private JobList<FailedJobDto> FetchPage(long total) =>
         _order.Fetch(Monitor.GetFailedJobs, total, _from, _pageSize, j => j.FailedAt);
+
+    // Grouping reads up to 1,000 failed jobs, so it is only redone while someone is looking at it.
+    // Otherwise the groups are dropped and read again the next time the filter gets focus.
+    private async Task RefreshGroups()
+    {
+        if (InGroupView || _menuOpen)
+            await LoadGroupsAndSelection();
+        else
+            MarkGroupsStale();
+    }
 
     private async Task EnsureGroupsLoaded()
     {
@@ -610,6 +692,7 @@ else
         _selectedFingerprint = fingerprint;
         _selectedGroup = FindGroup(fingerprint);
         _groupRows = new();
+        ClearJobSelection();
         // Set before navigating, so the parameter update the navigation causes finds nothing to do.
         // The key is a current fingerprint (prefix and hex digits only), so it needs no escaping.
         Navigation.NavigateTo($"jobs/failed?exception={fingerprint}", replace: true);
@@ -625,6 +708,7 @@ else
         _selectedGroup = null;
         _groupRows = new();
         _groupJobsStatus = LoadStatus.NotLoaded;
+        ClearJobSelection();
     }
 
     private async Task LoadGroupsAndSelection()
@@ -777,8 +861,7 @@ else
     {
         _order.Toggle();
         _from = 0;
-        _selectedJobs.Clear();
-        _selectAll = false;
+        ClearJobSelection();
         await LoadData();
     }
 
@@ -786,8 +869,7 @@ else
     {
         _from = args.From;
         _pageSize = args.PageSize;
-        _selectedJobs.Clear();
-        _selectAll = false;
+        ClearJobSelection();
         await LoadData();
     }
 
@@ -797,54 +879,232 @@ else
         if (InGroupView)
         {
             _groupSize = newSize;
+            ClearJobSelection();
             await LoadGroupJobs();
             return;
         }
 
         _pageSize = newSize;
         _from = 0;
-        _selectedJobs.Clear();
-        _selectAll = false;
+        ClearJobSelection();
         await LoadData();
     }
+
+    // The rows the checkboxes refer to: the group's jobs in the group view, the page otherwise.
+    private List<string> VisibleJobIds => InGroupView
+        ? _groupRows.Select(r => r.Summary.JobId).ToList()
+        : _jobs?.Select(j => j.Key).ToList() ?? new List<string>();
 
     private bool IsSelected(string jobId) => _selectedJobs.Contains(jobId);
 
     private void ToggleJob(string jobId)
     {
         if (!_selectedJobs.Remove(jobId)) _selectedJobs.Add(jobId);
-        _selectAll = _jobs != null && _selectedJobs.Count == _jobs.Count;
+        var visible = VisibleJobIds;
+        _selectAll = visible.Count > 0 && visible.All(_selectedJobs.Contains);
     }
 
     private void ToggleAll(ChangeEventArgs e)
     {
-        if (_jobs is null) return;
         if ((bool)(e.Value ?? false))
         {
-            _selectedJobs = new HashSet<string>(_jobs.Select(j => j.Key));
-            _selectAll = true;
+            _selectedJobs = new HashSet<string>(VisibleJobIds);
+            _selectAll = _selectedJobs.Count > 0;
         }
         else
         {
-            _selectedJobs.Clear();
-            _selectAll = false;
+            ClearJobSelection();
         }
     }
 
-    private async Task RequeueSelected()
+    private void ClearJobSelection()
     {
-        await Task.Run(() => Monitor.RequeueJobs(_selectedJobs));
         _selectedJobs.Clear();
         _selectAll = false;
-        await LoadData();
+    }
+
+    // Only jobs still in Failed are changed: a selected job that was retried or deleted elsewhere in
+    // the meantime is left as it is.
+    private async Task RequeueSelected()
+    {
+        var ids = _selectedJobs.ToList();
+        await Task.Run(() => Monitor.RequeueJobs(ids, FailedState.StateName));
+        await AfterJobsChanged();
     }
 
     private async Task DeleteSelected()
     {
-        await Task.Run(() => Monitor.DeleteJobs(_selectedJobs));
-        _selectedJobs.Clear();
-        _selectAll = false;
+        var ids = _selectedJobs.ToList();
+        await Task.Run(() => Monitor.DeleteJobs(ids, FailedState.StateName));
+        await AfterJobsChanged();
+    }
+
+    private async Task AfterJobsChanged()
+    {
+        ClearJobSelection();
         await LoadData();
+        // LoadData takes the new failed count, so the refresh timer won't see the change.
+        await RefreshGroups();
+    }
+
+    // ── Group actions ──
+
+    private async Task PrepareGroupAction(GroupActionKind kind)
+    {
+        var group = _selectedGroup;
+        if (group is null || GroupActionBusy || _queryProvider is null)
+            return;
+
+        _groupActionMessage = null;
+        var label = SelectedLabel;
+        var isPartial = _groups.IsPartial;
+        var cts = NewTimeoutSource();
+        _snapshotCts = cts;
+
+        IReadOnlyList<string> ids = null;
+        string error = null;
+        try
+        {
+            ids = await Task.Run(() => _queryProvider.GetFailureGroupJobIdsAsync(group, cts.Token));
+        }
+        catch (Exception)
+        {
+            error = cts.IsCancellationRequested && !_disposed
+                ? $"Reading the jobs with this exception took longer than {Options.SearchTimeoutSeconds} {(Options.SearchTimeoutSeconds == 1 ? "second" : "seconds")} and was stopped. No jobs were changed."
+                : "The jobs with this exception could not be read. No jobs were changed.";
+        }
+        finally
+        {
+            _snapshotCts = null;
+            cts.Dispose();
+        }
+
+        if (_disposed)
+            return;
+        if (error is not null)
+            ShowGroupActionMessage(error, "alert-danger");
+        else if (ids is not { Count: > 0 })
+            ShowGroupActionMessage("No jobs with this exception are still failed.", "alert-secondary");
+        else
+            _pendingGroupAction = new GroupAction(kind, group.Fingerprint, label, ids, isPartial);
+    }
+
+    private static string GroupActionConfirmMessage(GroupAction action)
+    {
+        var verb = action.Kind == GroupActionKind.Requeue ? "Requeue" : "Delete";
+        var count = action.JobIds.Count;
+        var message = $"{verb} {count:N0} failed {(count == 1 ? "job" : "jobs")} with {action.Label}?";
+        // The jobs the grouping did not reach can't be in the snapshot.
+        if (action.IsPartial)
+            message += " Older failures that were not grouped are not included.";
+        return message + " Jobs that fail with this exception from now on are not included.";
+    }
+
+    private async Task RunGroupAction()
+    {
+        var action = _pendingGroupAction;
+        _pendingGroupAction = null;
+        if (action is null || _runningAction is not null)
+            return;
+
+        var cts = new CancellationTokenSource();
+        _groupActionCts = cts;
+        _groupActionCancelRequested = false;
+        _runningAction = action;
+        _groupActionMessage = null;
+        _groupActionProgress = new BulkJobActionResult(action.JobIds.Count, 0, 0, Cancelled: false);
+        StateHasChanged();
+
+        var metadata = new Dictionary<string, string> { ["fingerprint"] = action.Fingerprint };
+        var progress = new ProgressCallback(p => _ = InvokeAsync(() =>
+        {
+            if (_disposed || _runningAction != action)
+                return;
+            _groupActionProgress = p;
+            StateHasChanged();
+        }));
+
+        BulkJobActionResult result = null;
+        try
+        {
+            result = action.Kind == GroupActionKind.Requeue
+                ? await Monitor.RequeueJobsInBatchesAsync(action.JobIds, FailedState.StateName, metadata, progress, cts.Token)
+                : await Monitor.DeleteJobsInBatchesAsync(action.JobIds, FailedState.StateName, metadata, progress, cts.Token);
+        }
+        catch (Exception)
+        {
+            // A failed batch comes back in the result with exact counts; this is anything else.
+        }
+
+        _groupActionCts = null;
+        _runningAction = null;
+        cts.Dispose();
+        if (_disposed)
+            return;
+
+        if (result is null || result.Error is not null)
+            ShowGroupActionMessage(GroupActionErrorMessage(action, result), "alert-danger");
+        else
+            ShowGroupActionMessage(GroupActionSummary(action, result), result.Cancelled ? "alert-warning" : "alert-success");
+        _groupActionProgress = null;
+        StateHasChanged();
+
+        await LoadData();
+        await RefreshGroups();
+    }
+
+    private void CancelGroupAction()
+    {
+        _groupActionCancelRequested = true;
+        _groupActionCts?.Cancel();
+    }
+
+    private void ShowGroupActionMessage(string message, string cssClass)
+    {
+        _groupActionMessage = message;
+        _groupActionMessageClass = cssClass;
+    }
+
+    private static string GroupActionSummary(GroupAction action, BulkJobActionResult result)
+    {
+        var done = action.Kind == GroupActionKind.Requeue ? "Requeued" : "Deleted";
+        var summary = result.Cancelled
+            ? $"Cancelled after {result.Processed:N0} of {result.Total:N0} jobs with {action.Label}: {done.ToLowerInvariant()} {result.Succeeded:N0}."
+            : $"{done} {result.Succeeded:N0} of {result.Total:N0} jobs with {action.Label}.";
+        return summary + SkippedText(result);
+    }
+
+    // The result of a failed batch counts the jobs it changed before the error, so the numbers are
+    // exact. Without a result (not expected), nothing is known beyond the audit log.
+    private static string GroupActionErrorMessage(GroupAction action, BulkJobActionResult result)
+    {
+        var verb = action.Kind == GroupActionKind.Requeue ? "Requeue all" : "Delete all";
+        if (result is null)
+            return $"{verb} stopped with an error. The audit log lists the batches that ran.";
+        var done = action.Kind == GroupActionKind.Requeue ? "requeued" : "deleted";
+        return $"{verb} stopped with an error: {done} {result.Succeeded:N0} of {result.Total:N0} jobs with {action.Label}."
+            + SkippedText(result);
+    }
+
+    private static string SkippedText(BulkJobActionResult result) => result.Skipped > 0
+        ? $" {result.Skipped:N0} {(result.Skipped == 1 ? "was" : "were")} skipped because {(result.Skipped == 1 ? "it" : "they")} had left Failed."
+        : "";
+
+    private static string ProgressText(GroupAction action, BulkJobActionResult progress)
+        => $"{(action.Kind == GroupActionKind.Requeue ? "Requeued" : "Deleted")} {progress.Processed:N0} of {progress.Total:N0}";
+
+    private static int ProgressPercent(BulkJobActionResult progress)
+        => progress.Total == 0 ? 0 : (int)(100L * progress.Processed / progress.Total);
+
+    // Reports straight to the callback, on the thread that finished the batch; the callback moves to
+    // the renderer itself.
+    private sealed class ProgressCallback : IProgress<BulkJobActionResult>
+    {
+        private readonly Action<BulkJobActionResult> _report;
+
+        public ProgressCallback(Action<BulkJobActionResult> report) => _report = report;
+
+        public void Report(BulkJobActionResult value) => _report(value);
     }
 
     private bool _showDeleteConfirm;
@@ -872,8 +1132,12 @@ else
 
     public void Dispose()
     {
+        _disposed = true;
         _refreshTimer?.Dispose();
         _groupsCts?.Cancel();
         _groupJobsCts?.Cancel();
+        _snapshotCts?.Cancel();
+        // Leaving the page stops a group action after the batch in progress.
+        _groupActionCts?.Cancel();
     }
 }

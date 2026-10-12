@@ -386,36 +386,14 @@ WHERE j.Id IN @Ids AND j.StateName = 'Failed';";
         var stateTable = SqlHelper.Table(_schema, "State");
         var paramTable = SqlHelper.Table(_schema, "JobParameter");
 
-        // The group's members are collected first — its stored members, sought per failed job as in
-        // the grouping query, plus the fallback members it carries, minus any the filter has
-        // fingerprinted since (it failed again) — and only the newest @Count of them are joined to
-        // their state. Filtering while walking the Job table newest-first
-        // instead reads the whole table when the group's jobs are old.
-        //
-        // A binary = ignores trailing spaces, so the length is compared too; the key itself is a
-        // current fingerprint, so this is the same exact match as StoredFingerprintMatch, only cheaper.
+        // The group's members are collected first, and only the newest @Count of them are joined to
+        // their state. Filtering while walking the Job table newest-first instead reads the whole table
+        // when the group's jobs are old.
         var sql = $@"
 SELECT {FailedJobRowColumns}
 FROM (
     SELECT TOP (@Count) m.Id
-    FROM (
-        SELECT j.Id
-        FROM {jobTable} j
-        CROSS APPLY (
-            SELECT TOP (1) p.[Value] FROM {paramTable} p
-            WHERE p.JobId = j.Id AND p.[Name] = @ParameterName) p
-        WHERE j.StateName = 'Failed'
-          AND p.[Value] COLLATE Latin1_General_BIN2 = @Fingerprint
-          AND DATALENGTH(p.[Value]) = DATALENGTH(@Fingerprint)
-        UNION
-        SELECT j.Id
-        FROM {jobTable} j
-        WHERE j.Id IN @ComputedIds
-          AND j.StateName = 'Failed'
-          AND NOT EXISTS (
-              SELECT 1 FROM {paramTable} p
-              WHERE p.JobId = j.Id AND p.[Name] = @ParameterName AND {StoredFingerprintMatch})
-    ) m
+    FROM ({FailureGroupMembersSql(jobTable, paramTable)}) m
     ORDER BY m.Id DESC
 ) m
 INNER JOIN {jobTable} j ON j.Id = m.Id
@@ -436,6 +414,61 @@ ORDER BY j.Id DESC;";
 
         return rows.Select(FailureGrouping.ToJobSummary).ToList();
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetFailureGroupJobIdsAsync(FailureGroupDto group, CancellationToken ct)
+    {
+        if (group == null || !FailureFingerprint.IsCurrentVersion(group.Fingerprint))
+            return Array.Empty<string>();
+
+        var jobTable = SqlHelper.Table(_schema, "Job");
+        var paramTable = SqlHelper.Table(_schema, "JobParameter");
+
+        // Job and JobParameter only: a group action needs the ids, not the state, so State.Data is
+        // never read however large the group is.
+        var sql = $@"
+SELECT m.Id
+FROM ({FailureGroupMembersSql(jobTable, paramTable)}) m
+ORDER BY m.Id DESC;";
+
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var ids = await connection.QueryAsync<long>(new CommandDefinition(sql, new
+        {
+            ParameterName = FailureFingerprint.ParameterName,
+            Fingerprint = group.Fingerprint,
+            StoredPattern = StoredFingerprintPattern,
+            ComputedIds = ParseJobIds(group.ComputedJobIds),
+        }, cancellationToken: ct));
+
+        return ids.Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+    }
+
+    // The ids of a group's jobs that are still failed: its stored members, sought per failed job as
+    // in the grouping query, plus the fallback members it carries (@ComputedIds), minus any the filter
+    // has fingerprinted since (it failed again). Takes @ParameterName, @Fingerprint, @StoredPattern
+    // and @ComputedIds.
+    //
+    // A binary = ignores trailing spaces, so the length is compared too; the key itself is a current
+    // fingerprint, so this is the same exact match as StoredFingerprintMatch, only cheaper.
+    private static string FailureGroupMembersSql(string jobTable, string paramTable) => $@"
+        SELECT j.Id
+        FROM {jobTable} j
+        CROSS APPLY (
+            SELECT TOP (1) p.[Value] FROM {paramTable} p
+            WHERE p.JobId = j.Id AND p.[Name] = @ParameterName) p
+        WHERE j.StateName = 'Failed'
+          AND p.[Value] COLLATE Latin1_General_BIN2 = @Fingerprint
+          AND DATALENGTH(p.[Value]) = DATALENGTH(@Fingerprint)
+        UNION
+        SELECT j.Id
+        FROM {jobTable} j
+        WHERE j.Id IN @ComputedIds
+          AND j.StateName = 'Failed'
+          AND NOT EXISTS (
+              SELECT 1 FROM {paramTable} p
+              WHERE p.JobId = j.Id AND p.[Name] = @ParameterName AND {StoredFingerprintMatch})";
 
     private static List<long> ParseJobIds(IEnumerable<string> ids)
     {

@@ -400,29 +400,13 @@ WHERE j.id = ANY(@Ids) AND j.statename = 'Failed'";
         if (group == null || !FailureFingerprint.IsCurrentVersion(group.Fingerprint) || count <= 0)
             return Array.Empty<JobSummaryDto>();
 
-        // The group's members are collected first — its stored members, looked up per failed job as in
-        // StoredFingerprintGroupsSql, plus the fallback members it carries, minus any the filter has
-        // fingerprinted since (it failed again) — and only the newest @Count of them are joined to their
-        // state. Filtering while walking the job table newest-first instead reads the whole table when
-        // the group's jobs are old. The LIMIT also keeps the planner from flattening the subquery.
+        // The group's members are collected first, and only the newest @Count of them are joined to
+        // their state. Filtering while walking the job table newest-first instead reads the whole table
+        // when the group's jobs are old. The LIMIT also keeps the planner from flattening the subquery.
         var sql = $@"
 SELECT {FailedJobRowColumns}
 FROM (
-    SELECT f.id
-    FROM {_jobTable} f
-    CROSS JOIN LATERAL (
-        SELECT p.value FROM {_jobParameterTable} p
-        WHERE p.jobid = f.id AND p.name = @ParameterName
-        LIMIT 1) p
-    WHERE f.statename = 'Failed' AND p.value = @Fingerprint
-    UNION
-    SELECT f.id
-    FROM {_jobTable} f
-    WHERE f.id = ANY(@ComputedIds)
-      AND f.statename = 'Failed'
-      AND NOT EXISTS (
-          SELECT 1 FROM {_jobParameterTable} p
-          WHERE p.jobid = f.id AND p.name = @ParameterName AND {StoredFingerprintMatch})
+    {FailureGroupMembersSql}
     ORDER BY 1 DESC
     LIMIT @Count) m
 INNER JOIN {_jobTable} j ON j.id = m.id
@@ -443,6 +427,54 @@ ORDER BY j.id DESC";
 
         return rows.Select(FailureGrouping.ToJobSummary).ToList();
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetFailureGroupJobIdsAsync(FailureGroupDto group, CancellationToken ct)
+    {
+        if (group == null || !FailureFingerprint.IsCurrentVersion(group.Fingerprint))
+            return Array.Empty<string>();
+
+        // job and jobparameter only: a group action needs the ids, not the state, so state.data is
+        // never read however large the group is.
+        var sql = $@"
+{FailureGroupMembersSql}
+ORDER BY 1 DESC";
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var ids = await connection.QueryAsync<long>(new CommandDefinition(sql, new
+        {
+            ParameterName = FailureFingerprint.ParameterName,
+            Fingerprint = group.Fingerprint,
+            StoredPattern = StoredFingerprintPattern,
+            ComputedIds = ParseJobIds(group.ComputedJobIds),
+        }, cancellationToken: ct));
+
+        return ids.Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+    }
+
+    // The ids of a group's jobs that are still failed: its stored members, looked up per failed job as
+    // in StoredFingerprintGroupsSql, plus the fallback members it carries (@ComputedIds), minus any the
+    // filter has fingerprinted since (it failed again). Takes @ParameterName, @Fingerprint,
+    // @StoredPattern and @ComputedIds. The key is a current fingerprint, so = is the same exact match
+    // as StoredFingerprintMatch.
+    internal string FailureGroupMembersSql => $@"
+    SELECT f.id
+    FROM {_jobTable} f
+    CROSS JOIN LATERAL (
+        SELECT p.value FROM {_jobParameterTable} p
+        WHERE p.jobid = f.id AND p.name = @ParameterName
+        LIMIT 1) p
+    WHERE f.statename = 'Failed' AND p.value = @Fingerprint
+    UNION
+    SELECT f.id
+    FROM {_jobTable} f
+    WHERE f.id = ANY(@ComputedIds)
+      AND f.statename = 'Failed'
+      AND NOT EXISTS (
+          SELECT 1 FROM {_jobParameterTable} p
+          WHERE p.jobid = f.id AND p.name = @ParameterName AND {StoredFingerprintMatch})";
 
     private static long[] ParseJobIds(IEnumerable<string> ids)
     {

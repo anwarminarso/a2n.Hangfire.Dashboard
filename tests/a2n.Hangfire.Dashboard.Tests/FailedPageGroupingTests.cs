@@ -20,7 +20,7 @@ using FailedPage = a2n.Hangfire.Dashboard.Components.Pages.Jobs.Failed;
 namespace a2n.Hangfire.Dashboard.Tests;
 
 /// <summary>
-/// The Exception filter on the Failed page (#53): read-only grouping, loaded only when asked for.
+/// The Exception filter on the Failed page (#53): grouping, loaded only when asked for.
 /// </summary>
 public class FailedPageGroupingTests : IDisposable
 {
@@ -184,7 +184,7 @@ public class FailedPageGroupingTests : IDisposable
     }
 
     [Fact]
-    public async Task SelectingAGroup_ShowsItsTotal_AndItsNewestTenJobs_WithoutActions()
+    public async Task SelectingAGroup_ShowsItsTotal_AndItsNewestTenJobs()
     {
         var cut = RenderPage();
 
@@ -193,9 +193,9 @@ public class FailedPageGroupingTests : IDisposable
         Assert.Equal("42 failed jobs", cut.Find("[data-testid=group-total]").TextContent.Trim());
         Assert.Equal(10, GroupRowCount(cut));
         Assert.Equal(new[] { 10 }, _requestedJobCounts);
-        Assert.Empty(cut.FindAll("tbody input[type=checkbox]"));
-        Assert.DoesNotContain(cut.FindAll("button"), b => b.TextContent.Contains("Requeue"));
-        Assert.DoesNotContain(cut.FindAll("button"), b => b.TextContent.Contains("Delete"));
+        // The actions are covered by FailedPageGroupActionsTests.
+        Assert.Equal(10, cut.FindAll("tbody input[type=checkbox]").Count);
+        Assert.Single(cut.FindAll("[data-testid=requeue-all]"));
         Assert.Equal(10, cut.FindAll("tbody td.hf-job-cell").Count);
         Assert.Contains("SaveChangesFailedException → SqlException", cut.Find("#exception-filter").TextContent);
         Assert.EndsWith($"jobs/failed?exception={LockedKey}", _ctx.Services.GetRequiredService<NavigationManager>().Uri);
