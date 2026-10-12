@@ -44,7 +44,9 @@ public class FailedPageGroupActionsTests : IDisposable
     public FailedPageGroupActionsTests()
     {
         _client = new BackgroundJobClient(_storage, new JobFilterCollection());
-        _audit = new AuditLogService(_storage, _options, httpContext: null);
+        // On the inner storage, so the audit log's own writes (and its occasional trim) never pass
+        // the gate the state changes wait at.
+        _audit = new AuditLogService(_storage.Inner, _options, httpContext: null);
 
         _provider.SetupGet(p => p.SupportsFailureGrouping).Returns(true);
         _provider.Setup(p => p.GetFailureGroupsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -298,9 +300,9 @@ public class FailedPageGroupActionsTests : IDisposable
         var cut = await RenderGroupView();
         await ClickAndWaitForModal(cut, "requeue-all");
 
-        // The first batch opens 500 connections and its audit entry one more; the second batch's
-        // 51st state change then fails, after 50 jobs of that batch were requeued.
-        _storage.FailOnConnection(500 + 1 + 51);
+        // The snapshot is newest first, so its 551st job is ids[49]: the second batch fails there,
+        // after requeuing 50 jobs.
+        _storage.Failure.FailJob(ids[49]);
         await ModalButton(cut, "Requeue all").ClickAsync(new MouseEventArgs());
         WaitForSummary(cut);
 
@@ -379,17 +381,20 @@ public class FailedPageGroupActionsTests : IDisposable
 
     /// <summary>
     /// Hangfire.InMemory with a gate on <see cref="JobStorage.GetConnection"/>, which every state
-    /// change opens, so a test can hold a batch in progress, or make one fail. Read-only connections,
-    /// which the page and the test's own checks use, are never held.
+    /// change opens, so a test can hold a batch in progress, and a <see cref="StateChangeFailure"/>
+    /// to make one fail. Read-only connections, which the page and the test's own checks use, are
+    /// never held.
     /// </summary>
     private sealed class GatedStorage : JobStorage
     {
-        private readonly JobStorage _inner;
         private readonly ManualResetEventSlim _gate = new(initialState: true);
         private readonly ManualResetEventSlim _blocked = new(initialState: false);
-        private int _failIn;
 
-        public GatedStorage(JobStorage inner) => _inner = inner;
+        public GatedStorage(JobStorage inner) => Inner = inner;
+
+        public JobStorage Inner { get; }
+
+        public StateChangeFailure Failure { get; } = new();
 
         public void Close()
         {
@@ -399,35 +404,31 @@ public class FailedPageGroupActionsTests : IDisposable
 
         public void Open() => _gate.Set();
 
-        // The n-th connection opened from now on throws.
-        public void FailOnConnection(int n) => _failIn = n;
-
         public void WaitUntilBlocked()
         {
             if (!_blocked.Wait(TestTimeouts.RenderWait))
                 throw new TimeoutException("No state change reached the gate.");
         }
 
-        public override IMonitoringApi GetMonitoringApi() => _inner.GetMonitoringApi();
+        public override IMonitoringApi GetMonitoringApi() => Inner.GetMonitoringApi();
 
         public override IStorageConnection GetConnection()
         {
-            if (_failIn > 0 && Interlocked.Decrement(ref _failIn) == 0)
-                throw new InvalidOperationException("The storage is unavailable.");
             if (!_gate.IsSet)
             {
                 _blocked.Set();
                 _gate.Wait();
             }
-            return _inner.GetConnection();
+            return Inner.GetConnection();
         }
 
-        public override IStorageConnection GetReadOnlyConnection() => _inner.GetReadOnlyConnection();
+        public override IStorageConnection GetReadOnlyConnection() => Inner.GetReadOnlyConnection();
 
-        public override bool LinearizableReads => _inner.LinearizableReads;
+        public override bool LinearizableReads => Inner.LinearizableReads;
 
-        public override bool HasFeature(string featureId) => _inner.HasFeature(featureId);
+        public override bool HasFeature(string featureId) => Inner.HasFeature(featureId);
 
-        public override IEnumerable<IStateHandler> GetStateHandlers() => _inner.GetStateHandlers();
+        public override IEnumerable<IStateHandler> GetStateHandlers()
+            => Inner.GetStateHandlers().Concat(Failure.HandlersFor());
     }
 }

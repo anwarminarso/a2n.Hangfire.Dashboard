@@ -31,7 +31,9 @@ public class BulkJobActionTests
 
     public BulkJobActionTests()
     {
-        _audit = new AuditLogService(_storage, _options, httpContext: null);
+        // On the inner storage, so the audit log's own writes (and its occasional trim) never go
+        // through the test storage the state changes use.
+        _audit = new AuditLogService(_storage.Inner, _options, httpContext: null);
         _monitor = new HangfireMonitorService(_storage, _audit, _options);
         _client = new BackgroundJobClient(_storage, new JobFilterCollection());
     }
@@ -196,8 +198,7 @@ public class BulkJobActionTests
     public void RequeueJobs_WhenAStateChangeThrows_AuditsTheJobsAlreadyRequeued_AndRethrows()
     {
         var ids = Enumerable.Range(0, 5).Select(_ => CreateFailed()).ToList();
-        // Every state change opens one connection: the third job's change throws.
-        _storage.FailOnConnection(3);
+        _storage.Failure.FailJob(ids[2]);
 
         Assert.ThrowsAny<Exception>(() => _monitor.RequeueJobs(ids, FailedState.StateName, GroupMetadata()));
 
@@ -216,9 +217,8 @@ public class BulkJobActionTests
     {
         var ids = Enumerable.Range(0, 1200).Select(_ => CreateFailed()).ToList();
         _client.ChangeState(ids[510], new SucceededState(null, 0, 0));
-        // The first batch opens 500 connections and its audit entry one more; the second batch then
-        // fails at its 51st job, after deleting 49 and skipping one.
-        _storage.FailOnConnection(500 + 1 + 51);
+        // The second batch fails at its 51st job, after deleting 49 and skipping one.
+        _storage.Failure.FailJob(ids[550]);
 
         var result = await _monitor.DeleteJobsInBatchesAsync(ids, FailedState.StateName, GroupMetadata());
 
@@ -246,34 +246,29 @@ public class BulkJobActionTests
     }
 
     /// <summary>
-    /// Hangfire.InMemory whose n-th <see cref="JobStorage.GetConnection"/> from now on throws, the
-    /// way a storage outage would surface in the middle of a batch.
+    /// Hangfire.InMemory whose state changes can be made to fail for a chosen job
+    /// (<see cref="StateChangeFailure"/>).
     /// </summary>
     private sealed class FailingStorage : JobStorage
     {
-        private readonly JobStorage _inner;
-        private int _remaining;
+        public FailingStorage(JobStorage inner) => Inner = inner;
 
-        public FailingStorage(JobStorage inner) => _inner = inner;
+        public JobStorage Inner { get; }
 
-        public void FailOnConnection(int n) => _remaining = n;
+        public StateChangeFailure Failure { get; } = new();
 
-        public override IMonitoringApi GetMonitoringApi() => _inner.GetMonitoringApi();
+        public override IMonitoringApi GetMonitoringApi() => Inner.GetMonitoringApi();
 
-        public override IStorageConnection GetConnection()
-        {
-            if (_remaining > 0 && Interlocked.Decrement(ref _remaining) == 0)
-                throw new InvalidOperationException("The storage is unavailable.");
-            return _inner.GetConnection();
-        }
+        public override IStorageConnection GetConnection() => Inner.GetConnection();
 
-        public override IStorageConnection GetReadOnlyConnection() => _inner.GetReadOnlyConnection();
+        public override IStorageConnection GetReadOnlyConnection() => Inner.GetReadOnlyConnection();
 
-        public override bool LinearizableReads => _inner.LinearizableReads;
+        public override bool LinearizableReads => Inner.LinearizableReads;
 
-        public override bool HasFeature(string featureId) => _inner.HasFeature(featureId);
+        public override bool HasFeature(string featureId) => Inner.HasFeature(featureId);
 
-        public override IEnumerable<IStateHandler> GetStateHandlers() => _inner.GetStateHandlers();
+        public override IEnumerable<IStateHandler> GetStateHandlers()
+            => Inner.GetStateHandlers().Concat(Failure.HandlersFor());
     }
 
     // Progress<T> posts to the captured synchronization context; this reports in line, so the test
