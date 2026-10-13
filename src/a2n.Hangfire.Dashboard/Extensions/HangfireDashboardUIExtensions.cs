@@ -51,6 +51,9 @@ public static class HangfireDashboardUIExtensions
         services.AddMemoryCache();
         services.AddSingleton<MetricsQueryCache>();
         services.AddSingleton<DashboardSubscriptionTracker>();
+        // In-process realtime feed for the dashboard's own components (they live in this process,
+        // so they must not connect to the hub over the network; see DashboardMetricsFeed).
+        services.AddSingleton<DashboardMetricsFeed>();
         services.AddSingleton<IHubFilter, DashboardHubAuthorizationFilter>();
 
         // JobMethodResolver holds the attribute-based discovery cache, computed once and reused

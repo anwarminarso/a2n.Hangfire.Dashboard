@@ -10,16 +10,18 @@ using System.Diagnostics;
 namespace a2n.Hangfire.Dashboard.Services;
 
 /// <summary>
-/// Background service that broadcasts analytics data via SignalR every 5 seconds.
+/// Background service that broadcasts analytics data every 5 seconds.
 /// Only registered when IStorageMetricsProvider is available.
 /// Broadcasts last 1h throughput, server utilization snapshot, and queue depth snapshot
-/// to clients subscribed to the "analytics" SignalR group.
+/// to in-process subscribers (<see cref="DashboardMetricsFeed"/>) and to clients subscribed
+/// to the "analytics" SignalR group.
 /// </summary>
 public class AnalyticsBroadcastService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IHubContext<DashboardHub> _hubContext;
     private readonly DashboardSubscriptionTracker _subscriptions;
+    private readonly DashboardMetricsFeed _feed;
     private readonly ILogger<AnalyticsBroadcastService> _logger;
     private readonly TimeSpan _interval = TimeSpan.FromSeconds(5);
 
@@ -27,11 +29,13 @@ public class AnalyticsBroadcastService : BackgroundService
         IServiceProvider serviceProvider,
         IHubContext<DashboardHub> hubContext,
         DashboardSubscriptionTracker subscriptions,
+        DashboardMetricsFeed feed,
         ILogger<AnalyticsBroadcastService> logger)
     {
         _serviceProvider = serviceProvider;
         _hubContext = hubContext;
         _subscriptions = subscriptions;
+        _feed = feed;
         _logger = logger;
     }
 
@@ -143,7 +147,9 @@ public class AnalyticsBroadcastService : BackgroundService
             QueueDepth = queueDepthTask.Result
         };
 
-        // Broadcast to "analytics" group
+        // In-process subscribers (the dashboard's own components), then external hub clients.
+        _feed.PublishAnalytics(payload);
+
         await _hubContext.Clients.Group("analytics")
             .SendAsync("AnalyticsUpdate", payload, ct);
     }

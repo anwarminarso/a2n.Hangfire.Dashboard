@@ -578,5 +578,7 @@ public class PreservationPropertyTests
         ctx.Services.AddSingleton(new TagsDataReader(_storage));
         ctx.Services.AddSingleton(new ThrottlingDataReader(_storage));
         ctx.Services.AddSingleton<ThrottlingDetectionCache>();
+        ctx.Services.AddSingleton<DashboardSubscriptionTracker>();
+        ctx.Services.AddSingleton<DashboardMetricsFeed>();
     }
 }

@@ -1,15 +1,13 @@
 @using a2n.Hangfire.Dashboard.Interfaces
 @using a2n.Hangfire.Dashboard.Services
-@using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Extensions.DependencyInjection
-@inject HangfireMonitorService Monitor
+@inject DashboardMetricsFeed MetricsFeed
 @inject TagsDataReader TagsReader
 @inject ThrottlingDetectionCache ThrottlingDetection
 @inject QueueOperationsStateCache StateCache
 @inject IServiceProvider ServiceProvider
-@inject NavigationManager Navigation
 @inject DashboardUIOptions Options
-@implements IAsyncDisposable
+@implements IDisposable
 
 <nav class="hf-nav">
     <!-- Brand -->
@@ -182,8 +180,7 @@
     private bool _hasThrottling;
     private int _pausedQueueCount;
     private bool _analyticsAvailable;
-    private HubConnection _hubConnection;
-    private Timer _fallbackTimer;
+    private IDisposable _metricsSubscription;
     private Timer _slowTimer;
 
     protected override async Task OnInitializedAsync()
@@ -191,47 +188,26 @@
         _analyticsAvailable = ServiceProvider.GetService<IStorageMetricsProvider>() != null;
 
         await LoadStats();
+    }
 
-        // Stats come from the centralized SignalR metrics broadcast (the same stream the Home page
-        // and MetricsBroadcastService use) rather than a per-circuit GetStatistics() poll. This
-        // avoids multiplying storage load by the number of open tabs.
-        _hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri("hubs/dashboard"))
-            .WithAutomaticReconnect()
-            .Build();
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // OnAfterRender never runs during prerendering, so subscriptions and timers are only
+        // set up for the interactive circuit.
+        if (!firstRender) return;
 
-        _hubConnection.On<Dictionary<string, object>>("MetricsUpdated", async metrics =>
+        // Counters come from the in-process metrics feed (one shared storage read per interval for
+        // all tabs) instead of a per-circuit GetStatistics() poll.
+        _metricsSubscription ??= MetricsFeed.SubscribeMetrics(snapshot => InvokeAsync(() =>
         {
-            await InvokeAsync(() =>
-            {
-                ApplyMetrics(metrics);
-                StateHasChanged();
-            });
-        });
-
-        try
-        {
-            await _hubConnection.StartAsync();
-            await _hubConnection.InvokeAsync("SubscribeToMetrics");
-        }
-        catch
-        {
-            // SignalR unavailable — fall back to a lightweight stats poll.
-            _fallbackTimer = new Timer(async _ =>
-            {
-                try
-                {
-                    var stats = await Task.Run(() => Monitor.GetStatistics());
-                    await InvokeAsync(() => { _stats = stats; StateHasChanged(); });
-                }
-                catch { }
-            }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
-        }
+            _stats = snapshot.Statistics;
+            StateHasChanged();
+        }));
 
         // Tags count and paused-queue count aren't part of the metrics broadcast and change rarely.
         // Refresh them on a slow timer; the paused count reads the shared (cached) state, so this is
         // cheap regardless of how many tabs are open.
-        _slowTimer = new Timer(async _ =>
+        _slowTimer ??= new Timer(async _ =>
         {
             try
             {
@@ -249,28 +225,9 @@
         }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
-    private void ApplyMetrics(Dictionary<string, object> metrics)
-    {
-        _stats ??= new StatisticsDto();
-        _stats.Enqueued = GetLong(metrics, "enqueued");
-        _stats.Processing = GetLong(metrics, "processing");
-        _stats.Scheduled = GetLong(metrics, "scheduled");
-        _stats.Failed = GetLong(metrics, "failed");
-        _stats.Recurring = GetLong(metrics, "recurring");
-        _stats.Servers = GetLong(metrics, "servers");
-    }
-
-    private static long GetLong(Dictionary<string, object> metrics, string key)
-    {
-        if (!metrics.TryGetValue(key, out var value) || value is null) return 0;
-        if (value is System.Text.Json.JsonElement json)
-            return json.TryGetInt64(out var l) ? l : 0;
-        return Convert.ToInt64(value);
-    }
-
     private async Task LoadStats()
     {
-        var stats = await Task.Run(() => Monitor.GetStatistics());
+        var stats = (await MetricsFeed.GetMetricsAsync()).Statistics;
         var tagsCount = await Task.Run(() => TagsReader.GetTagsCount());
         // Only computed when not yet detected: the nav item appears once the host application
         // starts writing Hangfire.Throttling data and stays visible for the circuit's lifetime.
@@ -283,14 +240,9 @@
         _pausedQueueCount = ops.MaintenanceMode ? 0 : ops.PausedQueues.Count;
     }
 
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
-        _fallbackTimer?.Dispose();
+        _metricsSubscription?.Dispose();
         _slowTimer?.Dispose();
-        if (_hubConnection is not null)
-        {
-            try { await _hubConnection.DisposeAsync(); }
-            catch { }
-        }
     }
 }

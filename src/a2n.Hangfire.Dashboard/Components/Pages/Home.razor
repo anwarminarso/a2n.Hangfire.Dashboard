@@ -1,7 +1,7 @@
 @page "/"
 @inject HangfireMonitorService Monitor
+@inject DashboardMetricsFeed MetricsFeed
 @inject IJSRuntime JS
-@inject NavigationManager Navigation
 @implements IAsyncDisposable
 
 <PageTitle>Dashboard</PageTitle>
@@ -214,7 +214,7 @@ else if (_statsExpanded)
 
 @code {
     private StatisticsDto _stats;
-    private IList<ServerDto> _servers;
+    private IReadOnlyList<ServerDto> _servers;
 
     private enum ServerSort { None, Name, Workers, Started, Heartbeat }
 
@@ -228,8 +228,7 @@ else if (_statsExpanded)
         ServerSort.Heartbeat => s => s.Heartbeat,
         _ => null
     }, s => s.Name);
-    private HubConnection _hubConnection;
-    private Timer _refreshTimer;
+    private IDisposable _metricsSubscription;
     private long _prevSucceeded;
     private long _prevDeleted;
     private long _prevFailed;
@@ -259,105 +258,51 @@ else if (_statsExpanded)
 
     protected override async Task OnInitializedAsync()
     {
-        await Task.Run(() =>
-        {
-            _stats = Monitor.GetStatistics();
-            _servers = Monitor.GetServers();
-        });
-
-        if (_stats is not null)
-        {
-            _prevSucceeded = _stats.Succeeded;
-            _prevFailed = _stats.Failed;
-            _prevDeleted = _stats.Deleted;
-        }
-
-        // Connect to SignalR hub using a URL relative to the Path_Prefix.
-        // NavigationManager.ToAbsoluteUri uses the <base href> which includes the path prefix,
-        // so "hubs/dashboard" resolves to "{Path_Prefix}/hubs/dashboard" regardless of mount point.
-        _hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri("hubs/dashboard"))
-            .WithAutomaticReconnect()
-            .Build();
-
-        _hubConnection.On<Dictionary<string, object>>("MetricsUpdated", async (metrics) =>
-        {
-            await InvokeAsync(async () =>
-            {
-                try
-                {
-                    var succeeded = GetLongFromMetrics(metrics, "succeeded");
-                    var failed = GetLongFromMetrics(metrics, "failed");
-                    var deleted = GetLongFromMetrics(metrics, "deleted");
-
-                    var deltaSucceeded = Math.Max(0, succeeded - _prevSucceeded);
-                    var deltaFailed = Math.Max(0, failed - _prevFailed);
-                    var deltaDeleted = Math.Max(0, deleted - _prevDeleted);
-                    _prevSucceeded = succeeded;
-                    _prevFailed = failed;
-                    _prevDeleted = deleted;
-
-                    _stats = Monitor.GetStatistics();
-                    _servers = Monitor.GetServers();
-                    StateHasChanged();
-
-                    if (_chartsInitialized)
-                    {
-                        await JS.InvokeVoidAsync("dashboardCharts.updateRealtimeChart", deltaSucceeded, deltaFailed, deltaDeleted);
-                    }
-                }
-                catch { }
-            });
-        });
-
-        try
-        {
-            await _hubConnection.StartAsync();
-            await _hubConnection.InvokeAsync("SubscribeToMetrics");
-        }
-        catch
-        {
-            // Fallback to timer-based polling if SignalR connection fails
-            StartFallbackTimer();
-        }
+        // Shared snapshot: reused across tabs and between the prerender and the interactive render
+        // while it is fresh, so opening the page doesn't add a storage read per render.
+        var snapshot = await MetricsFeed.GetMetricsAsync();
+        _stats = snapshot.Statistics;
+        _servers = snapshot.Servers;
+        _prevSucceeded = _stats.Succeeded;
+        _prevFailed = _stats.Failed;
+        _prevDeleted = _stats.Deleted;
     }
 
-    private void StartFallbackTimer()
+    // Realtime updates from the in-process feed. The payload already carries statistics and
+    // servers, so no storage read happens here.
+    private Task OnMetricsAsync(DashboardMetricsSnapshot snapshot) => InvokeAsync(async () =>
     {
-        _refreshTimer = new Timer(async _ =>
+        var stats = snapshot.Statistics;
+        var deltaSucceeded = Math.Max(0, stats.Succeeded - _prevSucceeded);
+        var deltaFailed = Math.Max(0, stats.Failed - _prevFailed);
+        var deltaDeleted = Math.Max(0, stats.Deleted - _prevDeleted);
+        _prevSucceeded = stats.Succeeded;
+        _prevFailed = stats.Failed;
+        _prevDeleted = stats.Deleted;
+
+        _stats = stats;
+        _servers = snapshot.Servers;
+        StateHasChanged();
+
+        if (_chartsInitialized)
         {
             try
             {
-                var stats = Monitor.GetStatistics();
-                var servers = Monitor.GetServers();
-
-                var deltaSucceeded = Math.Max(0, stats.Succeeded - _prevSucceeded);
-                var deltaFailed = Math.Max(0, stats.Failed - _prevFailed);
-                var deltaDeleted = Math.Max(0, stats.Deleted - _prevDeleted);
-                _prevSucceeded = stats.Succeeded;
-                _prevFailed = stats.Failed;
-                _prevDeleted = stats.Deleted;
-
-                await InvokeAsync(async () =>
-                {
-                    _stats = stats;
-                    _servers = servers;
-                    StateHasChanged();
-
-                    if (_chartsInitialized)
-                    {
-                        await JS.InvokeVoidAsync("dashboardCharts.updateRealtimeChart", deltaSucceeded, deltaFailed, deltaDeleted);
-                    }
-                });
+                await JS.InvokeVoidAsync("dashboardCharts.updateRealtimeChart", deltaSucceeded, deltaFailed, deltaDeleted);
             }
-            catch { }
-        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
-    }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+    });
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            // Subscribe only once interactive: OnAfterRender never runs during prerendering, so
+            // the prerender pass does no subscription work.
+            _metricsSubscription ??= MetricsFeed.SubscribeMetrics(OnMetricsAsync);
+
             // Restore the persisted "Detailed metrics" expand/collapse preference (default: expanded).
             try
             {
@@ -390,7 +335,7 @@ else if (_statsExpanded)
 
     public async ValueTask DisposeAsync()
     {
-        _refreshTimer?.Dispose();
+        _metricsSubscription?.Dispose();
 
         // Destroy Chart.js instances to stop streaming plugin from updating removed canvases
         if (_chartsInitialized)
@@ -401,15 +346,6 @@ else if (_statsExpanded)
             }
             catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }
-        }
-
-        if (_hubConnection is not null)
-        {
-            try
-            {
-                await _hubConnection.DisposeAsync();
-            }
-            catch { }
         }
     }
 
@@ -438,20 +374,6 @@ else if (_statsExpanded)
             }
         }
         catch { }
-    }
-
-    private static long GetLongFromMetrics(Dictionary<string, object> metrics, string key)
-    {
-        if (!metrics.TryGetValue(key, out var value) || value is null)
-            return 0;
-
-        // SignalR with System.Text.Json deserializes numbers as JsonElement
-        if (value is System.Text.Json.JsonElement jsonElement)
-        {
-            return jsonElement.TryGetInt64(out var l) ? l : 0;
-        }
-
-        return Convert.ToInt64(value);
     }
 
     private static string FormatCount(long count)

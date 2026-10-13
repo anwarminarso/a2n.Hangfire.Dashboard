@@ -1,0 +1,4 @@
+# Generated certificates, nginx logs, and scratch output
+.generated/
+.generated-*
+.env

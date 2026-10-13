@@ -1,30 +1,31 @@
 using a2n.Hangfire.Dashboard.Hubs;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
 /// <summary>
-/// Background service that periodically broadcasts metrics to connected dashboard clients.
-/// Replaces the polling mechanism of the original Hangfire dashboard.
+/// Background service that periodically reads the dashboard metrics once and delivers them to
+/// in-process subscribers (<see cref="DashboardMetricsFeed"/>, used by the dashboard's own
+/// components) and to external SignalR clients in the <c>metrics</c> group of
+/// <see cref="DashboardHub"/>. Runs every <see cref="DashboardUIOptions.StatsPollingInterval"/>
+/// and only queries storage while someone is subscribed.
 /// </summary>
 public class MetricsBroadcastService : BackgroundService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly DashboardMetricsFeed _feed;
     private readonly IHubContext<DashboardHub> _hubContext;
     private readonly DashboardSubscriptionTracker _subscriptions;
     private readonly ILogger<MetricsBroadcastService> _logger;
-    private readonly TimeSpan _interval = TimeSpan.FromSeconds(2);
 
     public MetricsBroadcastService(
-        IServiceScopeFactory scopeFactory,
+        DashboardMetricsFeed feed,
         IHubContext<DashboardHub> hubContext,
         DashboardSubscriptionTracker subscriptions,
         ILogger<MetricsBroadcastService> logger)
     {
-        _scopeFactory = scopeFactory;
+        _feed = feed;
         _hubContext = hubContext;
         _subscriptions = subscriptions;
         _logger = logger;
@@ -32,20 +33,39 @@ public class MetricsBroadcastService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("MetricsBroadcastService started. Broadcasting every {Interval}s", _interval.TotalSeconds);
+        // Read once at start: UseHangfireDashboardUI has applied the host's options by now.
+        var interval = _feed.Interval;
+        _logger.LogInformation("MetricsBroadcastService started. Broadcasting every {Interval}ms", interval.TotalMilliseconds);
 
-        while (!stoppingToken.IsCancellationRequested)
+        // Fixed cadence, like AnalyticsBroadcastService: a slow tick doesn't push the next one back.
+        using var timer = new PeriodicTimer(interval);
+
+        while (await SafeWaitForNextTickAsync(timer, stoppingToken))
         {
             try
             {
                 await BroadcastMetrics(stoppingToken);
             }
-            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Error broadcasting metrics");
             }
+        }
+    }
 
-            await Task.Delay(_interval, stoppingToken);
+    private static async Task<bool> SafeWaitForNextTickAsync(PeriodicTimer timer, CancellationToken ct)
+    {
+        try
+        {
+            return await timer.WaitForNextTickAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
         }
     }
 
@@ -54,12 +74,17 @@ public class MetricsBroadcastService : BackgroundService
         if (!_subscriptions.HasMetricsSubscribers)
             return;
 
-        using var scope = _scopeFactory.CreateScope();
-        var monitor = scope.ServiceProvider.GetRequiredService<HangfireMonitorService>();
+        var snapshot = await _feed.RefreshAsync(ct);
+        _feed.PublishMetrics(snapshot);
 
-        var stats = monitor.GetStatistics();
+        await _hubContext.Clients.Group("metrics").SendAsync("MetricsUpdated", ToHubPayload(snapshot), ct);
+    }
 
-        var metrics = new Dictionary<string, object>
+    /// <summary>The <c>MetricsUpdated</c> payload for hub clients (unchanged wire format).</summary>
+    internal static Dictionary<string, object> ToHubPayload(DashboardMetricsSnapshot snapshot)
+    {
+        var stats = snapshot.Statistics;
+        return new Dictionary<string, object>
         {
             ["servers"] = stats.Servers,
             ["recurring"] = stats.Recurring,
@@ -70,7 +95,5 @@ public class MetricsBroadcastService : BackgroundService
             ["scheduled"] = stats.Scheduled,
             ["deleted"] = stats.Deleted,
         };
-
-        await _hubContext.Clients.Group("metrics").SendAsync("MetricsUpdated", metrics, ct);
     }
 }
