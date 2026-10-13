@@ -663,6 +663,9 @@ public class HangfireMonitorService
 
     private const string StoppedJobsSet = "recurring:stopped";
 
+    // Field of the stopped-job hash holding the serialized InvocationData payload (Issue #66).
+    private const string StoppedJobPayloadField = "Job";
+
     /// <summary>
     /// Stops a recurring job by removing it from the scheduler and storing its config.
     /// </summary>
@@ -687,6 +690,13 @@ public class HangfireMonitorService
             ["MethodName"] = job.Job?.Method.Name ?? "",
             ["StoppedAt"] = DateTime.UtcNow.ToString("O")
         };
+
+        // Preserve the full serialized invocation (type, method, parameter types and argument
+        // values) so Start can rebuild the exact same job. Without it a method with parameters
+        // cannot be restored (Issue #66).
+        var jobPayload = ReadRecurringJobPayload(storageConnection, recurringJobId, job);
+        if (!string.IsNullOrWhiteSpace(jobPayload))
+            data[StoppedJobPayloadField] = jobPayload;
 
         using var transaction = connection.CreateWriteTransaction();
         transaction.SetRangeInHash(hashKey, data.Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value)));
@@ -717,9 +727,16 @@ public class HangfireMonitorService
         var cron = data.GetValueOrDefault("Cron") ?? "* * * * *";
         var queue = data.GetValueOrDefault("Queue") ?? "default";
         var timeZoneId = data.GetValueOrDefault("TimeZoneId") ?? "UTC";
+        var jobPayload = data.GetValueOrDefault(StoppedJobPayloadField);
 
-        // Re-create the recurring job from the stored (name-based) config.
-        RestoreRecurringJobByName(recurringJobId, typeName, methodName, cron, queue, timeZoneId);
+        // Re-create the recurring job. Prefer the serialized invocation captured on Stop (keeps the
+        // original argument values, Issue #66); entries stopped by older versions only have the
+        // type/method names, so fall back to rebuilding the call with default arguments.
+        var restoredJob = !string.IsNullOrWhiteSpace(jobPayload)
+            ? DeserializeStoppedJob(jobPayload, recurringJobId)
+            : BuildJobByName(typeName, methodName);
+
+        AddOrUpdateRestoredJob(recurringJobId, restoredJob, cron, queue, timeZoneId);
 
         // Clean up the stopped state
         using var transaction = connection.CreateWriteTransaction();
@@ -732,30 +749,90 @@ public class HangfireMonitorService
     }
 
     /// <summary>
-    /// Re-creates a recurring job from a stored name-based configuration (no argument values),
-    /// used to restore a previously stopped job. Resolves the method by name via reflection,
-    /// mirroring the legacy stop/restore behaviour.
+    /// Reads the serialized invocation payload of a recurring job, preferring the raw stored
+    /// <c>Job</c> field (exact text, readable even when the job's assembly is not loaded) and falling
+    /// back to re-serializing the resolved job.
     /// </summary>
-    private void RestoreRecurringJobByName(string jobId, string typeName, string methodName, string cron, string queue, string timeZoneId)
+    private static string ReadRecurringJobPayload(JobStorageConnection connection, string recurringJobId, RecurringJobDto job)
     {
-        var manager = new RecurringJobManager(_storage);
-        var timeZone = string.IsNullOrEmpty(timeZoneId)
-            ? TimeZoneInfo.Utc
-            : TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        var entries = connection.GetAllEntriesFromHash($"recurring-job:{recurringJobId}");
+        if (entries is not null &&
+            entries.TryGetValue(StoppedJobPayloadField, out var raw) &&
+            !string.IsNullOrWhiteSpace(raw))
+        {
+            return raw;
+        }
 
-        // Find the type and method via reflection.
+        return job.Job is null ? null : InvocationData.SerializeJob(job.Job).SerializePayload();
+    }
+
+    /// <summary>
+    /// Deserializes the invocation payload captured on Stop back into a <see cref="global::Hangfire.Common.Job"/>
+    /// with its original argument values.
+    /// </summary>
+    private static global::Hangfire.Common.Job DeserializeStoppedJob(string jobPayload, string recurringJobId)
+    {
+        try
+        {
+            return InvocationData.DeserializePayload(jobPayload).DeserializeJob();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Recurring job '{recurringJobId}' could not be restored: {ex.GetBaseException().Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds a job from a name-only configuration (stopped-job entries written before Issue #66
+    /// carry no argument values). The method is resolved by name — preferring the overload with the
+    /// fewest parameters — and every parameter receives its declared default, or the type's default
+    /// value. Hangfire substitutes injected parameters such as <see cref="CancellationToken"/> and
+    /// <c>PerformContext</c> at execution time, so the placeholder values are not used for those.
+    /// </summary>
+    private static global::Hangfire.Common.Job BuildJobByName(string typeName, string methodName)
+    {
         var type = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(a => { try { return a.GetTypes(); } catch { return []; } })
             .FirstOrDefault(t => t.FullName == typeName || t.Name == typeName);
 
         if (type is null)
-            throw new ArgumentException($"Type '{typeName}' not found in loaded assemblies.");
+            throw new InvalidOperationException($"Type '{typeName}' not found in loaded assemblies.");
 
-        var method = type.GetMethod(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        var method = type
+            .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static)
+            .Where(m => m.Name == methodName && !m.ContainsGenericParameters)
+            .OrderBy(m => m.GetParameters().Length)
+            .FirstOrDefault();
+
         if (method is null)
-            throw new ArgumentException($"Method '{methodName}' not found on type '{typeName}'.");
+            throw new InvalidOperationException($"Method '{methodName}' not found on type '{typeName}'.");
 
-        var job = new global::Hangfire.Common.Job(type, method);
+        var args = method.GetParameters().Select(DefaultArgumentFor).ToArray();
+        return new global::Hangfire.Common.Job(type, method, args);
+    }
+
+    private static object DefaultArgumentFor(System.Reflection.ParameterInfo parameter)
+    {
+        var parameterType = parameter.ParameterType;
+
+        if (parameter.HasDefaultValue && parameter.DefaultValue is not null and not DBNull)
+        {
+            return parameterType.IsEnum
+                ? Enum.ToObject(parameterType, parameter.DefaultValue)
+                : parameter.DefaultValue;
+        }
+
+        // Value types (including CancellationToken) get default(T); Nullable<T> and reference types null.
+        return parameterType.IsValueType ? Activator.CreateInstance(parameterType) : null;
+    }
+
+    private void AddOrUpdateRestoredJob(string jobId, global::Hangfire.Common.Job job, string cron, string queue, string timeZoneId)
+    {
+        var manager = new RecurringJobManager(_storage);
+        var timeZone = string.IsNullOrEmpty(timeZoneId)
+            ? TimeZoneInfo.Utc
+            : TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
 
 #pragma warning disable CS0618 // QueueName is obsolete but no alternative overload available in 1.8.x
         manager.AddOrUpdate(jobId, job, cron, new RecurringJobOptions
