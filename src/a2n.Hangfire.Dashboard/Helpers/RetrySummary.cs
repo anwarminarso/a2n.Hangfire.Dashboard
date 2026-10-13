@@ -115,8 +115,8 @@ public class RetrySummary
         if (DistinctExceptionTypes.Count == 1)
         {
             return RetryCount > 0
-                ? $"same exception each time ({ShortType(DistinctExceptionTypes[0])})"
-                : ShortType(DistinctExceptionTypes[0]);
+                ? $"same exception each time ({ExceptionTypeNames.Short(DistinctExceptionTypes[0])})"
+                : ExceptionTypeNames.Short(DistinctExceptionTypes[0]);
         }
         return $"{DistinctExceptionTypes.Count} different exceptions";
     }
@@ -127,13 +127,6 @@ public class RetrySummary
     public string GetExceptionTooltip()
     {
         if (DistinctExceptionTypes.Count == 0) return null;
-        return string.Join(" · ", DistinctExceptionTypes.Select(ShortType));
-    }
-
-    private static string ShortType(string fullType)
-    {
-        if (string.IsNullOrEmpty(fullType)) return fullType;
-        var lastDot = fullType.LastIndexOf('.');
-        return lastDot >= 0 && lastDot < fullType.Length - 1 ? fullType[(lastDot + 1)..] : fullType;
+        return string.Join(" · ", DistinctExceptionTypes.Select(ExceptionTypeNames.Short));
     }
 }

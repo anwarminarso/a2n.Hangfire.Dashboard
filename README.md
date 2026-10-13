@@ -645,7 +645,27 @@ Hangfire keeps only the first 100 lines of a failure's exception details. In a v
 
 Only failures that end in the Failed state are fingerprinted, not the attempts that `AutomaticRetry` retries. The parameter stays on the job after it is requeued or deleted, and a later failure overwrites it. It is stored as a plain string and is visible under **Parameters** on the Job Details page.
 
-Grouping on the Failed page, which is coming next, uses this parameter. Failures without it (recorded before the filter was registered, or on a server without it) will be fingerprinted from their stored exception data when the page is read. That only covers a bounded number of jobs, so register the filter on every server.
+#### Grouping on the Failed page
+
+The **Exception** filter next to the page-size selector on **Jobs → Failed** groups the failed jobs by fingerprint, most failed jobs first. Each entry shows the short exception type, as `Outer → Inner` when one exception wraps another (full names in the tooltip), the normalized message, the top frame and the number of failed jobs. Selecting one shows that exception's total and its newest jobs; the page-size selector sets how many. A group can be linked: the address becomes `jobs/failed?exception=v1:…`. The filter works from the keyboard: the arrow keys, Home and End move through the list, Enter or Space selects, and Escape closes it.
+
+"All exceptions" is the default and shows the page as before. The groups are only read when the filter is opened or a group is linked. While a group is shown or the list is open, they are refreshed when the failed count changes; otherwise they are read again the next time the filter is opened. Grouping is stopped after `DashboardUIOptions.SearchTimeoutSeconds`, like a search.
+
+Fingerprints stored by the filter are counted exactly, by a query over the `Job` and `JobParameter` tables. Failures without one (recorded before the filter was registered, or on a server without it) are fingerprinted from their stored exception data and job type when the page is read. Only the newest 1,000 of those are read. When there are more, the page says so, the counts are shown as lower bounds (`1,000+`), and older failures may be missing from the list. Registering the filter on every server gives exact counts. Nothing is written back, so grouping also works in read-only mode.
+
+In a deployment where only some servers register the filter, a job keeps the fingerprint of the last failure recorded by a server with the filter. If it is requeued and then fails on a server without it, it is still counted under that earlier failure.
+
+Only the 50 largest groups are labeled, each from its newest job. Storages without the SQL Server or PostgreSQL adapter (Redis and others) have no fast way to query job parameters. On those, the newest 1,000 failed jobs are fingerprinted in memory, with or without the filter, so the page doesn't suggest the filter when counts there are lower bounds. A custom `IStorageQueryProvider` doesn't offer the filter unless it implements `SupportsFailureGrouping`, `GetFailureGroupsAsync` and `GetFailureGroupJobsAsync`. It can also implement `GetFailureGroupJobIdsAsync` for the group actions below; by default that takes the ids from `GetFailureGroupJobsAsync`.
+
+#### Requeue or delete a whole group
+
+With a group selected, **Requeue all** and **Delete all** act on every failed job with that exception, not only the ones on screen. When you click one, the page reads the ids of the group's jobs and asks for confirmation with their exact number. Both actions ask, because requeuing thousands of jobs has an impact too. Only those jobs are changed, and each one only while it is still in the Failed state. A job that was retried, requeued or deleted in the meantime is skipped, and one that fails with the same exception after the click is left alone.
+
+The jobs are changed 500 at a time. Each batch is one `jobs.requeued` or `jobs.deleted` entry in the audit log, with the requested and succeeded counts and the group's fingerprint. While it runs, the page shows how far it has got ("Requeued 1,500 of 12,345") and the buttons are disabled. **Cancel**, or leaving the page, stops it after the current batch. At the end the page says how many jobs were changed and how many were skipped because they had left Failed, then reloads the groups and the list. If a state change fails, for example because the storage is unreachable, the run stops there and the page says exactly how many jobs were changed; the batch's audit entry records them too.
+
+The ids come from the same data as the counts: every failed job with the stored fingerprint, plus the jobs without one that the grouping read. When the counts are lower bounds, older failures that weren't read are not included, and the confirmation says so; registering the filter on every server avoids that. The group actions are hidden when `DashboardUIOptions.IsReadOnly` is set.
+
+The rows of a group can also be selected and requeued or deleted with **Requeue** and **Delete**, as on the full list. On the Failed page those buttons also change only jobs that are still failed. A requeued or deleted job keeps its `FailureFingerprint` parameter.
 
 ### Audit log
 

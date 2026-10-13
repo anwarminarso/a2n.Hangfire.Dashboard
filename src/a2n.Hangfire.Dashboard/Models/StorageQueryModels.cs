@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Hangfire.Storage;
 
 namespace a2n.Hangfire.Dashboard.Models;
 
@@ -126,6 +127,20 @@ public class JobSummaryDto
     /// The exception message if the job failed.
     /// </summary>
     public string ExceptionMessage { get; set; }
+
+    /// <summary>
+    /// The reason recorded with the job's current state. Only set by
+    /// <see cref="Interfaces.IStorageQueryProvider.GetFailureGroupJobsAsync"/>.
+    /// </summary>
+    public string Reason { get; set; }
+
+    /// <summary>
+    /// The job's stored invocation data, including its arguments, so a list can show the job the way
+    /// the other job lists do (display name attributes, argument summary). Only set by
+    /// <see cref="Interfaces.IStorageQueryProvider.GetFailureGroupJobsAsync"/>; meant for rendering,
+    /// not as a stable contract of the Hangfire type it exposes.
+    /// </summary>
+    public InvocationData InvocationData { get; set; }
 }
 
 /// <summary>

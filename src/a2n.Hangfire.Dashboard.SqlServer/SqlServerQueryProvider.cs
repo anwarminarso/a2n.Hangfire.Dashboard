@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
@@ -260,6 +261,224 @@ ORDER BY CAST(JSON_VALUE(s.[Data], '$.PerformanceDuration') AS BIGINT) DESC;";
             DurationMs = r.DurationMs,
             CompletedAt = r.CompletedAt
         }).ToList();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GetFailureGroupsAsync / GetFailureGroupJobsAsync
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // The failed-job columns FailureGrouping reads, named after FailedJobRow's properties.
+    private const string FailedJobRowColumns = @"
+j.Id AS Id,
+j.InvocationData AS InvocationData,
+j.Arguments AS Arguments,
+j.CreatedAt AS CreatedAt,
+s.Reason AS Reason,
+s.CreatedAt AS StateCreatedAt,
+s.[Data] AS StateData";
+
+    // A stored value counts only when FailureFingerprint.IsCurrentVersion would accept it: the prefix
+    // followed by exactly HashHexLength lowercase hex characters. A binary collation keeps the
+    // comparison case-sensitive whatever the database's collation is, and LIKE without a trailing
+    // wildcard also rejects anything longer.
+    private const string StoredFingerprintMatch = "p.[Value] COLLATE Latin1_General_BIN2 LIKE @StoredPattern";
+
+    private static readonly string StoredFingerprintPattern =
+        SqlHelper.EscapeLikePattern(FailureFingerprint.VersionPrefix)
+        + string.Concat(Enumerable.Repeat("[0-9a-f]", FailureFingerprint.HashHexLength));
+
+    /// <inheritdoc />
+    public bool SupportsFailureGrouping => true;
+
+    /// <inheritdoc />
+    public async Task<FailureGroupsResult> GetFailureGroupsAsync(int labelCount, CancellationToken ct)
+    {
+        var jobTable = SqlHelper.Table(_schema, "Job");
+        var stateTable = SqlHelper.Table(_schema, "State");
+        var paramTable = SqlHelper.Table(_schema, "JobParameter");
+
+        // Stored fingerprints are counted from the Job and JobParameter indexes alone; State.Data is
+        // only read for the fallback and the labels below. Value is nvarchar(max), which can't be
+        // grouped on efficiently, hence the cast (a current fingerprint is far shorter).
+        //
+        // The parameter is sought per failed job rather than joined: as a join the optimizer tends to
+        // scan JobParameter, which holds every job's parameters (several per succeeded job), and
+        // comparing its nvarchar(max) values costs CPU in proportion to that whole table.
+        var storedSql = $@"
+SELECT CAST(p.[Value] AS NVARCHAR(64)) AS Fingerprint, COUNT_BIG(*) AS [Count], MAX(j.Id) AS NewestJobId
+FROM {jobTable} j
+CROSS APPLY (
+    SELECT TOP (1) p.[Value] FROM {paramTable} p
+    WHERE p.JobId = j.Id AND p.[Name] = @ParameterName) p
+WHERE j.StateName = 'Failed'
+  AND {StoredFingerprintMatch}
+GROUP BY CAST(p.[Value] AS NVARCHAR(64));";
+
+        var withoutStoredFingerprint = $@"j.StateName = 'Failed'
+  AND NOT EXISTS (
+      SELECT 1 FROM {paramTable} p
+      WHERE p.JobId = j.Id AND p.[Name] = @ParameterName AND {StoredFingerprintMatch})";
+
+        var failedSql = $@"
+SELECT COUNT_BIG(*)
+FROM {jobTable} j
+WHERE j.StateName = 'Failed';";
+
+        var fallbackSql = $@"
+SELECT TOP (@Limit) {FailedJobRowColumns}
+FROM {jobTable} j
+LEFT JOIN {stateTable} s ON s.Id = j.StateId
+WHERE {withoutStoredFingerprint}
+ORDER BY j.Id DESC;";
+
+        var samplesSql = $@"
+SELECT {FailedJobRowColumns}
+FROM {jobTable} j
+LEFT JOIN {stateTable} s ON s.Id = j.StateId
+WHERE j.Id IN @Ids AND j.StateName = 'Failed';";
+
+        var parameters = new
+        {
+            ParameterName = FailureFingerprint.ParameterName,
+            StoredPattern = StoredFingerprintPattern,
+            Limit = JobFilterCriteria.CountLimit,
+        };
+
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var stored = (await connection.QueryAsync<StoredFailureGroup>(
+            new CommandDefinition(storedSql, parameters, cancellationToken: ct))).ToList();
+        // Counted as the failed jobs minus the stored ones, both from indexes, rather than with an
+        // anti-join against JobParameter. Jobs that change state between the two queries can make the
+        // difference slightly off, never negative.
+        var failed = await connection.ExecuteScalarAsync<long>(
+            new CommandDefinition(failedSql, cancellationToken: ct));
+        var unfingerprinted = Math.Max(0, failed - stored.Sum(s => s.Count));
+        var fallback = await connection.QueryAsync<FailedJobRow>(
+            new CommandDefinition(fallbackSql, parameters, cancellationToken: ct));
+
+        var result = await FailureGrouping.BuildAsync(
+            stored,
+            unfingerprinted,
+            fallback.Select(FailureGrouping.Compute).ToList(),
+            labelCount,
+            async (ids, token) =>
+            {
+                var rows = await connection.QueryAsync<FailedJobRow>(
+                    new CommandDefinition(samplesSql, new { Ids = ids }, cancellationToken: token));
+                return rows.Select(FailureGrouping.Compute).ToList();
+            },
+            ct);
+        result.UsesStoredFingerprints = true;
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<JobSummaryDto>> GetFailureGroupJobsAsync(
+        FailureGroupDto group, int count, CancellationToken ct)
+    {
+        // Group keys are always current fingerprints; anything else can't name a group.
+        if (group == null || !FailureFingerprint.IsCurrentVersion(group.Fingerprint) || count <= 0)
+            return Array.Empty<JobSummaryDto>();
+
+        var jobTable = SqlHelper.Table(_schema, "Job");
+        var stateTable = SqlHelper.Table(_schema, "State");
+        var paramTable = SqlHelper.Table(_schema, "JobParameter");
+
+        // The group's members are collected first, and only the newest @Count of them are joined to
+        // their state. Filtering while walking the Job table newest-first instead reads the whole table
+        // when the group's jobs are old.
+        var sql = $@"
+SELECT {FailedJobRowColumns}
+FROM (
+    SELECT TOP (@Count) m.Id
+    FROM ({FailureGroupMembersSql(jobTable, paramTable)}) m
+    ORDER BY m.Id DESC
+) m
+INNER JOIN {jobTable} j ON j.Id = m.Id
+LEFT JOIN {stateTable} s ON s.Id = j.StateId
+ORDER BY j.Id DESC;";
+
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var rows = await connection.QueryAsync<FailedJobRow>(new CommandDefinition(sql, new
+        {
+            Count = count,
+            ParameterName = FailureFingerprint.ParameterName,
+            Fingerprint = group.Fingerprint,
+            StoredPattern = StoredFingerprintPattern,
+            ComputedIds = ParseJobIds(group.ComputedJobIds),
+        }, cancellationToken: ct));
+
+        return rows.Select(FailureGrouping.ToJobSummary).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetFailureGroupJobIdsAsync(FailureGroupDto group, CancellationToken ct)
+    {
+        if (group == null || !FailureFingerprint.IsCurrentVersion(group.Fingerprint))
+            return Array.Empty<string>();
+
+        var jobTable = SqlHelper.Table(_schema, "Job");
+        var paramTable = SqlHelper.Table(_schema, "JobParameter");
+
+        // Job and JobParameter only: a group action needs the ids, not the state, so State.Data is
+        // never read however large the group is.
+        var sql = $@"
+SELECT m.Id
+FROM ({FailureGroupMembersSql(jobTable, paramTable)}) m
+ORDER BY m.Id DESC;";
+
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var ids = await connection.QueryAsync<long>(new CommandDefinition(sql, new
+        {
+            ParameterName = FailureFingerprint.ParameterName,
+            Fingerprint = group.Fingerprint,
+            StoredPattern = StoredFingerprintPattern,
+            ComputedIds = ParseJobIds(group.ComputedJobIds),
+        }, cancellationToken: ct));
+
+        return ids.Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+    }
+
+    // The ids of a group's jobs that are still failed: its stored members, sought per failed job as
+    // in the grouping query, plus the fallback members it carries (@ComputedIds), minus any the filter
+    // has fingerprinted since (it failed again). Takes @ParameterName, @Fingerprint, @StoredPattern
+    // and @ComputedIds.
+    //
+    // A binary = ignores trailing spaces, so the length is compared too; the key itself is a current
+    // fingerprint, so this is the same exact match as StoredFingerprintMatch, only cheaper.
+    private static string FailureGroupMembersSql(string jobTable, string paramTable) => $@"
+        SELECT j.Id
+        FROM {jobTable} j
+        CROSS APPLY (
+            SELECT TOP (1) p.[Value] FROM {paramTable} p
+            WHERE p.JobId = j.Id AND p.[Name] = @ParameterName) p
+        WHERE j.StateName = 'Failed'
+          AND p.[Value] COLLATE Latin1_General_BIN2 = @Fingerprint
+          AND DATALENGTH(p.[Value]) = DATALENGTH(@Fingerprint)
+        UNION
+        SELECT j.Id
+        FROM {jobTable} j
+        WHERE j.Id IN @ComputedIds
+          AND j.StateName = 'Failed'
+          AND NOT EXISTS (
+              SELECT 1 FROM {paramTable} p
+              WHERE p.JobId = j.Id AND p.[Name] = @ParameterName AND {StoredFingerprintMatch})";
+
+    private static List<long> ParseJobIds(IEnumerable<string> ids)
+    {
+        var parsed = new List<long>();
+        foreach (var id in ids ?? Enumerable.Empty<string>())
+        {
+            if (long.TryParse(id, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var value))
+                parsed.Add(value);
+        }
+        return parsed;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

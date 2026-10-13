@@ -436,10 +436,11 @@ else
     {
         if (string.IsNullOrEmpty(exceptionType)) return "Unknown";
 
-        // Extract just the exception class name (e.g., "System.InvalidOperationException" → "InvalidOperationException")
-        var lastDot = exceptionType.LastIndexOf('.');
-        if (lastDot >= 0 && lastDot < exceptionType.Length - 1)
-            return exceptionType[(lastDot + 1)..];
+        // Just the class name ("System.InvalidOperationException" → "InvalidOperationException"). A
+        // name without a namespace is cut short instead, so it can't stretch the chart legend.
+        var shortName = ExceptionTypeNames.Short(exceptionType);
+        if (shortName.Length < exceptionType.Length)
+            return shortName;
         return exceptionType.Length > 35 ? exceptionType[..32] + "..." : exceptionType;
     }
 

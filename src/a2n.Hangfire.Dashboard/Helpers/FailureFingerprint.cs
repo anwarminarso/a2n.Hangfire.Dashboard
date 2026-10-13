@@ -76,7 +76,11 @@ public static partial class FailureFingerprint
     /// <summary>Length at which the first line of the exception message is cut before normalizing.</summary>
     public const int MaxMessageLength = 500;
 
-    private const int HashHexLength = 16;
+    /// <summary>
+    /// Number of lowercase hex characters after <see cref="VersionPrefix"/> in a current fingerprint.
+    /// Storage adapters use it to match <see cref="IsCurrentVersion"/> in SQL.
+    /// </summary>
+    public const int HashHexLength = 16;
 
     /// <summary>
     /// Namespaces whose frames are skipped when looking for the top frame outside the job's own
