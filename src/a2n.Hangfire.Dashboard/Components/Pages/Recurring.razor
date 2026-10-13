@@ -19,6 +19,17 @@
     </div>
 }
 
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    @* Stop/Start failure (Issue #66) — surfaced here instead of tearing down the circuit. *@
+    <div class="alert alert-danger alert-dismissible d-flex align-items-center gap-2" role="alert">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>@_errorMessage</span>
+        <button type="button" class="btn-close ms-auto" aria-label="Dismiss"
+                @onclick="() => _errorMessage = null"></button>
+    </div>
+}
+
 @if (_jobs is null)
 {
     <p class="text-body-secondary">Loading...</p>
@@ -270,6 +281,7 @@ else
     private int _stoppedFrom;
     private Timer _refreshTimer;
     private string _successMessage;
+    private string _errorMessage;
 
     // Client-side filter text (Issue #13). Matches job id and resolved job name, case-insensitive.
     private string _filter = "";
@@ -468,16 +480,26 @@ else
         }
     }
 
-    private async Task StopJob(string jobId)
-    {
-        await Task.Run(() => Monitor.StopRecurringJob(jobId));
-        await LoadData();
-        await InvokeAsync(StateHasChanged);
-    }
+    private Task StopJob(string jobId) =>
+        RunStopStartAsync(() => Monitor.StopRecurringJob(jobId), $"Failed to stop recurring job '{jobId}'");
 
-    private async Task StartJob(string jobId)
+    private Task StartJob(string jobId) =>
+        RunStopStartAsync(() => Monitor.StartRecurringJob(jobId), $"Failed to start recurring job '{jobId}'");
+
+    // Runs a Stop/Start operation off the circuit thread. A failure (e.g. the job type is no longer
+    // loadable) is shown as an alert rather than escaping the handler and killing the circuit (Issue #66).
+    private async Task RunStopStartAsync(Action operation, string failurePrefix)
     {
-        await Task.Run(() => Monitor.StartRecurringJob(jobId));
+        _errorMessage = null;
+        try
+        {
+            await Task.Run(operation);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"{failurePrefix}: {ex.Message}";
+        }
+
         await LoadData();
         await InvokeAsync(StateHasChanged);
     }
