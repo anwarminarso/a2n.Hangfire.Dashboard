@@ -28,7 +28,7 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// <param name="storage">The Hangfire storage.</param>
     /// <param name="tagsReader">Reads tags for tag filters.</param>
     /// <param name="failedJobs">
-    /// Optional page source for failed jobs, used for grouping instead of
+    /// Optional page source for failed jobs, used for search and grouping instead of
     /// <see cref="IMonitoringApi.FailedJobs"/> when a storage adapter registers one.
     /// </param>
     public GenericQueryProvider(JobStorage storage, TagsDataReader tagsReader, IFailedJobPageSource failedJobs = null)
@@ -484,7 +484,7 @@ public class GenericQueryProvider : IStorageQueryProvider
         int from = 0;
         while (!ct.IsCancellationRequested && candidates.Count < SafetyCap)
         {
-            var batch = monitoringApi.FailedJobs(from, BatchSize);
+            var batch = FetchFailed(monitoringApi, from, BatchSize);
             if (batch == null || batch.Count == 0) break;
 
             foreach (var entry in batch)
