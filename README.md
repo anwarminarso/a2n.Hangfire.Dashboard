@@ -353,7 +353,9 @@ The **Exception** filter in **Advanced Filters** on the Search page finds every 
 
 The list offers the exceptions the Failed page shows, labeled the same way on one line (short type, message, top frame and number of failed jobs), but only those with at least one stored fingerprint, since only those can match. It is loaded when the panel opens, under `SearchTimeoutSeconds`. When no failed job has a stored fingerprint, the list is disabled with a hint to register the filter. The filter can be linked, `search?exception=v1:…`, as the **Search all jobs with this exception** link on a Failed page group does; a fingerprint in the address that isn't in the list (every failed job of it was requeued, say) still shows as selected. A value that isn't a current fingerprint is ignored.
 
-Failures recorded before the filter was registered, or on a server without it, carry no fingerprint, so Search can't find them; only the Failed page's grouping, which computes their fingerprint from the stored exception, knows them. On storages without the SQL Server or PostgreSQL adapter (Redis and others), the filter reads each scanned job's parameter, within the scan's usual limit of 1,000 candidates, and every labeled exception is offered, since stored and computed fingerprints can't be told apart there.
+Failures recorded before the filter was registered, or on a server without it, carry no fingerprint, so Search can't find them; only the Failed page's grouping, which computes their fingerprint from the stored exception, knows them. On storages without the SQL Server or PostgreSQL adapter (Redis and others), the scan stops at 1,000 matches; for a rare exception it reads the parameter of every scanned job, one storage call each, until `SearchTimeoutSeconds`, and a search stopped that way shows as timed out. Every labeled exception is offered there, since stored and computed fingerprints can't be told apart.
+
+On the Failed page, a group whose failures were all recorded without the filter still links to Search, since its requeued or deleted jobs may carry a fingerprint, but says that Search may not find them.
 
 ## Job Builder
 

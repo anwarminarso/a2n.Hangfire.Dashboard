@@ -1,7 +1,10 @@
 @using a2n.Hangfire.Dashboard.Interfaces
 @using a2n.Hangfire.Dashboard.Models
 @using Microsoft.Extensions.DependencyInjection
+@using Microsoft.Extensions.Logging
 @inject IServiceProvider Services
+@inject DashboardUIOptions UiOptions
+@inject ILogger<FilterPanel> Logger
 @implements IDisposable
 
 <div class="card mb-3">
@@ -275,7 +278,7 @@
                 @* Exception Filter: needs a storage provider that groups failed jobs *@
                 @if (ShowExceptionFilter)
                 {
-                    var entries = ExceptionEntries;
+                    var entries = _exceptionEntries;
                     var selectedListed = entries.Any(g => g.Fingerprint == _selectedFingerprint);
                     <div class="col-12">
                         <label class="form-label fw-semibold small" for="search-exception">
@@ -284,13 +287,15 @@
                         @if (string.IsNullOrEmpty(_selectedFingerprint) && (_exceptionGroupsStatus != LoadStatus.Loaded || entries.Count == 0))
                         {
                             @* Nothing to choose from yet, or at all. *@
-                            <select class="form-select form-select-sm" id="search-exception" disabled data-testid="exception-filter">
+                            <select class="form-select form-select-sm" id="search-exception" disabled data-testid="exception-filter"
+                                    aria-describedby="search-exception-hint">
                                 <option>@ExceptionPlaceholder</option>
                             </select>
                         }
                         else
                         {
                             <select class="form-select form-select-sm" id="search-exception" data-testid="exception-filter"
+                                    aria-describedby="search-exception-hint"
                                     value="@_selectedFingerprint" @onchange="HandleExceptionChanged">
                                 <option value="">All exceptions</option>
                                 @foreach (var group in entries)
@@ -305,7 +310,7 @@
                                 }
                             </select>
                         }
-                        <div class="form-text small" data-testid="exception-filter-hint">@ExceptionHint</div>
+                        <div class="form-text small" id="search-exception-hint" data-testid="exception-filter-hint">@ExceptionHint</div>
                     </div>
                 }
 
@@ -427,8 +432,9 @@
 
     private string _selectedFingerprint = "";
     private IStorageQueryProvider _queryProvider;
-    private DashboardUIOptions _uiOptions;
     private FailureGroupsResult _exceptionGroups = new();
+    // The groups the select offers, worked out once per load rather than on every render.
+    private List<FailureGroupDto> _exceptionEntries = new();
     private LoadStatus _exceptionGroupsStatus = LoadStatus.NotLoaded;
     private CancellationTokenSource _exceptionGroupsCts;
 
@@ -447,8 +453,8 @@
 
     protected override void OnInitialized()
     {
+        // Optional, unlike the options: without a provider the Exception filter is simply hidden.
         _queryProvider = Services.GetService<IStorageQueryProvider>();
-        _uiOptions = Services.GetService<DashboardUIOptions>() ?? new DashboardUIOptions();
     }
 
     protected override void OnParametersSet()
@@ -689,10 +695,9 @@
     // Only a stored fingerprint can match, so groups without one aren't offered. The generic provider
     // (Redis and others) can't tell stored from computed fingerprints; there every labeled group is
     // offered, and it matches the jobs whose failure the filter recorded.
-    private List<FailureGroupDto> ExceptionEntries => _exceptionGroupsStatus != LoadStatus.Loaded
-        ? new List<FailureGroupDto>()
-        : _exceptionGroups.Groups
-            .Where(g => g.IsLabeled && (!_exceptionGroups.UsesStoredFingerprints || g.StoredCount > 0))
+    private static List<FailureGroupDto> SelectableGroups(FailureGroupsResult groups)
+        => groups.Groups
+            .Where(g => g.IsLabeled && (!groups.UsesStoredFingerprints || g.StoredCount > 0))
             .ToList();
 
     private string ExceptionPlaceholder => _exceptionGroupsStatus switch
@@ -704,11 +709,11 @@
 
     private string ExceptionHint => _exceptionGroupsStatus switch
     {
-        LoadStatus.TimedOut => _uiOptions.SearchTimeoutSeconds > 0
-            ? $"Loading the exceptions took longer than {_uiOptions.SearchTimeoutSeconds} {(_uiOptions.SearchTimeoutSeconds == 1 ? "second" : "seconds")} and was stopped."
+        LoadStatus.TimedOut => UiOptions.SearchTimeoutSeconds > 0
+            ? $"Loading the exceptions took longer than {UiOptions.SearchTimeoutSeconds} {(UiOptions.SearchTimeoutSeconds == 1 ? "second" : "seconds")} and was stopped."
             : "Loading the exceptions was stopped.",
         LoadStatus.Failed => "The exceptions could not be loaded.",
-        LoadStatus.Loaded when ExceptionEntries.Count == 0 && _exceptionGroups.UsesStoredFingerprints
+        LoadStatus.Loaded when _exceptionEntries.Count == 0 && _exceptionGroups.UsesStoredFingerprints
             => "No failed job has a stored exception fingerprint. Register UseDashboardFailureFingerprintFilter() on the Hangfire servers to filter by exception.",
         _ => "Finds jobs in any state whose failure was recorded by UseDashboardFailureFingerprintFilter(), including ones requeued or deleted since.",
     };
@@ -735,8 +740,8 @@
 
         _exceptionGroupsCts?.Cancel();
         using var cts = new CancellationTokenSource();
-        if (_uiOptions.SearchTimeoutSeconds > 0)
-            cts.CancelAfter(TimeSpan.FromSeconds(_uiOptions.SearchTimeoutSeconds));
+        if (UiOptions.SearchTimeoutSeconds > 0)
+            cts.CancelAfter(TimeSpan.FromSeconds(UiOptions.SearchTimeoutSeconds));
         _exceptionGroupsCts = cts;
         _exceptionGroupsStatus = LoadStatus.Loading;
         StateHasChanged();
@@ -748,11 +753,14 @@
             // Off the render thread: a provider may do its work before its first await.
             result = await Task.Run(() => _queryProvider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, cts.Token));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // SqlClient reports a cancelled command as a SqlException, so the token tells a timeout
             // apart from a real error.
             status = cts.IsCancellationRequested ? LoadStatus.TimedOut : LoadStatus.Failed;
+            // The panel only says the exceptions couldn't be loaded; the log says why.
+            if (status == LoadStatus.Failed)
+                Logger.LogWarning(ex, "Loading the exceptions for the Search filter failed.");
         }
 
         // A newer load, or disposal, has taken over.
@@ -761,7 +769,10 @@
         _exceptionGroupsCts = null;
 
         if (status == LoadStatus.Loaded)
+        {
             _exceptionGroups = result ?? FailureGroupsResult.Unsupported();
+            _exceptionEntries = SelectableGroups(_exceptionGroups);
+        }
         _exceptionGroupsStatus = status;
         StateHasChanged();
     }

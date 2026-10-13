@@ -212,6 +212,42 @@ public class FailedPageGroupingTests : IDisposable
         var link = cut.Find("[data-testid=search-exception]");
         Assert.Equal($"search?exception={TimeoutKey}", link.GetAttribute("href"));
         Assert.Contains("Search all jobs with this exception", link.TextContent);
+        // Its failures have stored fingerprints, so Search can find them.
+        Assert.Empty(cut.FindAll("[data-testid=search-exception-hint]"));
+    }
+
+    [Fact]
+    public async Task AGroupWithoutStoredFingerprints_SaysSearchMayNotFindIt()
+    {
+        // Every failure recorded before the filter was registered: the Search panel leaves the group
+        // out, and the link says why a search may come back empty.
+        var timeout = _groups.Groups[1];
+        timeout.StoredCount = 0;
+        timeout.ComputedCount = timeout.Count;
+        var cut = RenderPage();
+
+        await SelectGroup(cut, 1);
+
+        Assert.Single(cut.FindAll("[data-testid=search-exception]"));
+        Assert.Contains("UseDashboardFailureFingerprintFilter()", cut.Find("[data-testid=search-exception-hint]").TextContent);
+    }
+
+    [Fact]
+    public async Task OnTheGenericProvider_TheSearchHintIsNotShown()
+    {
+        // It never reads stored fingerprints, so StoredCount says nothing about what Search finds.
+        _groups.UsesStoredFingerprints = false;
+        foreach (var group in _groups.Groups)
+        {
+            group.ComputedCount = group.Count;
+            group.StoredCount = 0;
+        }
+        var cut = RenderPage();
+
+        await SelectGroup(cut, 1);
+
+        Assert.Single(cut.FindAll("[data-testid=search-exception]"));
+        Assert.Empty(cut.FindAll("[data-testid=search-exception-hint]"));
     }
 
     [Fact]

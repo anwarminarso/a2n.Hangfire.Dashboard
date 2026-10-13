@@ -8,7 +8,9 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
+using Microsoft.Extensions.Logging;
 using a2n.Hangfire.Dashboard.Components.Pages;
+using a2n.Hangfire.Dashboard.Components.Shared;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.Services;
@@ -120,6 +122,9 @@ public class SearchExceptionFilterTests : IDisposable
             option.TextContent);
         Assert.Contains("Contoso.Data.SaveChangesFailedException → Microsoft.Data.SqlClient.SqlException", option.GetAttribute("title"));
         Assert.False(Select(cut).HasAttribute("disabled"));
+        // Screen readers announce the hint with the select.
+        Assert.Equal("search-exception-hint", Select(cut).GetAttribute("aria-describedby"));
+        Assert.Equal("search-exception-hint", cut.Find("[data-testid=exception-filter-hint]").Id);
     }
 
     [Fact]
@@ -236,6 +241,23 @@ public class SearchExceptionFilterTests : IDisposable
         cut.WaitForAssertion(() => Assert.Contains("took longer than 1 second ", Hint(cut)), TestTimeouts.RenderWait);
         Assert.True(Select(cut).HasAttribute("disabled"));
         Assert.Single(cut.FindAll("#search-arguments"));
+    }
+
+    [Fact]
+    public void ALoadThatFails_IsReported_AndLogged()
+    {
+        var logger = new Mock<ILogger<FilterPanel>>();
+        _ctx.Services.AddSingleton(logger.Object);
+        var error = new InvalidOperationException("The storage is unavailable.");
+        _provider.Setup(p => p.GetFailureGroupsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ThrowsAsync(error);
+
+        var cut = _ctx.Render<SearchResults>();
+        cut.FindAll("button").First(b => b.TextContent.Contains("Advanced Filters")).Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("could not be loaded", Hint(cut)), TestTimeouts.RenderWait);
+        Assert.True(Select(cut).HasAttribute("disabled"));
+        Assert.Contains(logger.Invocations, i => i.Method.Name == nameof(ILogger.Log)
+            && (LogLevel)i.Arguments[0] == LogLevel.Warning && ReferenceEquals(i.Arguments[3], error));
     }
 
     [Fact]

@@ -241,6 +241,15 @@ else
                                data-testid="search-exception">
                                 <i class="bi bi-search"></i> Search all jobs with this exception
                             </a>
+                            @* Search only matches stored fingerprints, and the Exception filter there leaves
+                               such groups out. The link stays, since jobs of the group that were requeued or
+                               deleted may still carry a stored fingerprint. *@
+                            @if (_groups.UsesStoredFingerprints && _selectedGroup.StoredCount == 0)
+                            {
+                                <span class="d-block small text-body-secondary" data-testid="search-exception-hint">
+                                    These failures were recorded without <code>UseDashboardFailureFingerprintFilter()</code>, so Search may not find them.
+                                </span>
+                            }
                         </div>
                     </div>
                 }

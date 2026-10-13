@@ -236,4 +236,43 @@ public class SearchByExceptionTests
         connection.Verify(c => c.GetJobParameter(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         storage.Verify(s => s.GetReadOnlyConnection(), Times.Never);
     }
+
+    [Fact]
+    public async Task ATimeout_StopsTheParameterReadsAtOnce_AndIsReportedAsATimeout()
+    {
+        // A rare exception: no scanned job matches, so SafetyCap never stops the scan, and each job
+        // costs one parameter read. The token is checked before every read, not once per batch.
+        var storage = new Mock<JobStorage>();
+        var monitoring = new Mock<IMonitoringApi>();
+        var connection = new Mock<JobStorageConnection>();
+        storage.Setup(s => s.GetMonitoringApi()).Returns(monitoring.Object);
+        storage.Setup(s => s.GetReadOnlyConnection()).Returns(connection.Object);
+        monitoring.Setup(m => m.Queues()).Returns(new List<QueueWithTopEnqueuedJobsDto>());
+        monitoring.Setup(m => m.SucceededJobs(It.IsAny<int>(), It.IsAny<int>()))
+            .Returns((int from, int count) => new JobList<SucceededJobDto>(Enumerable.Range(from, count)
+                .Select(i => new KeyValuePair<string, SucceededJobDto>(i.ToString(), new SucceededJobDto { Job = Order, SucceededAt = DateTime.UtcNow }))));
+        using var cts = new CancellationTokenSource();
+        var reads = 0;
+        connection.Setup(c => c.GetJobParameter(It.IsAny<string>(), FailureFingerprint.ParameterName))
+            .Returns(() =>
+            {
+                // The search times out during the third read of the first batch of 100.
+                if (++reads == 3)
+                    cts.Cancel();
+                return null;
+            });
+        var tags = new TagsDataReader(storage.Object);
+        var provider = new GenericQueryProvider(storage.Object, tags);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.GetJobsWithFilterAsync(
+            new JobFilterCriteria { FailureFingerprint = Key, States = new() { "Succeeded" } }, 1, 20, cts.Token));
+        Assert.Equal(3, reads);
+
+        // Through Search it shows as a timeout, not as a complete empty result.
+        using var expired = new CancellationTokenSource();
+        expired.Cancel();
+        var result = await new SearchService(storage.Object, tags, provider)
+            .SearchAsync(new SearchRequest { ExceptionFingerprint = Key }, expired.Token);
+        Assert.True(result.TimedOut);
+    }
 }

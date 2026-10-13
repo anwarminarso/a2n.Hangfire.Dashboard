@@ -53,9 +53,12 @@ public class GenericQueryProvider : IStorageQueryProvider
         var statesToScan = states.Count > 0 ? states : (IReadOnlyList<string>)AllStates;
 
         // The fingerprint is a job parameter, so it needs a connection; none is opened without it.
+        // SafetyCap counts matches, not scanned jobs: for a rare exception every scanned job costs
+        // one parameter read (a round trip on Redis) until the cap or the timeout. So the token is
+        // checked before each read, not only between batches.
         var fingerprint = criteria.EffectiveFailureFingerprint;
         using var connection = fingerprint != null ? _storage.GetReadOnlyConnection() : null;
-        var filter = new ScanFilter(criteria.JobNamePattern, criteria.ArgumentsPattern, fingerprint, connection);
+        var filter = new ScanFilter(criteria.JobNamePattern, criteria.ArgumentsPattern, fingerprint, connection, ct);
 
         foreach (var state in statesToScan)
         {
@@ -64,6 +67,11 @@ public class GenericQueryProvider : IStorageQueryProvider
 
             ScanState(monitoringApi, state, filter, candidates, ct);
         }
+
+        // A scan stopped by the timeout between batches would otherwise come back as if complete;
+        // with the fingerprint, where a stop is likely, it is reported as a timeout instead.
+        if (fingerprint != null)
+            ct.ThrowIfCancellationRequested();
 
         // Scanning stops at SafetyCap candidates, so reaching it means there may be more matches.
         var hitScanCap = candidates.Count >= SafetyCap;
@@ -681,11 +689,19 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// rows that can actually be returned.
     /// </summary>
     /// <remarks>
-    /// <see cref="FailureFingerprint"/> is checked last, since it is the only check that reads
-    /// storage: one parameter lookup per job that passes the others.
+    /// <para>
+    /// <see cref="FailureFingerprint"/> is checked last among these, since it is the only check that
+    /// reads storage: one parameter lookup per job that passes the others.
+    /// </para>
+    /// <para>
+    /// The date, server and duration filters are applied later, in <see cref="ApplyFilters"/>, so a
+    /// job they drop may still have had its parameter read. Moving them into the scan would mean
+    /// reading those values from each state's DTO here; with the timeout checked per read, the
+    /// extra reads are bounded, so the scan is left as it is.
+    /// </para>
     /// </remarks>
     private readonly record struct ScanFilter(string NamePattern, string ArgumentsPattern,
-        string FailureFingerprint, IStorageConnection Connection)
+        string FailureFingerprint, IStorageConnection Connection, CancellationToken Ct)
     {
         /// <summary>No filtering — every scanned job becomes a candidate.</summary>
         public static ScanFilter None => default;
@@ -693,17 +709,22 @@ public class GenericQueryProvider : IStorageQueryProvider
         public bool Matches(string jobId, Job job, InvocationData invocationData)
             => MatchesName(job, NamePattern)
             && MatchesArguments(job, invocationData, ArgumentsPattern)
-            && MatchesFailureFingerprint(jobId, FailureFingerprint, Connection);
+            && MatchesFailureFingerprint(jobId, FailureFingerprint, Connection, Ct);
     }
 
     /// <summary>
     /// Whether the job carries this stored fingerprint. The parameter is read raw: the filter stores
     /// it as a plain string, which the typed <c>GetJobParameter&lt;T&gt;</c> would try to parse as JSON.
     /// </summary>
-    private static bool MatchesFailureFingerprint(string jobId, string fingerprint, IStorageConnection connection)
+    /// <exception cref="OperationCanceledException">
+    /// The search timed out or was cancelled; checked before each read, since each is a storage call.
+    /// </exception>
+    private static bool MatchesFailureFingerprint(string jobId, string fingerprint, IStorageConnection connection,
+        CancellationToken ct)
     {
         if (fingerprint == null) return true;
 
+        ct.ThrowIfCancellationRequested();
         var stored = connection.GetJobParameter(jobId, Helpers.FailureFingerprint.ParameterName);
         return string.Equals(stored, fingerprint, StringComparison.Ordinal);
     }
