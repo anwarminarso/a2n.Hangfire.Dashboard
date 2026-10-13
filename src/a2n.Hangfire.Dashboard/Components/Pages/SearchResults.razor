@@ -122,6 +122,15 @@
                         @onclick="ClearArgumentsQueryParam" aria-label="Clear arguments search"></button>
             </span>
         }
+        @if (!string.IsNullOrEmpty(_currentFilterRequest.ExceptionFingerprint))
+        {
+            <span class="badge text-bg-light border border-danger d-inline-flex align-items-center gap-1"
+                  title="Jobs whose stored failure fingerprint is @_currentFilterRequest.ExceptionFingerprint">
+                <i class="bi bi-bug text-danger"></i> exception: <span class="font-monospace">@_currentFilterRequest.ExceptionFingerprint</span>
+                <button type="button" class="btn-close ms-1" style="font-size: 0.5em;"
+                        @onclick="ClearExceptionParam" aria-label="Clear exception filter"></button>
+            </span>
+        }
         @if (!string.IsNullOrEmpty(_currentFilterRequest.ContentQuery))
         {
             <span class="badge bg-warning text-dark d-inline-flex align-items-center gap-1">
@@ -272,6 +281,12 @@ else if (_result is not null)
                 <i class="bi bi-braces"></i> args: @_lastSearchedRequest.ArgumentsQuery
             </span>
         }
+        @if (!string.IsNullOrEmpty(_lastSearchedRequest.ExceptionFingerprint))
+        {
+            <span class="badge text-bg-light border border-danger">
+                <i class="bi bi-bug text-danger"></i> exception: <span class="font-monospace">@_lastSearchedRequest.ExceptionFingerprint</span>
+            </span>
+        }
         @if (!string.IsNullOrEmpty(_lastSearchedRequest.ContentQuery))
         {
             <span class="badge bg-warning text-dark">
@@ -391,6 +406,13 @@ else if (_result is not null)
     [SupplyParameterFromQuery(Name = "pageSize")]
     public int? PageSizeParam { get; set; }
 
+    /// <summary>
+    /// A failure fingerprint (<c>?exception=v1:…</c>), as linked from a group on the Failed page. A
+    /// value that isn't a current fingerprint is ignored.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "exception")]
+    public string ExceptionQuery { get; set; }
+
     private SearchResult _result;
     private bool _isLoading;
     private bool _hasSearched;
@@ -430,11 +452,13 @@ else if (_result is not null)
         {
             Query = _searchQuery,
             From = _from,
-            PageSize = _pageSize
+            PageSize = _pageSize,
+            ExceptionFingerprint = FailureFingerprint.IsCurrentVersion(ExceptionQuery) ? ExceptionQuery : null,
         };
 
-        // If query came from URL (e.g., from global SearchBar), auto-execute
-        if (!string.IsNullOrWhiteSpace(Query))
+        // If query came from URL (e.g., from global SearchBar, or an exception group on the Failed
+        // page), auto-execute
+        if (!string.IsNullOrWhiteSpace(Query) || _currentFilterRequest.ExceptionFingerprint is not null)
         {
             _hasSearched = true;
             await ExecuteSearch();
@@ -520,6 +544,7 @@ else if (_result is not null)
             || (_currentFilterRequest.Tags is not null && _currentFilterRequest.Tags.Count > 0)
             || !string.IsNullOrEmpty(_currentFilterRequest.Queue)
             || !string.IsNullOrEmpty(_currentFilterRequest.RecurringJobId)
+            || !string.IsNullOrEmpty(_currentFilterRequest.ExceptionFingerprint)
             || !string.IsNullOrEmpty(_currentFilterRequest.ArgumentsQuery)
             || !string.IsNullOrEmpty(_currentFilterRequest.ContentQuery);
     }
@@ -586,6 +611,7 @@ else if (_result is not null)
                 Tags = _currentFilterRequest.Tags ?? new List<string>(),
                 Queue = _currentFilterRequest.Queue,
                 RecurringJobId = _currentFilterRequest.RecurringJobId,
+                ExceptionFingerprint = _currentFilterRequest.ExceptionFingerprint,
                 ArgumentsQuery = _currentFilterRequest.ArgumentsQuery,
                 ContentQuery = _currentFilterRequest.ContentQuery,
                 SearchConsoleOutput = _currentFilterRequest.SearchConsoleOutput,
@@ -631,6 +657,7 @@ else if (_result is not null)
                 MaxDurationSeconds = request.MaxDurationSeconds,
                 Tags = request.Tags?.ToList(),
                 RecurringJobId = request.RecurringJobId,
+                ExceptionFingerprint = request.ExceptionFingerprint,
                 ArgumentsQuery = request.ArgumentsQuery,
                 ContentQuery = request.ContentQuery,
                 SearchConsoleOutput = request.SearchConsoleOutput,
@@ -756,6 +783,12 @@ else if (_result is not null)
     private void ClearArgumentsQueryParam()
     {
         _currentFilterRequest.ArgumentsQuery = null;
+        StateHasChanged();
+    }
+
+    private void ClearExceptionParam()
+    {
+        _currentFilterRequest.ExceptionFingerprint = null;
         StateHasChanged();
     }
 

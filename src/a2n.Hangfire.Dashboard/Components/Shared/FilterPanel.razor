@@ -1,4 +1,11 @@
+@using a2n.Hangfire.Dashboard.Interfaces
 @using a2n.Hangfire.Dashboard.Models
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.Extensions.Logging
+@inject IServiceProvider Services
+@inject DashboardUIOptions UiOptions
+@inject ILogger<FilterPanel> Logger
+@implements IDisposable
 
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center justify-content-between py-2">
@@ -268,6 +275,45 @@
                     }
                 </div>
 
+                @* Exception Filter: needs a storage provider that groups failed jobs *@
+                @if (ShowExceptionFilter)
+                {
+                    var entries = _exceptionEntries;
+                    var selectedListed = entries.Any(g => g.Fingerprint == _selectedFingerprint);
+                    <div class="col-12">
+                        <label class="form-label fw-semibold small" for="search-exception">
+                            <i class="bi bi-bug"></i> Exception
+                        </label>
+                        @if (string.IsNullOrEmpty(_selectedFingerprint) && (_exceptionGroupsStatus != LoadStatus.Loaded || entries.Count == 0))
+                        {
+                            @* Nothing to choose from yet, or at all. *@
+                            <select class="form-select form-select-sm" id="search-exception" disabled data-testid="exception-filter"
+                                    aria-describedby="search-exception-hint">
+                                <option>@ExceptionPlaceholder</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <select class="form-select form-select-sm" id="search-exception" data-testid="exception-filter"
+                                    aria-describedby="search-exception-hint"
+                                    value="@_selectedFingerprint" @onchange="HandleExceptionChanged">
+                                <option value="">All exceptions</option>
+                                @foreach (var group in entries)
+                                {
+                                    <option value="@group.Fingerprint" title="@ExceptionOptionTitle(group)">@ExceptionOptionText(group)</option>
+                                }
+                                @if (!string.IsNullOrEmpty(_selectedFingerprint) && !selectedListed)
+                                {
+                                    @* From the URL, but not listed: every failed job of that group may have been
+                                       requeued since, and Search still finds those jobs. *@
+                                    <option value="@_selectedFingerprint">Exception @_selectedFingerprint</option>
+                                }
+                            </select>
+                        }
+                        <div class="form-text small" id="search-exception-hint" data-testid="exception-filter-hint">@ExceptionHint</div>
+                    </div>
+                }
+
                 @* Arguments Search *@
                 <div class="col-12">
                     <label class="form-label fw-semibold small" for="search-arguments">
@@ -380,6 +426,18 @@
     private string _argumentsQuery = "";
     private bool _argumentsQueryInitialized = false;
 
+    // Exception: groups from the provider's grouping, loaded the first time the panel opens so that
+    // GetFilterOptions() doesn't wait for them.
+    private enum LoadStatus { NotLoaded, Loading, Loaded, TimedOut, Failed }
+
+    private string _selectedFingerprint = "";
+    private IStorageQueryProvider _queryProvider;
+    private FailureGroupsResult _exceptionGroups = new();
+    // The groups the select offers, worked out once per load rather than on every render.
+    private List<FailureGroupDto> _exceptionEntries = new();
+    private LoadStatus _exceptionGroupsStatus = LoadStatus.NotLoaded;
+    private CancellationTokenSource _exceptionGroupsCts;
+
     // Content Search
     private string _contentQuery = "";
     private bool _searchStackTrace = false;
@@ -392,6 +450,12 @@
     // differs from what was sent is an outside change, such as a cleared badge (Issue #44).
     private string _sentArgumentsQuery;
     private string _sentContentQuery;
+
+    protected override void OnInitialized()
+    {
+        // Optional, unlike the options: without a provider the Exception filter is simply hidden.
+        _queryProvider = Services.GetService<IStorageQueryProvider>();
+    }
 
     protected override void OnParametersSet()
     {
@@ -409,6 +473,8 @@
             _selectedTags = new HashSet<string>(CurrentRequest.Tags ?? new List<string>());
             _selectedRecurringJobId = CurrentRequest.RecurringJobId ?? "";
             _recurringJobSearchText = _selectedRecurringJobId;
+            _selectedFingerprint = FailureFingerprint.IsCurrentVersion(CurrentRequest.ExceptionFingerprint)
+                ? CurrentRequest.ExceptionFingerprint : "";
             if (!_argumentsQueryInitialized || CurrentRequest.ArgumentsQuery != _sentArgumentsQuery)
             {
                 _argumentsQuery = CurrentRequest.ArgumentsQuery ?? "";
@@ -432,9 +498,11 @@
         }
     }
 
-    private void TogglePanel()
+    private async Task TogglePanel()
     {
         _isExpanded = !_isExpanded;
+        if (_isExpanded && _exceptionGroupsStatus is not (LoadStatus.Loading or LoadStatus.Loaded))
+            await LoadExceptionGroups();
     }
 
     private int GetActiveFilterCount()
@@ -447,6 +515,7 @@
         if (!string.IsNullOrEmpty(_selectedQueue)) count++;
         if (_selectedTags.Count > 0) count++;
         if (!string.IsNullOrEmpty(_selectedRecurringJobId)) count++;
+        if (!string.IsNullOrEmpty(_selectedFingerprint)) count++;
         if (!string.IsNullOrWhiteSpace(_argumentsQuery)) count++;
         if (IsContentSearchActive()) count++;
         return count;
@@ -619,6 +688,108 @@
         NotifyFilterChanged();
     }
 
+    // --- Exception ---
+
+    private bool ShowExceptionFilter => _queryProvider is { SupportsFailureGrouping: true } && _exceptionGroups.IsSupported;
+
+    // Only a stored fingerprint can match, so groups without one aren't offered. The generic provider
+    // (Redis and others) can't tell stored from computed fingerprints; there every labeled group is
+    // offered, and it matches the jobs whose failure the filter recorded.
+    private static List<FailureGroupDto> SelectableGroups(FailureGroupsResult groups)
+        => groups.Groups
+            .Where(g => g.IsLabeled && (!groups.UsesStoredFingerprints || g.StoredCount > 0))
+            .ToList();
+
+    private string ExceptionPlaceholder => _exceptionGroupsStatus switch
+    {
+        LoadStatus.Loading or LoadStatus.NotLoaded => "Loading exceptions…",
+        LoadStatus.TimedOut or LoadStatus.Failed => "Exceptions could not be loaded",
+        _ => "No exceptions to filter by",
+    };
+
+    private string ExceptionHint => _exceptionGroupsStatus switch
+    {
+        LoadStatus.TimedOut => UiOptions.SearchTimeoutSeconds > 0
+            ? $"Loading the exceptions took longer than {UiOptions.SearchTimeoutSeconds} {(UiOptions.SearchTimeoutSeconds == 1 ? "second" : "seconds")} and was stopped."
+            : "Loading the exceptions was stopped.",
+        LoadStatus.Failed => "The exceptions could not be loaded.",
+        LoadStatus.Loaded when _exceptionEntries.Count == 0 && _exceptionGroups.UsesStoredFingerprints
+            => "No failed job has a stored exception fingerprint. Register UseDashboardFailureFingerprintFilter() on the Hangfire servers to filter by exception.",
+        _ => "Finds jobs in any state whose failure was recorded by UseDashboardFailureFingerprintFilter(), including ones requeued or deleted since.",
+    };
+
+    // The parts the Failed page's Exception filter shows, on one line: a native option has no layout.
+    private string ExceptionOptionText(FailureGroupDto group)
+    {
+        var parts = new List<string> { FailureGroupLabels.ShortTypeName(group) };
+        if (!string.IsNullOrEmpty(group.NormalizedMessage))
+            parts.Add(FailureGroupLabels.Truncate(group.NormalizedMessage, 80));
+        if (!string.IsNullOrEmpty(group.TopFrame))
+            parts.Add(group.TopFrame);
+        return $"{string.Join(" · ", parts)} ({FailureGroupLabels.CountText(group, _exceptionGroups.IsPartial)} failed)";
+    }
+
+    private static string ExceptionOptionTitle(FailureGroupDto group)
+        => string.Join("\n", new[] { FailureGroupLabels.FullTypeName(group), group.NormalizedMessage, group.TopFrame }
+            .Where(p => !string.IsNullOrEmpty(p)));
+
+    private async Task LoadExceptionGroups()
+    {
+        if (_queryProvider is not { SupportsFailureGrouping: true })
+            return;
+
+        _exceptionGroupsCts?.Cancel();
+        using var cts = new CancellationTokenSource();
+        if (UiOptions.SearchTimeoutSeconds > 0)
+            cts.CancelAfter(TimeSpan.FromSeconds(UiOptions.SearchTimeoutSeconds));
+        _exceptionGroupsCts = cts;
+        _exceptionGroupsStatus = LoadStatus.Loading;
+        StateHasChanged();
+
+        FailureGroupsResult result = null;
+        var status = LoadStatus.Loaded;
+        try
+        {
+            // Off the render thread: a provider may do its work before its first await.
+            result = await Task.Run(() => _queryProvider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, cts.Token));
+        }
+        catch (Exception ex)
+        {
+            // SqlClient reports a cancelled command as a SqlException, so the token tells a timeout
+            // apart from a real error.
+            status = cts.IsCancellationRequested ? LoadStatus.TimedOut : LoadStatus.Failed;
+            // The panel only says the exceptions couldn't be loaded; the log says why.
+            if (status == LoadStatus.Failed)
+                Logger.LogWarning(ex, "Loading the exceptions for the Search filter failed.");
+        }
+
+        // A newer load, or disposal, has taken over.
+        if (!ReferenceEquals(_exceptionGroupsCts, cts))
+            return;
+        _exceptionGroupsCts = null;
+
+        if (status == LoadStatus.Loaded)
+        {
+            _exceptionGroups = result ?? FailureGroupsResult.Unsupported();
+            _exceptionEntries = SelectableGroups(_exceptionGroups);
+        }
+        _exceptionGroupsStatus = status;
+        StateHasChanged();
+    }
+
+    private void HandleExceptionChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _selectedFingerprint = FailureFingerprint.IsCurrentVersion(value) ? value : "";
+        NotifyFilterChanged();
+    }
+
+    public void Dispose()
+    {
+        _exceptionGroupsCts?.Cancel();
+        _exceptionGroupsCts = null;
+    }
+
     // --- Arguments Search ---
 
     private void HandleArgumentsQueryInput(ChangeEventArgs e)
@@ -663,6 +834,7 @@
         _tagSearchText = "";
         _selectedRecurringJobId = "";
         _recurringJobSearchText = "";
+        _selectedFingerprint = "";
         _argumentsQuery = "";
         _argumentsQueryInitialized = false;
         _contentQuery = "";
@@ -692,6 +864,7 @@
             Queue = string.IsNullOrEmpty(_selectedQueue) ? null : _selectedQueue,
             Tags = _selectedTags.ToList(),
             RecurringJobId = string.IsNullOrEmpty(_selectedRecurringJobId) ? null : _selectedRecurringJobId,
+            ExceptionFingerprint = string.IsNullOrEmpty(_selectedFingerprint) ? null : _selectedFingerprint,
             ArgumentsQuery = string.IsNullOrWhiteSpace(_argumentsQuery) ? null : _argumentsQuery.Trim(),
             // Content search: only active when text >= 3 chars AND at least one scope checkbox is ticked
             ContentQuery = IsContentSearchActive() ? _contentQuery.Trim() : null,

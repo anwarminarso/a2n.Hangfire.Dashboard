@@ -625,6 +625,18 @@ ORDER BY 1 DESC";
                 JobParameterMatching.AllValueForms(new[] { criteria.RecurringJobId }));
         }
 
+        // The filter stores the fingerprint as a raw string, not JSON, so it is compared as is rather
+        // than through JobParameterMatching.
+        if (criteria.EffectiveFailureFingerprint is { } fingerprint)
+        {
+            conditions.Add($@"EXISTS (
+                SELECT 1 FROM {_jobParameterTable} jp
+                WHERE jp.jobid = j.id AND jp.name = @FailureFingerprintName AND jp.value = @FailureFingerprint
+            )");
+            parameters.Add("FailureFingerprintName", FailureFingerprint.ParameterName);
+            parameters.Add("FailureFingerprint", fingerprint);
+        }
+
         // Tags filter (AND logic: job must have ALL specified tags)
         if (criteria.Tags != null && criteria.Tags.Count > 0)
         {

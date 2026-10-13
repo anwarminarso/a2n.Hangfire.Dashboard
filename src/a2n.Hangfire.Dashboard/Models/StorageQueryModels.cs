@@ -210,6 +210,22 @@ public class JobFilterCriteria
     /// </summary>
     public string RecurringJobId { get; set; }
 
+    /// <summary>
+    /// Filter by the failure fingerprint that <c>FailureFingerprintFilter</c> stored on the job
+    /// (<see cref="Helpers.FailureFingerprint.ParameterName"/>). Matches jobs in any state, since the
+    /// parameter stays when a job is requeued or deleted. Only a value for which
+    /// <see cref="Helpers.FailureFingerprint.IsCurrentVersion"/> is true is applied; anything else is
+    /// ignored, so a malformed value can't turn into a query.
+    /// </summary>
+    public string FailureFingerprint { get; set; }
+
+    /// <summary>
+    /// <see cref="FailureFingerprint"/> when it is a current-version fingerprint, otherwise null.
+    /// Providers apply this rather than the raw value.
+    /// </summary>
+    public string EffectiveFailureFingerprint
+        => Helpers.FailureFingerprint.IsCurrentVersion(FailureFingerprint) ? FailureFingerprint : null;
+
     // ─── Search Patterns (absorbed from separate search methods) ─────
 
     /// <summary>
@@ -276,6 +292,7 @@ public class JobFilterCriteria
             || MaxDuration.HasValue
             || (Tags != null && Tags.Count > 0)
             || !string.IsNullOrWhiteSpace(RecurringJobId)
+            || EffectiveFailureFingerprint != null
             || !string.IsNullOrWhiteSpace(JobNamePattern)
             || !string.IsNullOrWhiteSpace(ArgumentsPattern)
             || !string.IsNullOrWhiteSpace(ExceptionPattern)

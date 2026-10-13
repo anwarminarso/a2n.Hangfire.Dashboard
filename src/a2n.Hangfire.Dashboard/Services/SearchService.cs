@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Hangfire;
 using Hangfire.Storage;
+using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
 using Microsoft.Extensions.Logging;
@@ -190,6 +191,9 @@ public class SearchService
                 ? TimeSpan.FromSeconds(request.MaxDurationSeconds.Value) : null,
             Tags = request.Tags?.Count > 0 ? request.Tags : null,
             RecurringJobId = request.RecurringJobId,
+            // Malformed values (from a hand-edited URL, say) are dropped here rather than queried.
+            FailureFingerprint = FailureFingerprint.IsCurrentVersion(request.ExceptionFingerprint)
+                ? request.ExceptionFingerprint : null,
 
             // Argument search
             ArgumentsPattern = request.ArgumentsQuery,

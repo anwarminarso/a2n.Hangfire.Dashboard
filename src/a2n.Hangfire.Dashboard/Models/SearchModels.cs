@@ -18,6 +18,10 @@ public class SearchRequest
     public string Queue { get; set; }
     public string RecurringJobId { get; set; }
 
+    // Exception filter: a failure fingerprint (v1:…) stored by FailureFingerprintFilter. A value that
+    // isn't a current fingerprint is ignored.
+    public string ExceptionFingerprint { get; set; }
+
     // Argument search (matches the serialized job arguments only, not the type or method name)
     public string ArgumentsQuery { get; set; }
 

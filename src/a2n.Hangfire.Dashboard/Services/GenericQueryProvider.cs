@@ -52,14 +52,26 @@ public class GenericQueryProvider : IStorageQueryProvider
         var states = criteria.GetEffectiveStates();
         var statesToScan = states.Count > 0 ? states : (IReadOnlyList<string>)AllStates;
 
+        // The fingerprint is a job parameter, so it needs a connection; none is opened without it.
+        // SafetyCap counts matches, not scanned jobs: for a rare exception every scanned job costs
+        // one parameter read (a round trip on Redis) until the cap or the timeout. So the token is
+        // checked before each read, not only between batches.
+        var fingerprint = criteria.EffectiveFailureFingerprint;
+        using var connection = fingerprint != null ? _storage.GetReadOnlyConnection() : null;
+        var filter = new ScanFilter(criteria.JobNamePattern, criteria.ArgumentsPattern, fingerprint, connection, ct);
+
         foreach (var state in statesToScan)
         {
             if (ct.IsCancellationRequested || candidates.Count >= SafetyCap)
                 break;
 
-            ScanState(monitoringApi, state,
-                new ScanFilter(criteria.JobNamePattern, criteria.ArgumentsPattern), candidates, ct);
+            ScanState(monitoringApi, state, filter, candidates, ct);
         }
+
+        // A scan stopped by the timeout between batches would otherwise come back as if complete;
+        // with the fingerprint, where a stop is likely, it is reported as a timeout instead.
+        if (fingerprint != null)
+            ct.ThrowIfCancellationRequested();
 
         // Scanning stops at SafetyCap candidates, so reaching it means there may be more matches.
         var hitScanCap = candidates.Count >= SafetyCap;
@@ -424,7 +436,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                     if (candidates.Count >= SafetyCap) break;
                     var dto = entry.Value;
                     if (dto?.Job == null) continue;
-                    if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
+                    if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                     candidates.Add(new JobSummaryDto
                     {
@@ -455,7 +467,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 if (dto?.Job == null) continue;
-                if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
+                if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -486,7 +498,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 if (dto?.Job == null) continue;
-                if (!filter.Matches(dto.Job, dto.InvocationData)) continue;
+                if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -521,7 +533,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 var dto = entry.Value;
                 var job = getJob(dto);
                 if (job == null) continue;
-                if (!filter.Matches(job, getInvocationData(dto))) continue;
+                if (!filter.Matches(entry.Key, job, getInvocationData(dto))) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -676,13 +688,44 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// than in <see cref="ApplyFilters"/> keeps the <see cref="SafetyCap"/> budget available for
     /// rows that can actually be returned.
     /// </summary>
-    private readonly record struct ScanFilter(string NamePattern, string ArgumentsPattern)
+    /// <remarks>
+    /// <para>
+    /// <see cref="FailureFingerprint"/> is checked last among these, since it is the only check that
+    /// reads storage: one parameter lookup per job that passes the others.
+    /// </para>
+    /// <para>
+    /// The date, server and duration filters are applied later, in <see cref="ApplyFilters"/>, so a
+    /// job they drop may still have had its parameter read. Moving them into the scan would mean
+    /// reading those values from each state's DTO here; with the timeout checked per read, the
+    /// extra reads are bounded, so the scan is left as it is.
+    /// </para>
+    /// </remarks>
+    private readonly record struct ScanFilter(string NamePattern, string ArgumentsPattern,
+        string FailureFingerprint, IStorageConnection Connection, CancellationToken Ct)
     {
         /// <summary>No filtering — every scanned job becomes a candidate.</summary>
         public static ScanFilter None => default;
 
-        public bool Matches(Job job, InvocationData invocationData)
+        public bool Matches(string jobId, Job job, InvocationData invocationData)
             => MatchesName(job, NamePattern)
-            && MatchesArguments(job, invocationData, ArgumentsPattern);
+            && MatchesArguments(job, invocationData, ArgumentsPattern)
+            && MatchesFailureFingerprint(jobId, FailureFingerprint, Connection, Ct);
+    }
+
+    /// <summary>
+    /// Whether the job carries this stored fingerprint. The parameter is read raw: the filter stores
+    /// it as a plain string, which the typed <c>GetJobParameter&lt;T&gt;</c> would try to parse as JSON.
+    /// </summary>
+    /// <exception cref="OperationCanceledException">
+    /// The search timed out or was cancelled; checked before each read, since each is a storage call.
+    /// </exception>
+    private static bool MatchesFailureFingerprint(string jobId, string fingerprint, IStorageConnection connection,
+        CancellationToken ct)
+    {
+        if (fingerprint == null) return true;
+
+        ct.ThrowIfCancellationRequested();
+        var stored = connection.GetJobParameter(jobId, Helpers.FailureFingerprint.ParameterName);
+        return string.Equals(stored, fingerprint, StringComparison.Ordinal);
     }
 }

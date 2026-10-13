@@ -596,6 +596,21 @@ ORDER BY m.Id DESC;";
                 JobParameterMatching.AllValueForms(new[] { criteria.RecurringJobId }));
         }
 
+        // The filter stores the fingerprint as a raw string, not JSON, so it is compared as is rather
+        // than through JobParameterMatching. A binary = ignores trailing spaces, so the length is
+        // compared too: the same exact match the Failed page's grouping uses.
+        if (criteria.EffectiveFailureFingerprint is { } fingerprint)
+        {
+            conditions.Add($@"EXISTS (
+                SELECT 1 FROM {jobParamTable} jp
+                WHERE jp.JobId = j.Id AND jp.Name = @FailureFingerprintName
+                  AND jp.Value COLLATE Latin1_General_BIN2 = @FailureFingerprint
+                  AND DATALENGTH(jp.Value) = DATALENGTH(@FailureFingerprint)
+            )");
+            parameters.Add("FailureFingerprintName", FailureFingerprint.ParameterName);
+            parameters.Add("FailureFingerprint", fingerprint);
+        }
+
         if (criteria.Tags != null && criteria.Tags.Count > 0)
         {
             for (int i = 0; i < criteria.Tags.Count; i++)
