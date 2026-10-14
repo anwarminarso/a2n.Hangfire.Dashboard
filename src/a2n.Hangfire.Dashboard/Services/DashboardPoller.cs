@@ -21,8 +21,15 @@ namespace a2n.Hangfire.Dashboard.Services;
 /// that state is logged once, not on every tick.
 /// </para>
 /// <para>
-/// The first tick runs one interval after <see cref="Start"/>; components load their data
-/// themselves before starting the loop. An interval of zero or less disables the loop.
+/// The first tick runs one interval after <see cref="Start"/> (or after <see cref="InitialDelay"/>);
+/// components load their data themselves before starting the loop. An interval of zero or less
+/// disables the loop.
+/// </para>
+/// <para>
+/// By default the interval is the pause between the end of one tick and the start of the next.
+/// With <see cref="FixedCadence"/> it is the period from the start of one tick to the start of the
+/// next, as the background broadcasts and rollups had with <see cref="PeriodicTimer"/>; a tick that
+/// takes the whole interval then counts as slow, so ticks never run back to back.
 /// </para>
 /// </remarks>
 internal sealed class DashboardPoller : IDisposable
@@ -73,7 +80,35 @@ internal sealed class DashboardPoller : IDisposable
     /// <summary>The delay before the next tick: the interval, or longer while backing off.</summary>
     public TimeSpan CurrentDelay => TimeSpan.FromTicks(Volatile.Read(ref _currentDelayTicks));
 
-    /// <summary>The running loop; completes once the poller is disposed (tests).</summary>
+    /// <summary>
+    /// Delay before the first tick. <c>null</c> (the default) waits one interval; zero runs the
+    /// first tick as soon as the loop starts.
+    /// </summary>
+    public TimeSpan? InitialDelay { get; init; }
+
+    /// <summary>
+    /// When true the interval is measured from the start of one tick to the start of the next
+    /// rather than from the end of one to the start of the next, and a tick that takes the whole
+    /// interval counts as slow. Default: false.
+    /// </summary>
+    public bool FixedCadence { get; init; }
+
+    /// <summary>
+    /// How long a tick may take before it counts as slow. <c>null</c> (the default) uses
+    /// <see cref="PollingOptions.SlowCallThreshold"/>; zero or less never counts a tick as slow,
+    /// except for <see cref="FixedCadence"/> loops, which always treat a tick as slow once it takes
+    /// the whole interval.
+    /// </summary>
+    public TimeSpan? SlowThreshold { get; init; }
+
+    /// <summary>
+    /// When true (the default) a tick that throws <see cref="ObjectDisposedException"/> ends the
+    /// loop quietly: for a component that means its renderer is being torn down. Background loops
+    /// turn it off so the exception backs the loop off like any other failure.
+    /// </summary>
+    public bool StopOnObjectDisposed { get; init; } = true;
+
+    /// <summary>The running loop; completes once the poller is disposed.</summary>
     internal Task Completion => _loop ?? Task.CompletedTask;
 
     /// <summary>Called with each delay just before the loop waits for it (tests).</summary>
@@ -84,7 +119,22 @@ internal sealed class DashboardPoller : IDisposable
     {
         if (!IsEnabled || Volatile.Read(ref _disposed) == 1) return;
         if (Interlocked.Exchange(ref _started, 1) == 1) return;
-        _loop = RunAsync(_cts.Token);
+        // On the thread pool, so a first tick with no initial delay never runs on the caller.
+        var token = _cts.Token;
+        _loop = Task.Run(() => RunAsync(token));
+    }
+
+    /// <summary>
+    /// Starts the loop and completes once <paramref name="stoppingToken"/> is cancelled and the
+    /// loop has stopped: the body of a background service.
+    /// </summary>
+    internal async Task RunUntilStoppedAsync(CancellationToken stoppingToken)
+    {
+        using (stoppingToken.Register(Dispose))
+        {
+            Start();
+            await Completion.ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -100,7 +150,8 @@ internal sealed class DashboardPoller : IDisposable
 
     private async Task RunAsync(CancellationToken ct)
     {
-        var delay = _interval;
+        var delay = InitialDelay is { } initial ? (initial > TimeSpan.Zero ? initial : TimeSpan.Zero) : _interval;
+        Volatile.Write(ref _currentDelayTicks, delay.Ticks);
         while (true)
         {
             try
@@ -127,7 +178,7 @@ internal sealed class DashboardPoller : IDisposable
             {
                 return;
             }
-            catch (ObjectDisposedException)
+            catch (ObjectDisposedException) when (StopOnObjectDisposed)
             {
                 // The component's renderer is being torn down with its circuit.
                 return;
@@ -146,7 +197,9 @@ internal sealed class DashboardPoller : IDisposable
 
     private TimeSpan NextDelay(TimeSpan current, Exception failure, TimeSpan elapsed)
     {
-        var slowThreshold = _options.SlowCallThreshold;
+        var slowThreshold = SlowThreshold ?? _options.SlowCallThreshold;
+        if (FixedCadence && (slowThreshold <= TimeSpan.Zero || slowThreshold > _interval))
+            slowThreshold = _interval;
         var slow = slowThreshold > TimeSpan.Zero && elapsed >= slowThreshold;
 
         if (failure is null && !slow)
@@ -157,11 +210,15 @@ internal sealed class DashboardPoller : IDisposable
                 _logger.LogInformation(
                     "Dashboard refresh '{Name}' recovered; refreshing every {Interval} again.", _name, _interval);
             }
-            return _interval;
+            if (!FixedCadence) return _interval;
+            var remaining = _interval - elapsed;
+            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
         }
 
+        // Double from at least the interval: a fixed-cadence delay is shorter than the interval.
+        var basis = current > _interval ? current : _interval;
         var cap = _options.MaxBackoffInterval > _interval ? _options.MaxBackoffInterval : _interval;
-        var next = current.Ticks > cap.Ticks / 2 ? cap : TimeSpan.FromTicks(current.Ticks * 2);
+        var next = basis.Ticks > cap.Ticks / 2 ? cap : TimeSpan.FromTicks(basis.Ticks * 2);
 
         if (!_degraded)
         {

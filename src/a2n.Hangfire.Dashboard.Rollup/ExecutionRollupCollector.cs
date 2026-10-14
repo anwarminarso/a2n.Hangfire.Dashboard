@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using a2n.Hangfire.Dashboard.Heatmap;
@@ -41,31 +42,45 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
     /// </summary>
     private const int MaxPagesPerPoll = (MaxJobsPerPoll / PageSize) + 2;
 
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(10);
 
     private readonly JobStorage _storage;
     private readonly MetricsRollupStore _store;
     private readonly IFailedJobPageSource _failedJobs;
+    private readonly DashboardUIOptions _options;
     private readonly ILogger<ExecutionRollupCollector> _logger;
     private CancellationTokenSource _stoppingCts;
     private Task _loopTask;
+    private TimeSpan _pollInterval = new PollingOptions().RollupPollInterval;
 
     public ExecutionRollupCollector(IServiceProvider serviceProvider)
     {
         _storage = serviceProvider.GetService<JobStorage>();
         _failedJobs = serviceProvider.GetService<IFailedJobPageSource>();
+        // Kept and read at start: UseHangfireDashboardUI copies the host's options onto it later.
+        _options = serviceProvider.GetService<DashboardUIOptions>();
         _logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<ExecutionRollupCollector>()
                   ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionRollupCollector>.Instance;
         _store = new MetricsRollupStore(
             serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<MetricsRollupStore>());
     }
 
+    /// <summary>Whether <see cref="StartAsync"/> started the poll loop (tests).</summary>
+    internal bool IsRunning => _loopTask != null;
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         if (_storage == null)
         {
             _logger.LogDebug("ExecutionRollupCollector is inactive: no job storage is registered.");
+            return Task.CompletedTask;
+        }
+
+        _pollInterval = (_options?.Polling ?? new PollingOptions()).RollupPollInterval;
+        if (_pollInterval <= TimeSpan.Zero)
+        {
+            _logger.LogInformation(
+                "ExecutionRollupCollector is disabled (Polling.RollupPollInterval is zero); Analytics receives no new executions.");
             return Task.CompletedTask;
         }
 
@@ -95,26 +110,73 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>
+    /// Polls on a fixed cadence: the interval runs from the start of one pass to the start of the
+    /// next. A pass that throws, or that takes the whole interval, backs the next one off instead of
+    /// starting it straight away (issue #64), the same rule the dashboard's own loops follow.
+    /// </summary>
     private async Task RunLoopAsync(CancellationToken ct)
     {
-        try { await Task.Delay(InitialDelay, ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) { return; }
+        var interval = _pollInterval;
+        var maxBackoff = (_options?.Polling ?? new PollingOptions()).MaxBackoffInterval;
+        var delay = InitialDelay;
+        var degraded = false;
 
-        using var timer = new PeriodicTimer(PollInterval);
-        do
+        while (true)
         {
+            try { await Task.Delay(delay, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+
+            var startedAt = Stopwatch.GetTimestamp();
+            Exception failure = null;
             try { PollOnce(ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
-            catch (Exception ex) { _logger.LogError(ex, "Rollup poll failed; will retry on the next interval."); }
+            catch (Exception ex) { failure = ex; }
+
+            var elapsed = Stopwatch.GetElapsedTime(startedAt);
+            var healthy = failure == null && elapsed < interval;
+            delay = NextDelay(interval, maxBackoff, delay, healthy, elapsed);
+
+            if (healthy && degraded)
+            {
+                degraded = false;
+                _logger.LogInformation("Rollup poll recovered; polling every {Interval} again.", interval);
+            }
+            else if (!healthy && !degraded)
+            {
+                degraded = true;
+                if (failure != null)
+                    _logger.LogError(failure, "Rollup poll failed; backing off up to {Delay} until it succeeds again.",
+                        MaxDelay(interval, maxBackoff));
+                else
+                    _logger.LogWarning(
+                        "Rollup poll took {Elapsed}, longer than its {Interval} interval; backing off up to {Delay} " +
+                        "until it is fast again.", elapsed, interval, MaxDelay(interval, maxBackoff));
+            }
         }
-        while (await WaitForNextTickAsync(timer, ct).ConfigureAwait(false));
     }
 
-    private static async Task<bool> WaitForNextTickAsync(PeriodicTimer timer, CancellationToken ct)
+    /// <summary>
+    /// The delay before the next pass. After a healthy pass it is what is left of the interval; after
+    /// a failed or slow one it doubles (from at least the interval) up to the larger of
+    /// <paramref name="maxBackoff"/> and the interval.
+    /// </summary>
+    internal static TimeSpan NextDelay(
+        TimeSpan interval, TimeSpan maxBackoff, TimeSpan previous, bool healthy, TimeSpan elapsed)
     {
-        try { return await timer.WaitForNextTickAsync(ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) { return false; }
+        if (healthy)
+        {
+            var remaining = interval - elapsed;
+            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+        }
+
+        var cap = MaxDelay(interval, maxBackoff);
+        var basis = previous > interval ? previous : interval;
+        return basis.Ticks > cap.Ticks / 2 ? cap : TimeSpan.FromTicks(basis.Ticks * 2);
     }
+
+    private static TimeSpan MaxDelay(TimeSpan interval, TimeSpan maxBackoff)
+        => maxBackoff > interval ? maxBackoff : interval;
 
     internal void PollOnce(CancellationToken ct)
     {
@@ -278,7 +340,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
                 "the two scanned ranges are missing from Analytics. Sustained load above {Cap} {State} " +
                 "jobs per {Interval}s poll exceeds what this collector can aggregate; use the SQL Server " +
                 "or PostgreSQL adapter when complete history is required.",
-                state, MaxJobsPerPoll, state, MaxJobsPerPoll, state, (int)PollInterval.TotalSeconds);
+                state, MaxJobsPerPoll, state, MaxJobsPerPoll, state, (int)_pollInterval.TotalSeconds);
             return;
         }
 

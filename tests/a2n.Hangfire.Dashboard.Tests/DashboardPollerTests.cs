@@ -36,7 +36,8 @@ public sealed class DashboardPollerTests : IDisposable
     public void Dispose() => _poller?.Dispose();
 
     private DashboardPoller Create(Func<CancellationToken, Task> body, TimeSpan? interval = null,
-        DashboardCircuitState circuit = null)
+        DashboardCircuitState circuit = null, TimeSpan? initialDelay = null, bool fixedCadence = false,
+        bool stopOnObjectDisposed = true)
     {
         _poller = new DashboardPoller("test", interval ?? Interval, async ct =>
         {
@@ -48,6 +49,9 @@ public sealed class DashboardPollerTests : IDisposable
         }, _options, circuit, _logger, _time)
         {
             DelayScheduled = d => _delays.Writer.TryWrite(d),
+            InitialDelay = initialDelay,
+            FixedCadence = fixedCadence,
+            StopOnObjectDisposed = stopOnObjectDisposed,
         };
         return _poller;
     }
@@ -218,6 +222,79 @@ public sealed class DashboardPollerTests : IDisposable
 
         await _poller.Completion.WaitAsync(Wait);
         Assert.Equal(0, _logger.Count(LogLevel.Warning));
+    }
+
+    [Fact]
+    public async Task AnInitialDelay_ReplacesTheFirstInterval()
+    {
+        Create(_ => Task.CompletedTask, initialDelay: TimeSpan.Zero).Start();
+
+        // No clock advance needed: the first tick runs as soon as the loop starts.
+        Assert.Equal(TimeSpan.Zero, await NextDelay());
+        await NextTick();
+        Assert.Equal(Interval, await NextDelay());
+    }
+
+    [Fact]
+    public async Task AFixedCadence_SubtractsTheTicksDuration()
+    {
+        Create(_ =>
+        {
+            _time.Advance(TimeSpan.FromSeconds(1));
+            return Task.CompletedTask;
+        }, fixedCadence: true).Start();
+
+        _time.Advance(await NextDelay());
+        Assert.Equal(TimeSpan.FromSeconds(2), await NextDelay());
+        Assert.Equal(0, _logger.Count(LogLevel.Warning));
+    }
+
+    [Fact]
+    public async Task AFixedCadence_BacksOff_WhenATickTakesTheWholeInterval()
+    {
+        // 3 s is below the 5 s slow threshold, but a fixed-cadence loop would otherwise start the
+        // next tick at once and keep the storage busy back to back.
+        var slow = true;
+        Create(_ =>
+        {
+            if (slow) _time.Advance(Interval);
+            return Task.CompletedTask;
+        }, fixedCadence: true).Start();
+
+        _time.Advance(await NextDelay());
+        Assert.Equal(Interval * 2, await NextDelay());
+        Assert.Equal(1, _logger.Count(LogLevel.Warning));
+
+        slow = false;
+        _time.Advance(Interval * 2);
+        Assert.Equal(Interval, await NextDelay());
+        Assert.Equal(1, _logger.Count(LogLevel.Information));
+    }
+
+    [Fact]
+    public async Task ABackgroundLoop_BacksOffOnObjectDisposed_InsteadOfStopping()
+    {
+        Create(_ => throw new ObjectDisposedException("connection"), stopOnObjectDisposed: false).Start();
+
+        _time.Advance(await NextDelay());
+        Assert.Equal(Interval * 2, await NextDelay());
+        Assert.False(_poller.Completion.IsCompleted);
+        Assert.Equal(1, _logger.Count(LogLevel.Warning));
+    }
+
+    [Fact]
+    public async Task RunUntilStopped_EndsWhenTheTokenIsCancelled()
+    {
+        var poller = Create(_ => Task.CompletedTask);
+        using var stopping = new CancellationTokenSource();
+
+        var run = poller.RunUntilStoppedAsync(stopping.Token);
+        await NextDelay();
+        Assert.False(run.IsCompleted);
+
+        stopping.Cancel();
+        await run.WaitAsync(Wait);
+        Assert.Equal(0, _tickCount);
     }
 
     private sealed class CapturingLogger : ILogger

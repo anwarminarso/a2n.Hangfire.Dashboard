@@ -82,4 +82,18 @@ public class DemandRollupServiceOptionsTests
             service.Dispose();
         }
     }
+
+    [Fact]
+    public async Task Start_DoesNotRunTheLoop_WhenThePollIntervalIsZero()
+    {
+        var (service, options) = Create();
+        options.Polling.RollupPollInterval = System.TimeSpan.Zero;
+
+        await service.StartAsync(CancellationToken.None);
+
+        Assert.True(service.IsEnabled);
+        Assert.False(service.IsRunning);
+        await service.StopAsync(CancellationToken.None);
+        service.Dispose();
+    }
 }

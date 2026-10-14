@@ -65,6 +65,25 @@ public class PollingOptions
     public TimeSpan ConsoleRefreshInterval { get; set; } = TimeSpan.FromSeconds(2);
 
     /// <summary>
+    /// How often the live Analytics data (throughput, server utilization and queue depth) is read
+    /// and pushed while someone is watching it. Measured from the start of one read to the start of
+    /// the next; a read that takes the whole interval backs the loop off.
+    /// <see cref="TimeSpan.Zero"/> turns the live updates off (the Analytics page still loads its
+    /// data when opened). Read at startup. Default: 5 seconds.
+    /// </summary>
+    public TimeSpan AnalyticsBroadcastInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How often the background rollups read recent executions: the ad-hoc demand rollup behind
+    /// the Heatmap on the SQL Server and PostgreSQL adapters, and the execution rollup behind
+    /// Analytics on storages that use <c>a2n.Hangfire.Dashboard.Rollup</c>. Measured from the start
+    /// of one pass to the start of the next; a pass that takes the whole interval, or fails, backs
+    /// the loop off. <see cref="TimeSpan.Zero"/> stops the rollups, so the data they feed stops
+    /// growing. Read at startup. Default: 60 seconds.
+    /// </summary>
+    public TimeSpan RollupPollInterval { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
     /// How long a computed health report is reused by the <c>/healthz</c> endpoints, the ASP.NET
     /// Core health check and the Home page's health card before it is computed again.
     /// Default: 5 seconds.
