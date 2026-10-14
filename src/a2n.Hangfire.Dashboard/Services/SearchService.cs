@@ -254,15 +254,9 @@ public class SearchService
                 MatchSource = SearchMatchSource.Id
             };
 
-            if (jobData.Job != null)
-            {
-                item.JobName = $"{jobData.Job.Type.Name}.{jobData.Job.Method.Name}";
-                item.Queue = jobData.Job.Queue;
-            }
-            else
-            {
-                item.JobName = "Unknown";
-            }
+            // From the invocation data when the job's type can't be loaded (issue #70).
+            item.JobName = JobNameHelper.GetTypeAndMethod(jobData.Job, jobData.InvocationData) ?? "Unknown";
+            item.Queue = jobData.Job?.Queue ?? jobData.InvocationData?.Queue;
 
             // Try to get last state change from monitoring API
             try
