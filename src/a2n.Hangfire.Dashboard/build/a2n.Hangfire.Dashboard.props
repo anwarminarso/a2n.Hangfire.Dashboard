@@ -4,8 +4,11 @@
     - Via NuGet: through buildTransitive mechanism
     - Via ProjectReference: through Directory.Build.props or explicit import
     
-    It ensures the host project includes Blazor framework static assets (blazor.web.js)
-    even if the host has no .razor files of its own.
+    It sets RequiresAspNetWebAssets for the host's build. On .NET 10 that alone does NOT bring
+    blazor.web.js into a host without .razor files: the script's package is chosen at restore, and
+    NuGet doesn't import package props during restore (ExcludeRestorePackageImports). That's why
+    the net10.0 build of the dashboard carries its own copy (see the csproj and
+    FrameworkScriptMiddleware). A host that sets the property in its own .csproj gets its own copy.
   -->
   <PropertyGroup Condition="'$(UsingMicrosoftNETSdkWeb)' == 'true'">
     <RequiresAspNetWebAssets Condition="'$(RequiresAspNetWebAssets)' == ''">true</RequiresAspNetWebAssets>

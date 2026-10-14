@@ -285,19 +285,22 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 app.Run();
 ```
 
-### Project Reference (Development Only)
+### The Blazor script (`_framework/blazor.web.js`)
 
-If referencing via `<ProjectReference>` instead of NuGet, add this to your host `.csproj`:
+The dashboard's pages go interactive through the Blazor script `_framework/blazor.web.js`. If the dashboard renders but nothing reacts to clicks, a 404 on that script is the usual cause.
 
-```xml
-<PropertyGroup>
-  <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
-</PropertyGroup>
-```
+- **.NET 8 and .NET 9:** the script is part of the framework. Nothing to do.
+- **.NET 10:** the script is a static web asset from the `Microsoft.AspNetCore.App.Internal.Assets` package. The SDK only restores that package for a host that has a `.razor` file or sets `RequiresAspNetWebAssets`, so a Web API or SPA host has no script of its own. A NuGet package can't set the property for its host, because NuGet doesn't read a package's props during restore. The net10.0 build of the dashboard therefore carries a copy of the script, taken from ASP.NET Core 10.0.12, and serves it only when the host doesn't serve its own. It logs this once at startup, at Information. To serve the host's own copy instead, which always matches its runtime, add this to the host `.csproj`:
 
-NuGet consumers on `Microsoft.NET.Sdk.Web` don't need this — the package sets it through `buildTransitive`. A host on another SDK (for example `Microsoft.NET.Sdk` with a `FrameworkReference` to ASP.NET Core) needs it too.
+  ```xml
+  <PropertyGroup>
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
+  </PropertyGroup>
+  ```
 
-On .NET 10, `_framework/blazor.web.js` is a static web asset rather than a file embedded in the framework, so it is only served when the host includes it, as above. When running from a build output (`dotnet run`, not a `dotnet publish` folder), ASP.NET Core reads the static web assets manifest only in the `Development` environment; in another environment, run the published output or call `builder.WebHost.UseStaticWebAssets()`. If the dashboard renders but nothing reacts to clicks, a 404 on that script is the usual cause.
+  A host referencing the dashboard through `<ProjectReference>` gets its script the same way.
+
+When running from a build output (`dotnet run`, not a `dotnet publish` folder), ASP.NET Core reads the static web assets manifest only in the `Development` environment. In another environment, run the published output or call `builder.WebHost.UseStaticWebAssets()`. On .NET 8 and .NET 9 the dashboard logs a Warning at startup when it finds no script to serve.
 
 ---
 
@@ -336,7 +339,7 @@ Reads the same storage format as [Hangfire.Console](https://github.com/pieceofsu
 
 Hangfire's storage APIs are synchronous, so each dashboard read holds a thread-pool thread until storage answers, including any wait for a pooled connection. `DashboardUIOptions.Polling` keeps that cost bounded when storage is slow or down, so open tabs can't starve the host's thread pool or take the connections the Hangfire server needs for its heartbeat ([#64](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/64)):
 
-- **A process-wide limit on concurrent storage calls.** At most `MaxConcurrentStorageCalls` (default 8) of the dashboard's reads run at once, across every tab. Further reads wait without holding a thread. A read keeps its slot until storage actually answers, even after the page has stopped waiting, so the number of threads the dashboard can block stays at the limit. The limit covers the realtime counters, the health checks, and the reads of the job lists, Job Details, Processing, Queues, Retries, Recurring Jobs, the Throttling semaphore page, the sidebar's tag count and the live job console. Search, admin actions (requeue, delete, trigger), the Analytics queries and the background rollups don't go through it.
+- **A process-wide limit on concurrent storage calls.** At most `MaxConcurrentStorageCalls` (default 8) of the dashboard's reads run at once, across every tab. Further reads wait without holding a thread. A read keeps its slot until storage actually answers, even after the page has stopped waiting, so the number of threads the dashboard can block stays at the limit. The limit covers the realtime counters, the health checks, the Dashboard page's history chart, and the reads of the job lists, Job Details, Processing, Queues, Retries, Recurring Jobs, the Throttling semaphore page, the sidebar's tag count and the live job console. Search, admin actions (requeue, delete, trigger), the Analytics queries and the background rollups don't go through it.
 - **Refresh loops never overlap.** Each page schedules its next refresh only once the previous one has finished. A refresh that fails, or takes at least `SlowCallThreshold` (default 5 s), doubles the delay before the next one, up to `MaxBackoffInterval` (default 60 s). The first refresh that succeeds in time restores the normal interval. The change into and out of back-off is logged once, at Warning and Information, rather than on every tick.
 - **Loops pause while the browser is disconnected** and catch up as soon as it reconnects.
 

@@ -46,6 +46,17 @@ https://github.com/moment/moment/blob/develop/LICENSE
 
 ================================================================================
 
+ASP.NET Core (blazor.web.js, net10.0 build only)
+Copyright (c) .NET Foundation and Contributors
+Licensed under the MIT License
+https://github.com/dotnet/aspnetcore/blob/main/LICENSE.txt
+
+Note: The net10.0 build of a2n.Hangfire.Dashboard embeds an unmodified copy of
+_framework/blazor.web.js from the Microsoft.AspNetCore.App.Internal.Assets
+package (10.0.12), served only when the host application doesn't serve its own.
+
+================================================================================
+
 Hangfire
 Copyright (c) 2013-2024 Hangfire OÜ
 Licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0)
