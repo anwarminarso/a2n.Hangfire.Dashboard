@@ -56,6 +56,14 @@ public static class HangfireDashboardUIExtensions
         services.AddSingleton<DashboardMetricsFeed>();
         services.AddSingleton<IHubFilter, DashboardHubAuthorizationFilter>();
 
+        // Bounds the dashboard's synchronous storage calls process-wide, and lets refresh loops
+        // pause while their circuit is disconnected, so a slow storage can't starve the host's
+        // thread pool (issue #64).
+        services.AddSingleton<DashboardStorageGate>();
+        services.AddScoped<DashboardCircuitState>();
+        services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler>(
+            sp => sp.GetRequiredService<DashboardCircuitState>());
+
         // JobMethodResolver holds the attribute-based discovery cache, computed once and reused
         // for the lifetime of the dashboard. Singleton lifetime keeps that cache alive across all
         // circuits and requests instead of recomputing per scope (Req 5.6, 5.8).
