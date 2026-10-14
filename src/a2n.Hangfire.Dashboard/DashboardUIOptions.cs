@@ -47,7 +47,11 @@ public class DashboardUIOptions
     public bool EnablePrerendering { get; set; } = true;
 
     /// <summary>
-    /// Whether the dashboard is in read-only mode (hides action buttons).
+    /// Whether the dashboard is in read-only mode. The pages hide every action that changes jobs,
+    /// recurring jobs or queues (requeue, delete, enqueue, trigger, stop, start, create, edit, pause,
+    /// resume, maintenance mode), and <c>HangfireMonitorService</c> and <c>QueueOperationsService</c>
+    /// refuse them: the Job Builder methods return a failed result, the others throw
+    /// <see cref="InvalidOperationException"/>. Default: false.
     /// </summary>
     public bool IsReadOnly { get; set; } = false;
 

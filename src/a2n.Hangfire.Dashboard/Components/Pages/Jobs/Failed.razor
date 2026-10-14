@@ -52,12 +52,15 @@ else
 {
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div class="d-flex flex-wrap gap-2">
-            <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any() || GroupActionBusy)" @onclick="RequeueSelected">
-                <i class="bi bi-arrow-repeat"></i> Requeue
-            </button>
-            <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any() || GroupActionBusy)" @onclick="ShowDeleteConfirm">
-                <i class="bi bi-trash"></i> Delete
-            </button>
+            @if (!Options.IsReadOnly)
+            {
+                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any() || GroupActionBusy)" @onclick="RequeueSelected">
+                    <i class="bi bi-arrow-repeat"></i> Requeue
+                </button>
+                <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any() || GroupActionBusy)" @onclick="ShowDeleteConfirm">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            }
             @if (ShowGroupActions)
             {
                 <button class="btn btn-primary btn-sm" data-testid="requeue-all"
@@ -277,9 +280,12 @@ else
                         <table class="table table-hover table-sm mb-0 hf-stack">
                             <thead>
                                 <tr>
-                                    <th style="width: 40px;">
-                                        <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
-                                    </th>
+                                    @if (!Options.IsReadOnly)
+                                    {
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
+                                        </th>
+                                    }
                                     <th>Id</th>
                                     <th>Job</th>
                                     <th class="text-end">Failed</th>
@@ -290,10 +296,13 @@ else
                                 {
                                     var job = row.Summary;
                                     <tr class="@(IsSelected(job.JobId) ? "table-active" : "")">
-                                        <td class="hf-cell-select">
-                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.JobId)"
-                                                   @onchange="() => ToggleJob(job.JobId)" aria-label="Select job @job.JobId" />
-                                        </td>
+                                        @if (!Options.IsReadOnly)
+                                        {
+                                            <td class="hf-cell-select">
+                                                <input type="checkbox" class="form-check-input" checked="@IsSelected(job.JobId)"
+                                                       @onchange="() => ToggleJob(job.JobId)" aria-label="Select job @job.JobId" />
+                                            </td>
+                                        }
                                         <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.JobId">@ShortenId(job.JobId)</a></td>
                                         <td class="hf-job-cell hf-cell-primary">
                                             <JobNameDisplay Job="@row.Job" InvocationData="@job.InvocationData"
@@ -313,7 +322,10 @@ else
                                     @if (job.ExceptionMessage is not null)
                                     {
                                         <tr class="hf-row-detail @(IsSelected(job.JobId) ? "table-active" : "")">
-                                            <td></td>
+                                            @if (!Options.IsReadOnly)
+                                            {
+                                                <td></td>
+                                            }
                                             <td colspan="3">
                                                 <div class="alert alert-danger py-2 px-3 mb-0 small hf-exception">
                                                     <strong>@job.ExceptionType</strong>
@@ -338,9 +350,12 @@ else
                     <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <th style="width: 40px;">
-                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
-                                </th>
+                                @if (!Options.IsReadOnly)
+                                {
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
+                                    </th>
+                                }
                                 <th>Id</th>
                                 <th>Job</th>
                                 <SortableHeader Label="Failed" CssClass="text-end" IsActive="@_order.NewestFirst.HasValue"
@@ -351,10 +366,13 @@ else
                             @foreach (var job in _jobs)
                             {
                                 <tr class="@(IsSelected(job.Key) ? "table-active" : "")">
-                                    <td class="hf-cell-select">
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
-                                               @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
-                                    </td>
+                                    @if (!Options.IsReadOnly)
+                                    {
+                                        <td class="hf-cell-select">
+                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
+                                                   @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
+                                        </td>
+                                    }
                                     <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                     <td class="hf-job-cell hf-cell-primary">
                                         <JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" />
@@ -373,7 +391,10 @@ else
                                 @if (job.Value?.ExceptionMessage is not null)
                                 {
                                     <tr class="hf-row-detail @(IsSelected(job.Key) ? "table-active" : "")">
-                                        <td></td>
+                                        @if (!Options.IsReadOnly)
+                                        {
+                                            <td></td>
+                                        }
                                         <td colspan="3">
                                             <div class="alert alert-danger py-2 px-3 mb-0 small hf-exception">
                                                 <strong>@job.Value.ExceptionType</strong>

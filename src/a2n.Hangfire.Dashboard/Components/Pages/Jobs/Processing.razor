@@ -1,5 +1,6 @@
 @page "/jobs/processing"
 @inject HangfireMonitorService Monitor
+@inject DashboardUIOptions Options
 @inject ConsoleDataReader ConsoleReader
 @inject DashboardPolling Polling
 @inject DashboardMetricsFeed MetricsFeed
@@ -23,12 +24,15 @@
     {
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <div class="d-flex gap-2">
-                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
-                    <i class="bi bi-arrow-repeat"></i> Requeue
-                </button>
-                <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
-                    <i class="bi bi-trash"></i> Delete
-                </button>
+                @if (!Options.IsReadOnly)
+                {
+                    <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
+                        <i class="bi bi-arrow-repeat"></i> Requeue
+                    </button>
+                    <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                }
             </div>
             <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
         </div>
@@ -39,9 +43,12 @@
                     <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <th style="width: 40px;">
-                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
-                                </th>
+                                @if (!Options.IsReadOnly)
+                                {
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
+                                    </th>
+                                }
                                 <th>Id</th>
                                 <th class="hf-col-p1">Server</th>
                                 <th>Job</th>
@@ -56,13 +63,16 @@
                                 var isObsolete = job.Value == null || !job.Value.InProcessingState;
 
                                 <tr class="@(isObsolete ? "opacity-50" : "")">
-                                    <td class="hf-cell-select">
-                                        @if (isValid)
-                                        {
-                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
-                                                   @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
-                                        }
-                                    </td>
+                                    @if (!Options.IsReadOnly)
+                                    {
+                                        <td class="hf-cell-select">
+                                            @if (isValid)
+                                            {
+                                                <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
+                                                       @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
+                                            }
+                                        </td>
+                                    }
                                     <td class="font-monospace hf-cell-title hf-nowrap">
                                         <a href="jobs/details/@job.Key">@ShortenId(job.Key)</a>
                                         @if (job.Value != null && !job.Value.InProcessingState)

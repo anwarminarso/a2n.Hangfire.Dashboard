@@ -73,15 +73,18 @@
             </div>
         }
 
-        @* Actions — aligned right *@
-        <div class="d-flex gap-2 mb-3 justify-content-end">
-            <button class="btn btn-outline-secondary btn-sm" @onclick="Requeue" disabled="@_actionInProgress">
-                <i class="bi bi-arrow-counterclockwise"></i> Requeue
-            </button>
-            <button class="btn btn-danger btn-sm" @onclick="ShowDeleteConfirm" disabled="@_actionInProgress">
-                <i class="bi bi-trash"></i> Delete
-            </button>
-        </div>
+        @* Actions — aligned right; none in read-only mode (issue #73) *@
+        @if (!Options.IsReadOnly)
+        {
+            <div class="d-flex gap-2 mb-3 justify-content-end">
+                <button class="btn btn-outline-secondary btn-sm" @onclick="Requeue" disabled="@_actionInProgress">
+                    <i class="bi bi-arrow-counterclockwise"></i> Requeue
+                </button>
+                <button class="btn btn-danger btn-sm" @onclick="ShowDeleteConfirm" disabled="@_actionInProgress">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </div>
+        }
 
         @* State Section *@
         var retrySummary = Helpers.RetrySummary.FromHistory(_job);

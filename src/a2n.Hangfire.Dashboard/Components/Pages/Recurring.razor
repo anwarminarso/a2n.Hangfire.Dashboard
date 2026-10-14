@@ -39,18 +39,21 @@ else
 {
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div class="d-flex gap-2">
-            @if (Options.EnableJobManagement)
+            @if (CanManageJobs)
             {
                 <a class="btn btn-success btn-sm" href="recurring/create">
                     <i class="bi bi-plus-lg"></i> Create Job
                 </a>
             }
-            <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
-                <i class="bi bi-play-circle"></i> Trigger
-            </button>
-            <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
-                <i class="bi bi-trash"></i> Delete
-            </button>
+            @if (CanChangeJobs)
+            {
+                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="TriggerSelected">
+                    <i class="bi bi-play-circle"></i> Trigger
+                </button>
+                <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            }
         </div>
         <div class="d-flex align-items-center gap-2 ms-auto hf-toolbar-end">
             @* Client-side filter over the loaded recurring jobs (Issue #13). Matches the job id and
@@ -90,7 +93,10 @@ else
                                 <SortableHeader Label="Stopped At" IsActive="@_stoppedSort.IsActive(StoppedJobSortColumn.StoppedAt)"
                                                 Descending="@_stoppedSort.Descending"
                                                 OnSort="() => SortStoppedBy(StoppedJobSortColumn.StoppedAt)" />
-                                <th>Actions</th>
+                                @if (CanManageJobs)
+                                {
+                                    <th>Actions</th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
@@ -107,11 +113,14 @@ else
                                             <RelativeTime UtcTime="@stopped.StoppedAt.Value" />
                                         }
                                     </td>
-                                    <td class="hf-cell-actions">
-                                        <button class="btn btn-primary btn-sm" @onclick="() => StartJob(stopped.Id)">
-                                            <i class="bi bi-play-fill"></i> Start
-                                        </button>
-                                    </td>
+                                    @if (CanManageJobs)
+                                    {
+                                        <td class="hf-cell-actions">
+                                            <button class="btn btn-primary btn-sm" @onclick="() => StartJob(stopped.Id)">
+                                                <i class="bi bi-play-fill"></i> Start
+                                            </button>
+                                        </td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -136,7 +145,10 @@ else
                     <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <th style="width: 2rem;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" /></th>
+                                @if (CanChangeJobs)
+                                {
+                                    <th style="width: 2rem;"><input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" /></th>
+                                }
                                 <SortableHeader Label="Id" IsActive="@_sort.IsActive(RecurringJobSortColumn.Id)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.Id)" />
                                 <th class="hf-col-p1">Cron</th>
@@ -152,7 +164,7 @@ else
                                 <SortableHeader Label="Created" CssClass="text-end hf-col-p3"
                                                 IsActive="@_sort.IsActive(RecurringJobSortColumn.Created)" Descending="@_sort.Descending"
                                                 OnSort="() => SortBy(RecurringJobSortColumn.Created)" />
-                                @if (Options.EnableJobManagement)
+                                @if (CanManageJobs)
                                 {
                                     <th class="hf-cell-actions">Actions</th>
                                 }
@@ -162,9 +174,12 @@ else
                             @foreach (var job in PagedJobs)
                             {
                                 <tr>
-                                    <td class="hf-cell-select">
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" aria-label="Select @job.Id" />
-                                    </td>
+                                    @if (CanChangeJobs)
+                                    {
+                                        <td class="hf-cell-select">
+                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Id)" @onchange="() => ToggleJob(job.Id)" aria-label="Select @job.Id" />
+                                        </td>
+                                    }
                                     <td class="hf-cell-title">
                                         @if (!string.IsNullOrEmpty(job.LastJobId))
                                         {
@@ -224,7 +239,7 @@ else
                                         }
                                     </td>
                                     <td class="hf-cell-actions">
-                                        @if (Options.EnableJobManagement)
+                                        @if (CanManageJobs)
                                         {
                                             <a class="btn btn-outline-secondary btn-sm" href="recurring/edit/@Uri.EscapeDataString(job.Id)" title="Edit this recurring job">
                                                 <i class="bi bi-pencil"></i>
@@ -238,8 +253,11 @@ else
                                 @if (job.Error is not null)
                                 {
                                     <tr class="hf-row-detail">
-                                        <td></td>
-                                        <td colspan="@(Options.EnableJobManagement ? 8 : 7)">
+                                        @if (CanChangeJobs)
+                                        {
+                                            <td></td>
+                                        }
+                                        <td colspan="@(CanManageJobs ? 8 : 7)">
                                             <div class="alert alert-danger py-2 mb-0">
                                                 <small>@job.Error</small>
                                             </div>
@@ -283,6 +301,11 @@ else
     private DashboardPoller _poller;
     private string _successMessage;
     private string _errorMessage;
+
+    // Trigger and Delete are hidden in read-only mode; Create, Edit, Stop and Start also need job
+    // management (issue #73). The service refuses them in read-only mode as well.
+    private bool CanChangeJobs => !Options.IsReadOnly;
+    private bool CanManageJobs => Options.EnableJobManagement && !Options.IsReadOnly;
 
     // Client-side filter text (Issue #13). Matches job id and resolved job name, case-insensitive.
     private string _filter = "";
