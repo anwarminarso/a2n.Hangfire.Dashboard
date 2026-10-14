@@ -221,7 +221,8 @@ Without a storage adapter package, search and core dashboard features work; the 
 **Which connection each read uses.** The connection string passed to `UseSqlServerStorage()` / `UsePostgreSqlStorage()` is used only by the adapter's own queries: search, the Analytics pages, the heatmap's Historical source and estimated durations, plus the failed-job list on PostgreSQL. Everything else goes through Hangfire's `JobStorage` and therefore the host's main Hangfire connection pool, shared with the workers. That includes the realtime counters, the other job lists, job details, recurring jobs, servers and queues, and the ad-hoc demand rollup (apart from its failed-job reads on PostgreSQL). Giving the adapter a separate connection string (for example one with a small `Maximum Pool Size`) isolates those adapter queries only. To keep the remaining dashboard load low:
 
 - `DashboardUIOptions.StatsPollingInterval` sets how often the realtime counters are read: one read per interval for all open tabs, and none while no tab is open.
-- `DashboardUIOptions.Heatmap.DemandRollupEnabled = false` stops the ad-hoc demand poll (every 60 seconds, runs even with no tab open). The heatmap's Ad-hoc and Combined layers then get no new data. It also doesn't run when the heatmap is disabled (`Heatmap.Enabled = false`).
+- `DashboardUIOptions.Heatmap.DemandRollupEnabled = false` stops the ad-hoc demand poll (every `Polling.RollupPollInterval`, 60 seconds by default, runs even with no tab open). The heatmap's Ad-hoc and Combined layers then get no new data. It also doesn't run when the heatmap is disabled (`Heatmap.Enabled = false`).
+- `DashboardUIOptions.Polling` bounds how many storage calls the dashboard runs at once and how its pages refresh; see [Polling and Slow Storage](#polling-and-slow-storage).
 
 ```csharp
 // Redis (Hangfire Pro or community StackExchange.Redis storage already configured)
@@ -276,6 +277,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     StatsPollingInterval = 2000,  // realtime metrics cadence in ms, one storage read shared by all tabs (default 2000, min 500)
     EnablePrerendering = true,  // false = skip the server prerender pass (default true)
     // Heatmap = new HeatmapOptions { DemandRollupEnabled = false },  // stop the 60 s ad-hoc demand poll
+    // Polling = new PollingOptions { MaxConcurrentStorageCalls = 8 },  // storage call limit and refresh intervals, see "Polling and Slow Storage"
     // SourceLink = SourceLinkOptions.GitHub("owner/repo"),  // clickable stack-trace file links
 });
 
@@ -326,6 +328,40 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardOptions
 ### Data compatibility
 
 Reads the same storage format as [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console) and [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags). Existing console logs and tags are visible immediately — no migration needed.
+
+---
+
+## Polling and Slow Storage
+
+Hangfire's storage APIs are synchronous, so each dashboard read holds a thread-pool thread until storage answers, including any wait for a pooled connection. `DashboardUIOptions.Polling` keeps that cost bounded when storage is slow or down, so open tabs can't starve the host's thread pool or take the connections the Hangfire server needs for its heartbeat ([#64](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/64)):
+
+- **A process-wide limit on concurrent storage calls.** At most `MaxConcurrentStorageCalls` (default 8) of the dashboard's reads run at once, across every tab. Further reads wait without holding a thread. A read keeps its slot until storage actually answers, even after the page has stopped waiting, so the number of threads the dashboard can block stays at the limit. The limit covers the realtime counters, the health checks, and the reads of the job lists, Job Details, Processing, Queues, Retries, Recurring Jobs, the Throttling semaphore page, the sidebar's tag count and the live job console. Search, admin actions (requeue, delete, trigger), the Analytics queries and the background rollups don't go through it.
+- **Refresh loops never overlap.** Each page schedules its next refresh only once the previous one has finished. A refresh that fails, or takes at least `SlowCallThreshold` (default 5 s), doubles the delay before the next one, up to `MaxBackoffInterval` (default 60 s). The first refresh that succeeds in time restores the normal interval. The change into and out of back-off is logged once, at Warning and Information, rather than on every tick.
+- **Loops pause while the browser is disconnected** and catch up as soon as it reconnects.
+
+```csharp
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
+{
+    Polling = new PollingOptions
+    {
+        MaxConcurrentStorageCalls  = 8,                          // dashboard-wide, all tabs
+        SlowCallThreshold          = TimeSpan.FromSeconds(5),
+        MaxBackoffInterval         = TimeSpan.FromSeconds(60),
+        FastPageRefreshInterval    = TimeSpan.FromSeconds(3),    // Processing, Job Details, Queues
+        PageRefreshInterval        = TimeSpan.FromSeconds(5),    // job lists, Retries, maintenance banner
+        SlowPageRefreshInterval    = TimeSpan.FromSeconds(10),   // Recurring Jobs, sidebar counts
+        ConsoleRefreshInterval     = TimeSpan.FromSeconds(2),    // live job console
+        HealthCardRefreshInterval  = TimeSpan.FromSeconds(10),   // Home page health card
+        HealthReportCacheTtl       = TimeSpan.FromSeconds(5),    // /healthz, IHealthCheck, health card
+        AnalyticsBroadcastInterval = TimeSpan.FromSeconds(5),    // live Analytics ("Last 1h")
+        RollupPollInterval         = TimeSpan.FromSeconds(60),   // demand rollup / rollup collector
+    },
+});
+```
+
+The defaults are the intervals earlier versions used. Setting a refresh, broadcast or poll interval to `TimeSpan.Zero` turns that loop off: the page still loads when opened but no longer refreshes on its own (the health card keeps its Refresh button). For `AnalyticsBroadcastInterval` it stops the live updates on Analytics, and for `RollupPollInterval` it stops the rollups, so the heatmap's Ad-hoc layer (SQL Server, PostgreSQL) or Analytics (rollup-based storages) gets no new data. The realtime counters keep following `StatsPollingInterval`. The Throttling pages refresh every 6 seconds, in step with their shared snapshot.
+
+The background loops (realtime counters, live Analytics and the rollups) keep a fixed cadence: their interval runs from the start of one read to the start of the next. A read that fails, or takes the whole interval, backs the loop off in the same way, instead of starting the next read straight away.
 
 ---
 
@@ -537,6 +573,8 @@ HTTP status follows the K8s convention: `200` for `Healthy` or `Degraded`, `503`
 | `failure_rate` | Last-hour failure percentage from Hangfire's hourly counters |
 | `recurring_jobs` | Recurring jobs whose `NextExecution` is older than `RecurringMissedTolerance` |
 
+**How a slow storage is reported.** The `storage` probe reuses the realtime counters' latest read when it is younger than `StatsPollingInterval`, and reports how long that read took, so frequent probes add no storage load. Every read the checks make waits at most `HealthThresholds.StorageProbeTimeoutMs` (default 10 000 ms) and goes through the dashboard's storage call limit (see [Polling and Slow Storage](#polling-and-slow-storage)), so a stalled storage can't pile up probe threads. When the probe fails or times out, `storage` is `Unhealthy` and the other checks are not run: each is reported `Unhealthy` with `"skipped": true` in its `data`, instead of failing on its own after another timeout. A check other than `storage` that times out is reported `Degraded` with `"timedOut": true`. Reports are cached for `Polling.HealthReportCacheTtl` (default 5 s) and shared by the endpoints, the `IHealthCheck` adapter and the hero card.
+
 ### Sample response (`/hangfire/healthz/full`)
 
 ```json
@@ -593,11 +631,11 @@ app.MapHealthChecks("/health/ready",                               // readiness 
     new() { Predicate = c => c.Tags.Contains("ready") });
 ```
 
-The adapter reuses the same `HealthCheckService.CheckFull()` so results match what the dashboard's own endpoint and hero card show.
+The adapter reads the same cached full report as the dashboard's own endpoint and hero card, so the results match. For your own code, `HealthCheckService` offers `CheckLivenessAsync`, `CheckReadinessAsync` and `CheckFullAsync`; the synchronous `CheckLiveness()`, `CheckReadiness()` and `CheckFull()` are kept and block the calling thread until the report is ready.
 
 ### Hero card
 
-The Home page shows a top-of-page traffic light (Healthy / Degraded / Critical) with per-issue descriptions and deep-link actions ("View processing →", "View failed →"). Auto-refreshes every 10 seconds. The detailed 8-card stat grid is now collapsed behind a "Detailed metrics" toggle to keep the hero front-and-center.
+The Home page shows a top-of-page traffic light (Healthy / Degraded / Critical) with per-issue descriptions and deep-link actions ("View processing →", "View failed →"). It refreshes every `Polling.HealthCardRefreshInterval` (10 seconds by default) and backs off while the report can't be read; the Refresh button reads storage at once. Checks skipped because storage is unreachable aren't listed as separate issues. The detailed 8-card stat grid is now collapsed behind a "Detailed metrics" toggle to keep the hero front-and-center.
 
 ---
 
