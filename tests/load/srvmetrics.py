@@ -59,6 +59,27 @@ _DISPLAY_TO_KEY = {
 }
 
 
+# Fallback for names other dotnet-counters / runtime versions emit (e.g. the System.Runtime meter's
+# "dotnet.process.memory.working_set (By)"). Checked in order; bytes are converted to MB.
+_KEYWORDS = [
+    (("working set", "working_set"), "working_set_mb"),
+    (("gc heap size", "gc.last_collection.heap.size"), "gc_heap_mb"),
+    (("threadpool queue", "thread_pool.queue.length"), "threadpool_queue"),
+    (("threadpool thread count", "thread_pool.thread.count"), "threadpool_threads"),
+    (("cpu usage", "cpu.time"), "cpu_pct"),
+    (("exception",), "exceptions"),
+    (("current connections", "current-connections"), "connections"),
+]
+
+
+def _key_by_keyword(display: str) -> str | None:
+    lowered = display.lower()
+    for words, key in _KEYWORDS:
+        if any(w in lowered for w in words):
+            return key
+    return None
+
+
 def _counters_arg() -> str:
     runtime = ",".join(_RUNTIME_COUNTERS)
     conn = ",".join(_CONN_COUNTERS)
@@ -274,13 +295,15 @@ class _Session:
                     if len(row) < 5:
                         continue
                     display = row[2].strip()
-                    key = _DISPLAY_TO_KEY.get(display)
+                    key = _DISPLAY_TO_KEY.get(display) or _key_by_keyword(display)
                     if key is None:
                         continue
                     try:
                         val = float(row[4])
                     except ValueError:
                         continue
+                    if key.endswith("_mb") and "(by)" in display.lower():
+                        val /= 1024 * 1024
                     result.setdefault(key, CounterStats(key)).samples.append(val)
         except Exception:
             pass

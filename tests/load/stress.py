@@ -42,6 +42,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 import config as cfg_mod
+import guard
 from srvmetrics import ServerMetricsSampler, CounterStats
 
 console = Console()
@@ -377,7 +378,6 @@ def _dup_paused_count(cur, provider: str) -> int:
 
 def tier_pause(cfg: dict, workers: int, duration: int, queues: list[str]):
     import threading
-    import psycopg  # noqa: F401  (only used when provider is postgresql)
     from db import get_connection
 
     provider = cfg_mod.get_db_provider(cfg)
@@ -941,7 +941,7 @@ def tier_combined(cfg: dict, duration: int, fanout_n: int, pause_workers: int,
             browser.close()
 
     threads = [
-        threading.Thread(target=pause_thread, daemon=True),
+        *(threading.Thread(target=pause_thread, daemon=True) for _ in range(max(1, pause_workers))),
         threading.Thread(target=dbload_thread, daemon=True),
         threading.Thread(target=circuits_thread, daemon=True),
     ]
@@ -1045,9 +1045,11 @@ def fanout(connections, duration, group, ramp):
 @click.option("--duration", "-d", default=30, show_default=True)
 @click.option("--queues", default="default,critical,emails,reports", show_default=True,
               help="Comma-separated queue names to toggle.")
-def pause(workers, duration, queues):
+@guard.yes_option
+def pause(workers, duration, queues, assume_yes):
     """Tier C — hammer queue pause/resume under concurrency."""
     cfg = cfg_mod.load()
+    guard.ensure_writable(cfg, "pause and resume queues in storage", assume_yes)
     qlist = [q.strip() for q in queues.split(",") if q.strip()]
     ok = tier_pause(cfg, workers, duration, qlist)
     raise SystemExit(0 if ok else 1)
@@ -1057,9 +1059,11 @@ def pause(workers, duration, queues):
 @click.option("--duration", "-d", default=45, show_default=True)
 @click.option("--seed-rate", default=100, show_default=True, help="Jobs inserted per 1s batch.")
 @click.option("--readers", default=5, show_default=True, help="Concurrent stat readers.")
-def dbload(duration, seed_rate, readers):
+@guard.yes_option
+def dbload(duration, seed_rate, readers, assume_yes):
     """Tier D — measure read latency while seeding jobs hard."""
     cfg = cfg_mod.load()
+    guard.ensure_writable(cfg, "seed jobs for the db-load tier", assume_yes)
     ok = tier_dbload(cfg, duration, seed_rate, readers)
     raise SystemExit(0 if ok else 1)
 
@@ -1081,9 +1085,11 @@ def circuits(contexts, duration, page_path):
 @click.option("--pause-workers", default=8, show_default=True)
 @click.option("--seed-rate", default=50, show_default=True)
 @click.option("--circuits", "circuits_n", default=10, show_default=True)
-def combined(duration, fanout_n, pause_workers, seed_rate, circuits_n):
+@guard.yes_option
+def combined(duration, fanout_n, pause_workers, seed_rate, circuits_n, assume_yes):
     """Tier E — run all pressure sources together as a soak (leak detection)."""
     cfg = cfg_mod.load()
+    guard.ensure_writable(cfg, "seed jobs and toggle queues for the combined soak", assume_yes)
     ok = tier_combined(cfg, duration, fanout_n, pause_workers, seed_rate, circuits_n)
     raise SystemExit(0 if ok else 1)
 

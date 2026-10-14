@@ -218,6 +218,11 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     // Set Authorization = [] to allow all hosts, or see SampleAppAuth for cookie login.
 });
 
+// Seed endpoints for the load-test harness on storages it can't write directly (InMemory). Off unless
+// HfLoad:SeedEndpoints=true, and local requests only; see HfLoadSeedEndpoints.
+if (builder.Configuration.GetValue("HfLoad:SeedEndpoints", false))
+    app.MapHfLoadSeedEndpoints();
+
 // Seed sample recurring jobs (full demo set: basic + long-running + continuation pipeline)
 if (sampleJobsSeeder)
     app.Lifetime.ApplicationStarted.Register(SampleJobsSeeder.SeedAll);
