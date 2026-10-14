@@ -1,5 +1,6 @@
 @inject QueueOperationsStateCache StateCache
 @inject DashboardUIOptions Options
+@inject DashboardPolling Polling
 @inject NavigationManager Navigation
 @using a2n.Hangfire.Dashboard.Services
 @implements IDisposable
@@ -41,24 +42,18 @@
 
 @code {
     private QueueOperationsState _state;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
 
     protected override async Task OnInitializedAsync()
     {
         await Refresh();
 
-        _refreshTimer = new Timer(async _ =>
+        // On failure the banner keeps its last known state while the loop backs off.
+        _poller = Polling.Start(nameof(MaintenanceBanner), Polling.Options.PageRefreshInterval, _ => InvokeAsync(async () =>
         {
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    await Refresh();
-                    StateHasChanged();
-                });
-            }
-            catch { /* swallow — banner stays in last known state */ }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            await Refresh();
+            StateHasChanged();
+        }));
     }
 
     private async Task Refresh()
@@ -80,6 +75,6 @@
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

@@ -1,5 +1,6 @@
 @using a2n.Hangfire.Dashboard.Services
 @inject ConsoleDataReader ConsoleReader
+@inject DashboardPolling Polling
 @implements IDisposable
 
 @if (_displayLines is not null && _displayLines.Count > 0)
@@ -76,7 +77,7 @@
 
     private IReadOnlyList<ConsoleLineDto> _lines;
     private List<ConsoleLineDto> _displayLines;
-    private Timer _liveTimer;
+    private DashboardPoller _livePoller;
     private bool _isLiveActive;
 
     protected override async Task OnParametersSetAsync()
@@ -85,41 +86,44 @@
 
         if (JobId is not null && StartedAt.HasValue)
         {
-            await Task.Run(() =>
+            var jobId = JobId;
+            var startedAt = StartedAt.Value;
+            await Polling.ReadAsync(() =>
             {
-                _lines = ConsoleReader.GetLines(JobId, StartedAt.Value);
+                _lines = ConsoleReader.GetLines(jobId, startedAt);
                 _displayLines = BuildDisplayLines(_lines);
             });
         }
 
         // Start or stop live polling based on IsLive parameter
-        if (IsLive && _liveTimer is null)
+        if (IsLive && _livePoller is null)
         {
-            _liveTimer = new Timer(OnLiveTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+            _livePoller = Polling.Start(nameof(ConsoleViewer), Polling.Options.ConsoleRefreshInterval, RefreshLive);
         }
-        else if (!IsLive && _liveTimer is not null)
+        else if (!IsLive && _livePoller is not null)
         {
-            _liveTimer.Dispose();
-            _liveTimer = null;
+            _livePoller.Dispose();
+            _livePoller = null;
             _isLiveActive = false;
         }
     }
 
-    private async void OnLiveTick(object state)
+    private async Task RefreshLive(CancellationToken ct)
     {
-        if (JobId is null || !StartedAt.HasValue) return;
+        var jobId = JobId;
+        var startedAt = StartedAt;
+        if (jobId is null || !startedAt.HasValue) return;
 
-        try
+        var newLines = await Polling.ReadAsync(() => ConsoleReader.GetLines(jobId, startedAt.Value), ct);
+        if (newLines is null || (_lines is not null && newLines.Count == _lines.Count)) return;
+
+        var displayLines = BuildDisplayLines(newLines);
+        await InvokeAsync(() =>
         {
-            var newLines = ConsoleReader.GetLines(JobId, StartedAt.Value);
-            if (newLines is not null && (_lines is null || newLines.Count != _lines.Count))
-            {
-                _lines = newLines;
-                _displayLines = BuildDisplayLines(_lines);
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-        catch { /* ignore errors during polling */ }
+            _lines = newLines;
+            _displayLines = displayLines;
+            StateHasChanged();
+        });
     }
 
     /// <summary>
@@ -128,8 +132,8 @@
     public void StopLive()
     {
         _isLiveActive = false;
-        _liveTimer?.Dispose();
-        _liveTimer = null;
+        _livePoller?.Dispose();
+        _livePoller = null;
     }
 
     /// <summary>
@@ -268,6 +272,6 @@
 
     public void Dispose()
     {
-        _liveTimer?.Dispose();
+        _livePoller?.Dispose();
     }
 }

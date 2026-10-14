@@ -241,6 +241,7 @@ public class GridSortingTests
     {
         var ctx = new TestContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.Services.AddDashboardPolling();
         return ctx;
     }
 }

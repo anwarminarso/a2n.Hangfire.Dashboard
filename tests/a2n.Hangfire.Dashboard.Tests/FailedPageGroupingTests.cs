@@ -90,6 +90,7 @@ public class FailedPageGroupingTests : IDisposable
         var options = new DashboardUIOptions();
         _ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         _ctx.Services.AddSingleton(options);
+        _ctx.Services.AddDashboardPolling();
         _ctx.Services.AddSingleton(new HangfireMonitorService(storage, null, options, new JobMethodResolver()));
         _ctx.Services.AddSingleton(_provider.Object);
     }

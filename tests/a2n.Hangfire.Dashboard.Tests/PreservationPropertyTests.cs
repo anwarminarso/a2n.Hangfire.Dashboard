@@ -580,5 +580,6 @@ public class PreservationPropertyTests
         ctx.Services.AddSingleton<ThrottlingDetectionCache>();
         ctx.Services.AddSingleton<DashboardSubscriptionTracker>();
         ctx.Services.AddSingleton<DashboardMetricsFeed>();
+        ctx.Services.AddDashboardPolling();
     }
 }

@@ -38,4 +38,29 @@ public class PollingOptions
     /// one. Default: 5 seconds.
     /// </summary>
     public TimeSpan SlowCallThreshold { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How often pages that follow running work refresh while open: Processing, Job Details and
+    /// Queues. <see cref="TimeSpan.Zero"/> turns their automatic refresh off. Default: 3 seconds.
+    /// </summary>
+    public TimeSpan FastPageRefreshInterval { get; set; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// How often the job list pages (Enqueued, Fetched, Scheduled, Succeeded, Failed, Deleted,
+    /// Awaiting), Retries and the maintenance banner refresh while open.
+    /// <see cref="TimeSpan.Zero"/> turns their automatic refresh off. Default: 5 seconds.
+    /// </summary>
+    public TimeSpan PageRefreshInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How often Recurring Jobs and the sidebar's tag and paused-queue counts refresh.
+    /// <see cref="TimeSpan.Zero"/> turns their automatic refresh off. Default: 10 seconds.
+    /// </summary>
+    public TimeSpan SlowPageRefreshInterval { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// How often a live job console (a job still processing) reads new lines.
+    /// <see cref="TimeSpan.Zero"/> turns live updates off. Default: 2 seconds.
+    /// </summary>
+    public TimeSpan ConsoleRefreshInterval { get; set; } = TimeSpan.FromSeconds(2);
 }

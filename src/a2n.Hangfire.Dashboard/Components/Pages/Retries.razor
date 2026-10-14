@@ -1,5 +1,6 @@
 @page "/retries"
 @inject HangfireMonitorService Monitor
+@inject DashboardPolling Polling
 @implements IDisposable
 
 <PageTitle>Retries</PageTitle>
@@ -98,30 +99,26 @@ else
     private long _totalCount;
     private int _from = 0;
     private int _pageSize = 20;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
-
-        _refreshTimer = new Timer(async _ =>
-        {
-            try
-            {
-                var count = Monitor.GetSetCount("retries");
-                if (count != _totalCount)
-                {
-                    await LoadData();
-                    await InvokeAsync(StateHasChanged);
-                }
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        _poller = Polling.Start(nameof(Retries), Polling.Options.PageRefreshInterval, Refresh);
     }
 
-    private async Task LoadData()
+    private async Task Refresh(CancellationToken ct)
     {
-        await Task.Run(() =>
+        var count = await Polling.ReadAsync(() => Monitor.GetSetCount("retries"), ct);
+        if (count == _totalCount) return;
+
+        await LoadData(ct);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadData(CancellationToken ct = default)
+    {
+        await Polling.ReadAsync(() =>
         {
             _totalCount = Monitor.GetSetCount("retries");
             _jobIds = _order.FetchIds((from, count) => Monitor.GetSetJobIds("retries", from, count),
@@ -160,7 +157,7 @@ else
                 // creation order; the Created column is the one the toggle describes.
                 _order.Observe(_jobIds.Select(id => _jobInfo[id].createdAt));
             }
-        });
+        }, ct);
     }
 
     private async Task ToggleOrder()
@@ -240,6 +237,6 @@ else
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

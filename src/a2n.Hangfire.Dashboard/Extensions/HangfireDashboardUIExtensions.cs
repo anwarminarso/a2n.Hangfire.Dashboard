@@ -63,6 +63,7 @@ public static class HangfireDashboardUIExtensions
         services.AddScoped<DashboardCircuitState>();
         services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler>(
             sp => sp.GetRequiredService<DashboardCircuitState>());
+        services.AddScoped(DashboardPolling.Create);
 
         // JobMethodResolver holds the attribute-based discovery cache, computed once and reused
         // for the lifetime of the dashboard. Singleton lifetime keeps that cache alive across all

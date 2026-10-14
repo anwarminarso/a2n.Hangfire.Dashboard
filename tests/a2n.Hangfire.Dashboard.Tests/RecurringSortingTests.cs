@@ -196,6 +196,7 @@ public class RecurringSortingTests
         ctx.Services.AddSingleton(resolver);
         ctx.Services.AddSingleton(svc);
         ctx.Services.AddSingleton(options);
+        ctx.Services.AddDashboardPolling();
         return (ctx, svc);
     }
 

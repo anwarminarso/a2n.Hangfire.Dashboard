@@ -5,6 +5,8 @@
 @inject TagsDataReader TagsReader
 @inject ThrottlingDetectionCache ThrottlingDetection
 @inject QueueOperationsStateCache StateCache
+@inject MetricsQueryCache QueryCache
+@inject DashboardPolling Polling
 @inject IServiceProvider ServiceProvider
 @inject DashboardUIOptions Options
 @implements IDisposable
@@ -181,7 +183,7 @@
     private int _pausedQueueCount;
     private bool _analyticsAvailable;
     private IDisposable _metricsSubscription;
-    private Timer _slowTimer;
+    private DashboardPoller _slowPoller;
 
     protected override async Task OnInitializedAsync()
     {
@@ -205,30 +207,30 @@
         }));
 
         // Tags count and paused-queue count aren't part of the metrics broadcast and change rarely.
-        // Refresh them on a slow timer; the paused count reads the shared (cached) state, so this is
-        // cheap regardless of how many tabs are open.
-        _slowTimer ??= new Timer(async _ =>
+        // Refresh them on a slow loop. Both reads are shared across tabs (the tags count through
+        // MetricsQueryCache, the paused count through QueueOperationsStateCache), so this is cheap
+        // regardless of how many tabs are open.
+        _slowPoller ??= Polling.Start(nameof(NavMenu), Polling.Options.SlowPageRefreshInterval, async ct =>
         {
-            try
+            var tagsCount = await GetTagsCountAsync(ct);
+            var ops = await StateCache.GetAsync();
+            var paused = ops.MaintenanceMode ? 0 : ops.PausedQueues.Count;
+            await InvokeAsync(() =>
             {
-                var tagsCount = await Task.Run(() => TagsReader.GetTagsCount());
-                var ops = await StateCache.GetAsync();
-                var paused = ops.MaintenanceMode ? 0 : ops.PausedQueues.Count;
-                await InvokeAsync(() =>
-                {
-                    _tagsCount = tagsCount;
-                    _pausedQueueCount = paused;
-                    StateHasChanged();
-                });
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+                _tagsCount = tagsCount;
+                _pausedQueueCount = paused;
+                StateHasChanged();
+            });
+        });
     }
+
+    private Task<long> GetTagsCountAsync(CancellationToken ct) => QueryCache.GetOrCreateAsync(
+        "nav:tags-count", c => Polling.ReadAsync(() => TagsReader.GetTagsCount(), c), ct, snapshot: true);
 
     private async Task LoadStats()
     {
         var stats = (await MetricsFeed.GetMetricsAsync()).Statistics;
-        var tagsCount = await Task.Run(() => TagsReader.GetTagsCount());
+        var tagsCount = await GetTagsCountAsync(CancellationToken.None);
         // Only computed when not yet detected: the nav item appears once the host application
         // starts writing Hangfire.Throttling data and stays visible for the circuit's lifetime.
         // The read is shared across circuits, so installations without the package don't repeat it.
@@ -243,6 +245,6 @@
     public void Dispose()
     {
         _metricsSubscription?.Dispose();
-        _slowTimer?.Dispose();
+        _slowPoller?.Dispose();
     }
 }
