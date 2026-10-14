@@ -1,5 +1,6 @@
 @page "/jobs/deleted"
 @inject HangfireMonitorService Monitor
+@inject DashboardUIOptions Options
 @inject DashboardPolling Polling
 @implements IDisposable
 
@@ -21,9 +22,12 @@
     {
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <div class="d-flex gap-2">
-                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
-                    <i class="bi bi-arrow-repeat"></i> Requeue
-                </button>
+                @if (!Options.IsReadOnly)
+                {
+                    <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="RequeueSelected">
+                        <i class="bi bi-arrow-repeat"></i> Requeue
+                    </button>
+                }
             </div>
             <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
         </div>
@@ -34,9 +38,12 @@
                     <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <th style="width: 40px;">
-                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
-                                </th>
+                                @if (!Options.IsReadOnly)
+                                {
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
+                                    </th>
+                                }
                                 <th>Id</th>
                                 <th>Job</th>
                                 @if (_hasExceptionData)
@@ -54,12 +61,15 @@
                                 var isObsolete = job.Value == null || !job.Value.InDeletedState;
 
                                 <tr class="@(isObsolete ? "opacity-50" : "")">
-                                    <td class="hf-cell-select">
-                                        @if (isValid)
-                                        {
-                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
-                                        }
-                                    </td>
+                                    @if (!Options.IsReadOnly)
+                                    {
+                                        <td class="hf-cell-select">
+                                            @if (isValid)
+                                            {
+                                                <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
+                                            }
+                                        </td>
+                                    }
                                     <td class="font-monospace hf-cell-title hf-nowrap">
                                         <a href="jobs/details/@job.Key">@ShortenId(job.Key)</a>
                                         @if (job.Value != null && !job.Value.InDeletedState)

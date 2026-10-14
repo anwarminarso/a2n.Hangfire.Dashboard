@@ -271,6 +271,7 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     DashboardTitle = "My Jobs",
     DefaultTheme = "auto",  // "auto", "light", or "dark"
     EnableJobManagement = true,  // set false to hide Create/Edit/Stop and the Enqueue page
+    IsReadOnly = false,  // true = view-only: every requeue/delete/enqueue/trigger/stop/start/edit/pause action is hidden and refused by the services
     JobGraphMaxDepth = 5,   // continuation graph traversal depth (default 5)
     JobGraphMaxNodes = 30,  // continuation graph node budget (default 30)
     SearchTimeoutSeconds = 30,  // Search page limit; 0 = no limit, storage command timeout applies (default 30)
@@ -460,7 +461,7 @@ The queue control is editable with suggestions from current queues (defaulting t
 
 ### Gating
 
-- **Read-only mode** (`IsReadOnly = true`) — a persistent banner is shown and the submit controls are disabled.
+- **Read-only mode** (`IsReadOnly = true`) — a persistent banner is shown and the submit controls are disabled. Read-only mode applies to the whole dashboard, not only the builder: see `IsReadOnly` in [Full Setup](#full-setup).
 - **Job management** (`EnableJobManagement = false`) — the recurring create/edit builder is hidden, the navigation no longer links to the Enqueue page, and the `/jobs/enqueue` route returns Not Found (read-only gating still applies). Defaults to `true`.
 - **Arbitrary methods** (`AllowArbitraryMethodInvocation = false`, default) — only discovered registered methods may be selected.
 

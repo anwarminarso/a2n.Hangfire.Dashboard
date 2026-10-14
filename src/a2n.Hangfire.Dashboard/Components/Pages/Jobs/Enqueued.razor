@@ -9,10 +9,11 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="fw-semibold mb-0">Enqueued Jobs</h2>
-    @if (Options.EnableJobManagement)
+    @if (Options.EnableJobManagement && !Options.IsReadOnly)
     {
         @* Navigate to the Job Builder (Enqueue mode). Hidden when job management is disabled
-           (Req 4, 6) — the same gate that makes the /jobs/enqueue route return Not Found. *@
+           (Req 4, 6) — the same gate that makes the /jobs/enqueue route return Not Found — and in
+           read-only mode, where the builder can't enqueue (issue #73). *@
         <a class="btn btn-success btn-sm" href="jobs/enqueue">
             <i class="bi bi-plus-lg"></i> Enqueue Job
         </a>
@@ -61,9 +62,12 @@ else
         {
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                 <div class="d-flex gap-2">
-                    <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
-                        <i class="bi bi-trash"></i> Delete
-                    </button>
+                    @if (!Options.IsReadOnly)
+                    {
+                        <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
+                    }
                 </div>
                 <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
             </div>
@@ -74,9 +78,12 @@ else
                         <table class="table table-hover table-sm mb-0 hf-stack">
                             <thead>
                                 <tr>
-                                    <th style="width: 40px;">
-                                        <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
-                                    </th>
+                                    @if (!Options.IsReadOnly)
+                                    {
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
+                                        </th>
+                                    }
                                     <th>Id</th>
                                     <th class="hf-col-p2">State</th>
                                     <th>Job</th>
@@ -88,10 +95,13 @@ else
                                 @foreach (var job in _jobs)
                                 {
                                     <tr>
-                                        <td class="hf-cell-select">
-                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
-                                                   @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
-                                        </td>
+                                        @if (!Options.IsReadOnly)
+                                        {
+                                            <td class="hf-cell-select">
+                                                <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
+                                                       @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
+                                            </td>
+                                        }
                                         <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                         <td class="hf-cell-meta hf-col-p2" data-label="State"><span class="badge bg-secondary">@(job.Value?.State ?? "N/A")</span></td>
                                         <td class="hf-job-cell hf-cell-primary"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>

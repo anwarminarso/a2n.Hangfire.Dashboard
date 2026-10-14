@@ -1,5 +1,6 @@
 @page "/jobs/scheduled"
 @inject HangfireMonitorService Monitor
+@inject DashboardUIOptions Options
 @inject DashboardPolling Polling
 @implements IDisposable
 
@@ -21,12 +22,15 @@
     {
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <div class="d-flex gap-2">
-                <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
-                    <i class="bi bi-play-fill"></i> Enqueue
-                </button>
-                <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
-                    <i class="bi bi-trash"></i> Delete
-                </button>
+                @if (!Options.IsReadOnly)
+                {
+                    <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
+                        <i class="bi bi-play-fill"></i> Enqueue
+                    </button>
+                    <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                }
             </div>
             <PageSizeSelector PageSize="@_pageSize" OnPageSizeChanged="HandlePageSizeChanged" />
         </div>
@@ -37,9 +41,12 @@
                     <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                <th style="width: 40px;">
-                                    <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
-                                </th>
+                                @if (!Options.IsReadOnly)
+                                {
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
+                                    </th>
+                                }
                                 <th>Id</th>
                                 <SortableHeader Label="Enqueue" IsActive="@_order.NewestFirst.HasValue"
                                                 Descending="@(_order.NewestFirst == true)" OnSort="ToggleOrder" />
@@ -51,9 +58,12 @@
                             @foreach (var job in _jobs)
                             {
                                 <tr>
-                                    <td class="hf-cell-select">
-                                        <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
-                                    </td>
+                                    @if (!Options.IsReadOnly)
+                                    {
+                                        <td class="hf-cell-select">
+                                            <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
+                                        </td>
+                                    }
                                     <td class="font-monospace hf-cell-title hf-nowrap"><a href="jobs/details/@job.Key">@ShortenId(job.Key)</a></td>
                                     <td class="hf-cell-meta hf-nowrap" data-label="Enqueue">
                                         @if (job.Value is not null)

@@ -149,11 +149,25 @@ public class HangfireMonitorService
 
     // ===== Job Actions =====
 
+    /// <summary>Why a mutation was refused in read-only mode (issue #73).</summary>
+    internal const string ReadOnlyMessage = "The dashboard is read-only.";
+
+    // Every method that changes jobs or recurring jobs calls this first, so a page (or a future one)
+    // that still shows an action can't bypass DashboardUIOptions.IsReadOnly (issue #73). The methods
+    // returning a JobOperationResult report it in the result instead.
+    private void ThrowIfReadOnly()
+    {
+        if (_options.IsReadOnly)
+            throw new InvalidOperationException($"{ReadOnlyMessage} (DashboardUIOptions.IsReadOnly is set.)");
+    }
+
     /// <summary>
     /// Requeue a job (change state to Enqueued).
     /// </summary>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public bool RequeueJob(string jobId)
     {
+        ThrowIfReadOnly();
         var client = new BackgroundJobClient(_storage);
         var ok = client.ChangeState(jobId, new EnqueuedState());
         if (ok) _audit?.Log(AuditAction.JobRequeued, target: jobId);
@@ -163,8 +177,10 @@ public class HangfireMonitorService
     /// <summary>
     /// Delete a job (change state to Deleted).
     /// </summary>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public bool DeleteJob(string jobId)
     {
+        ThrowIfReadOnly();
         var client = new BackgroundJobClient(_storage);
         var ok = client.ChangeState(jobId, new DeletedState { Reason = "Deleted via Dashboard" });
         if (ok) _audit?.Log(AuditAction.JobDeleted, target: jobId);
@@ -205,9 +221,13 @@ public class HangfireMonitorService
     /// If a state change throws, the audit entry is still written with the jobs requeued before it,
     /// and the exception is rethrown.
     /// </remarks>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public int RequeueJobs(IEnumerable<string> jobIds, string fromState,
         IReadOnlyDictionary<string, string> auditMetadata = null)
-        => ThrowIfFailed(ChangeStates(jobIds, () => new EnqueuedState(), fromState, AuditAction.JobsRequeuedBatch, auditMetadata));
+    {
+        ThrowIfReadOnly();
+        return ThrowIfFailed(ChangeStates(jobIds, () => new EnqueuedState(), fromState, AuditAction.JobsRequeuedBatch, auditMetadata));
+    }
 
     /// <summary>
     /// Delete multiple jobs.
@@ -237,9 +257,13 @@ public class HangfireMonitorService
     /// If a state change throws, the audit entry is still written with the jobs deleted before it,
     /// and the exception is rethrown.
     /// </remarks>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public int DeleteJobs(IEnumerable<string> jobIds, string fromState,
         IReadOnlyDictionary<string, string> auditMetadata = null)
-        => ThrowIfFailed(ChangeStates(jobIds, DeletedForDashboard, fromState, AuditAction.JobsDeletedBatch, auditMetadata));
+    {
+        ThrowIfReadOnly();
+        return ThrowIfFailed(ChangeStates(jobIds, DeletedForDashboard, fromState, AuditAction.JobsDeletedBatch, auditMetadata));
+    }
 
     /// <summary>
     /// Requeues the jobs <see cref="BulkActionBatchSize"/> at a time, as
@@ -254,12 +278,18 @@ public class HangfireMonitorService
     /// <param name="auditMetadata">Added to every batch's audit entry.</param>
     /// <param name="progress">Reported after each batch that completes.</param>
     /// <param name="ct">Stops before the next batch; it is not passed into a batch.</param>
+    /// <exception cref="InvalidOperationException">
+    /// The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>). Thrown before any batch runs.
+    /// </exception>
     public Task<BulkJobActionResult> RequeueJobsInBatchesAsync(IReadOnlyList<string> jobIds, string fromState = null,
         IReadOnlyDictionary<string, string> auditMetadata = null, IProgress<BulkJobActionResult> progress = null,
         CancellationToken ct = default)
-        => RunInBatchesAsync(jobIds,
+    {
+        ThrowIfReadOnly();
+        return RunInBatchesAsync(jobIds,
             batch => ChangeStates(batch, () => new EnqueuedState(), fromState, AuditAction.JobsRequeuedBatch, auditMetadata),
             progress, ct);
+    }
 
     /// <summary>
     /// Deletes the jobs <see cref="BulkActionBatchSize"/> at a time, as
@@ -274,12 +304,18 @@ public class HangfireMonitorService
     /// <param name="auditMetadata">Added to every batch's audit entry.</param>
     /// <param name="progress">Reported after each batch that completes.</param>
     /// <param name="ct">Stops before the next batch; it is not passed into a batch.</param>
+    /// <exception cref="InvalidOperationException">
+    /// The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>). Thrown before any batch runs.
+    /// </exception>
     public Task<BulkJobActionResult> DeleteJobsInBatchesAsync(IReadOnlyList<string> jobIds, string fromState = null,
         IReadOnlyDictionary<string, string> auditMetadata = null, IProgress<BulkJobActionResult> progress = null,
         CancellationToken ct = default)
-        => RunInBatchesAsync(jobIds,
+    {
+        ThrowIfReadOnly();
+        return RunInBatchesAsync(jobIds,
             batch => ChangeStates(batch, DeletedForDashboard, fromState, AuditAction.JobsDeletedBatch, auditMetadata),
             progress, ct);
+    }
 
     private static IState DeletedForDashboard() => new DeletedState { Reason = "Deleted via Dashboard" };
 
@@ -604,8 +640,10 @@ public class HangfireMonitorService
     /// <summary>
     /// Trigger a recurring job immediately.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public void TriggerRecurringJob(string recurringJobId)
     {
+        ThrowIfReadOnly();
         var manager = new RecurringJobManager(_storage);
         manager.Trigger(recurringJobId);
         _audit?.Log(AuditAction.RecurringTriggered, target: recurringJobId);
@@ -614,8 +652,10 @@ public class HangfireMonitorService
     /// <summary>
     /// Remove a recurring job.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public void RemoveRecurringJob(string recurringJobId)
     {
+        ThrowIfReadOnly();
         var manager = new RecurringJobManager(_storage);
         manager.RemoveIfExists(recurringJobId);
         _audit?.Log(AuditAction.RecurringDeleted, target: recurringJobId);
@@ -624,8 +664,10 @@ public class HangfireMonitorService
     /// <summary>
     /// Trigger multiple recurring jobs.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public void TriggerRecurringJobs(IEnumerable<string> recurringJobIds)
     {
+        ThrowIfReadOnly();
         var manager = new RecurringJobManager(_storage);
         var ids = recurringJobIds?.ToList() ?? [];
         foreach (var id in ids)
@@ -643,8 +685,10 @@ public class HangfireMonitorService
     /// <summary>
     /// Remove multiple recurring jobs.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public void RemoveRecurringJobs(IEnumerable<string> recurringJobIds)
     {
+        ThrowIfReadOnly();
         var manager = new RecurringJobManager(_storage);
         var ids = recurringJobIds?.ToList() ?? [];
         foreach (var id in ids)
@@ -669,8 +713,11 @@ public class HangfireMonitorService
     /// <summary>
     /// Stops a recurring job by removing it from the scheduler and storing its config.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public void StopRecurringJob(string recurringJobId)
     {
+        ThrowIfReadOnly();
+
         // Read the recurring job config before removing
         using var connection = _storage.GetReadOnlyConnection();
         if (connection is not JobStorageConnection storageConnection) return;
@@ -713,8 +760,10 @@ public class HangfireMonitorService
     /// <summary>
     /// Starts (restores) a previously stopped recurring job.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
     public void StartRecurringJob(string recurringJobId)
     {
+        ThrowIfReadOnly();
         using var connection = _storage.GetConnection();
         if (connection is not JobStorageConnection storageConnection) return;
 

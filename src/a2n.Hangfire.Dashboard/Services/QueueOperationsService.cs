@@ -205,6 +205,14 @@ public class QueueOperationsService
 
     private void EnsureEnabled()
     {
+        // The pages already hide pause, resume and maintenance in read-only mode; this makes the
+        // option hold for any other caller too (issue #73).
+        if (_options.IsReadOnly)
+        {
+            throw new InvalidOperationException(
+                "The dashboard is read-only (DashboardUIOptions.IsReadOnly is set.)");
+        }
+
         if (!_options.QueueOperations.Enabled)
         {
             throw new InvalidOperationException(
