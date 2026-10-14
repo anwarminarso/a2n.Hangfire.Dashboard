@@ -3,6 +3,7 @@
 @implements IDisposable
 @inject ThrottlingSnapshotCache Snapshots
 @inject DashboardUIOptions Options
+@inject DashboardPolling Polling
 
 <PageTitle>Throttling</PageTitle>
 
@@ -277,7 +278,7 @@ else
     private IReadOnlyList<SemaphoreDto> _semaphores;
     private List<MutexRow> _mutexRows = [];
     private IReadOnlyList<ThrottleWindowDto> _windows = [];
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
 
     /// <summary>How often the page re-reads the shared snapshot. Slightly longer than its TTL.</summary>
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(6);
@@ -331,15 +332,11 @@ else
         // and release — so a load-once snapshot goes stale while the operator is still reading it.
         // The reads themselves are shared through ThrottlingSnapshotCache, so this timer costs one
         // storage pass per TTL across every open tab rather than one per tab per tick.
-        _refreshTimer = new Timer(async _ =>
+        _poller = Polling.Start(nameof(Throttling), RefreshInterval, _ => InvokeAsync(async () =>
         {
-            try
-            {
-                await LoadDataAsync();
-                await InvokeAsync(StateHasChanged);
-            }
-            catch { }
-        }, null, RefreshInterval, RefreshInterval);
+            await LoadDataAsync();
+            StateHasChanged();
+        }));
     }
 
     private async Task LoadDataAsync()
@@ -360,7 +357,7 @@ else
         await LoadDataAsync();
     }
 
-    public void Dispose() => _refreshTimer?.Dispose();
+    public void Dispose() => _poller?.Dispose();
 
     private static int GetUsagePercent(SemaphoreDto semaphore)
     {

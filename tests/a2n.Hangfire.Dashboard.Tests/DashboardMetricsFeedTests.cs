@@ -233,6 +233,7 @@ public class DashboardMetricsFeedTests
         ctx.Services.AddSingleton<HealthReportCache>();
         ctx.Services.AddSingleton<DashboardSubscriptionTracker>();
         ctx.Services.AddSingleton<DashboardMetricsFeed>();
+        ctx.Services.AddDashboardPolling();
 
         var feed = ctx.Services.GetRequiredService<DashboardMetricsFeed>();
         var tracker = ctx.Services.GetRequiredService<DashboardSubscriptionTracker>();

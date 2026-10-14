@@ -2,6 +2,7 @@
 @page "/jobs/enqueued/{QueueName}"
 @inject HangfireMonitorService Monitor
 @inject DashboardUIOptions Options
+@inject DashboardPolling Polling
 @implements IDisposable
 
 <PageTitle>Enqueued Jobs</PageTitle>
@@ -132,7 +133,7 @@ else
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -140,36 +141,38 @@ else
         _selectedJobs.Clear();
         _selectAll = false;
         await LoadData();
-        StartTimer();
+        StartPoller();
     }
 
-    private void StartTimer()
+    // Restarted on every parameter change, so switching queues doesn't stack loops.
+    private void StartPoller()
     {
-        _refreshTimer?.Dispose();
-        _refreshTimer = new Timer(async _ =>
+        _poller?.Dispose();
+        _poller = Polling.Start(nameof(Enqueued), Polling.Options.PageRefreshInterval, Refresh);
+    }
+
+    private async Task Refresh(CancellationToken ct)
+    {
+        var queue = _activeQueue;
+        var (queues, totalCount, fetchedCount, jobs) = await Polling.ReadAsync(() =>
         {
-            try
-            {
-                var queues = Monitor.GetQueues();
-                var totalCount = Monitor.GetEnqueuedCount(_activeQueue);
-                var fetchedCount = Monitor.GetFetchedCount(_activeQueue);
-                var jobs = FetchPage(totalCount);
-                await InvokeAsync(() =>
-                {
-                    _queues = queues;
-                    _totalCount = totalCount;
-                    _fetchedCount = fetchedCount;
-                    _jobs = jobs;
-                    StateHasChanged();
-                });
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            var total = Monitor.GetEnqueuedCount(queue);
+            return (Monitor.GetQueues(), total, Monitor.GetFetchedCount(queue), FetchPage(total));
+        }, ct);
+
+        await InvokeAsync(() =>
+        {
+            _queues = queues;
+            _totalCount = totalCount;
+            _fetchedCount = fetchedCount;
+            _jobs = jobs;
+            StateHasChanged();
+        });
     }
 
     private async Task LoadData()
     {
-        await Task.Run(() =>
+        await Polling.ReadAsync(() =>
         {
             _queues = Monitor.GetQueues();
             _activeQueue = QueueName ?? _queues.FirstOrDefault()?.Name ?? "default";
@@ -252,6 +255,6 @@ else
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

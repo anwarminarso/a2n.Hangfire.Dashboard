@@ -6,6 +6,7 @@
 @using Microsoft.Extensions.DependencyInjection
 @inject HangfireMonitorService Monitor
 @inject DashboardUIOptions Options
+@inject DashboardPolling Polling
 @inject NavigationManager Navigation
 @inject IServiceProvider Services
 @inject IJSRuntime JS
@@ -426,7 +427,7 @@ else
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
 
     // ── Exception groups ──
     // Loaded the first time the Exception filter gets focus, or when the page opens on a group, so
@@ -525,29 +526,29 @@ else
         _queryProvider = Services.GetService<IStorageQueryProvider>();
         await LoadData();
 
-        _refreshTimer = new Timer(async _ =>
-        {
-            try
-            {
-                var newCount = Monitor.GetFailedCount();
-                if (newCount != _totalCount)
-                {
-                    var jobs = FetchPage(newCount);
-                    await InvokeAsync(async () =>
-                    {
-                        _totalCount = newCount;
-                        _jobs = jobs;
-                        StateHasChanged();
+        _poller = Polling.Start(nameof(Failed), Polling.Options.PageRefreshInterval, Refresh);
+    }
 
-                        // A running group action changes the count with every batch; the groups are
-                        // refreshed once it ends instead.
-                        if (_runningAction is null)
-                            await RefreshGroups();
-                    });
-                }
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    private async Task Refresh(CancellationToken ct)
+    {
+        var (count, jobs) = await Polling.ReadAsync(() =>
+        {
+            var total = Monitor.GetFailedCount();
+            return (total, total != _totalCount ? FetchPage(total) : null);
+        }, ct);
+        if (jobs is null) return;
+
+        await InvokeAsync(async () =>
+        {
+            _totalCount = count;
+            _jobs = jobs;
+            StateHasChanged();
+
+            // A running group action changes the count with every batch; the groups are
+            // refreshed once it ends instead.
+            if (_runningAction is null)
+                await RefreshGroups();
+        });
     }
 
     protected override async Task OnParametersSetAsync()
@@ -568,7 +569,7 @@ else
 
     private async Task LoadData()
     {
-        await Task.Run(() =>
+        await Polling.ReadAsync(() =>
         {
             _totalCount = Monitor.GetFailedCount();
             _jobs = FetchPage(_totalCount);
@@ -1138,7 +1139,7 @@ else
     public void Dispose()
     {
         _disposed = true;
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
         _groupsCts?.Cancel();
         _groupJobsCts?.Cancel();
         _snapshotCts?.Cancel();

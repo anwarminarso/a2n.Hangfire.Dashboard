@@ -1,6 +1,8 @@
 @page "/jobs/processing"
 @inject HangfireMonitorService Monitor
 @inject ConsoleDataReader ConsoleReader
+@inject DashboardPolling Polling
+@inject DashboardMetricsFeed MetricsFeed
 @implements IDisposable
 
 <PageTitle>Processing Jobs</PageTitle>
@@ -130,7 +132,7 @@
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
     private Dictionary<string, double> _jobProgress = new();
     private bool _consoleEnabled;
     private IList<ServerDto> _servers;
@@ -139,54 +141,63 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+        _poller = Polling.Start(nameof(Processing), Polling.Options.FastPageRefreshInterval, Refresh);
+    }
 
-        _refreshTimer = new Timer(async _ =>
+    private async Task Refresh(CancellationToken ct)
+    {
+        var shown = _jobs;
+        var (count, jobs, progress) = await Polling.ReadAsync(() =>
         {
-            try
+            var total = Monitor.GetProcessingCount();
+            if (total != _totalCount || total > 0)
             {
-                var newCount = Monitor.GetProcessingCount();
-                if (newCount != _totalCount || newCount > 0)
-                {
-                    var jobs = FetchPage(newCount);
-                    var progress = GetProgressForJobs(jobs);
-                    var servers = Monitor.GetServers();
-                    await InvokeAsync(() =>
-                    {
-                        _totalCount = newCount;
-                        _jobs = jobs;
-                        _jobProgress = progress;
-                        _servers = servers;
-                        StateHasChanged();
-                    });
-                }
-                else if (_consoleEnabled && _jobs?.Count > 0)
-                {
-                    // Even if job list hasn't changed, poll progress updates
-                    var progress = GetProgressForJobs(_jobs);
-                    if (!ProgressEquals(progress, _jobProgress))
-                    {
-                        await InvokeAsync(() =>
-                        {
-                            _jobProgress = progress;
-                            StateHasChanged();
-                        });
-                    }
-                }
+                var page = FetchPage(total);
+                return (total, page, GetProgressForJobs(page));
             }
-            catch { }
-        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+
+            // Even if the job list hasn't changed, poll progress updates.
+            var latest = _consoleEnabled && shown?.Count > 0 ? GetProgressForJobs(shown) : null;
+            return (total, (JobList<ProcessingJobDto>)null, latest);
+        }, ct);
+
+        if (jobs is not null)
+        {
+            var servers = await GetServersAsync(ct);
+            await InvokeAsync(() =>
+            {
+                _totalCount = count;
+                _jobs = jobs;
+                _jobProgress = progress;
+                _servers = servers;
+                StateHasChanged();
+            });
+        }
+        else if (progress is not null && !ProgressEquals(progress, _jobProgress))
+        {
+            await InvokeAsync(() =>
+            {
+                _jobProgress = progress;
+                StateHasChanged();
+            });
+        }
     }
 
     private async Task LoadData()
     {
-        await Task.Run(() =>
+        await Polling.ReadAsync(() =>
         {
             _totalCount = Monitor.GetProcessingCount();
             _jobs = FetchPage(_totalCount);
             _jobProgress = GetProgressForJobs(_jobs);
-            _servers = Monitor.GetServers();
         });
+        _servers = await GetServersAsync(CancellationToken.None);
     }
+
+    // The server list is shared by every tab through the metrics feed (one read per
+    // StatsPollingInterval) rather than read again by each Processing page.
+    private async Task<IList<ServerDto>> GetServersAsync(CancellationToken ct)
+        => (await MetricsFeed.GetMetricsAsync(ct)).Servers.ToList();
 
     private JobList<ProcessingJobDto> FetchPage(long total) =>
         _order.Fetch(Monitor.GetProcessingJobs, total, _from, _pageSize, j => j.StartedAt);
@@ -324,6 +335,6 @@
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

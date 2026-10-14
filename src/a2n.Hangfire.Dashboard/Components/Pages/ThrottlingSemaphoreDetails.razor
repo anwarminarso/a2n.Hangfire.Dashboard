@@ -4,6 +4,7 @@
 @inject ThrottlingDataReader ThrottlingReader
 @inject ThrottlingSnapshotCache Snapshots
 @inject DashboardUIOptions Options
+@inject DashboardPolling Polling
 
 <PageTitle>@(_notFound ? "Semaphore Not Found" : $"Semaphore {SemaphoreId}")</PageTitle>
 
@@ -136,7 +137,7 @@ else
     private bool _notFound;
     private SemaphoreDto _semaphore;
     private IReadOnlyList<ThrottleHolderDto> _holders = [];
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
 
     private enum HolderSort { None, Job, State, Server }
 
@@ -158,17 +159,13 @@ else
     {
         await LoadDataAsync();
 
-        // Restart on every parameter change so navigating between semaphores doesn't stack timers.
-        _refreshTimer?.Dispose();
-        _refreshTimer = new Timer(async _ =>
+        // Restart on every parameter change so navigating between semaphores doesn't stack loops.
+        _poller?.Dispose();
+        _poller = Polling.Start(nameof(ThrottlingSemaphoreDetails), RefreshInterval, ct => InvokeAsync(async () =>
         {
-            try
-            {
-                await LoadDataAsync(showSpinner: false);
-                await InvokeAsync(StateHasChanged);
-            }
-            catch { }
-        }, null, RefreshInterval, RefreshInterval);
+            await LoadDataAsync(showSpinner: false, ct);
+            StateHasChanged();
+        }));
     }
 
     /// <summary>
@@ -176,18 +173,18 @@ else
     /// snapshot resolves holder state for mutexes, not for a specific semaphore's holders, and this
     /// page is opened one at a time rather than left open in bulk.
     /// </summary>
-    private async Task LoadDataAsync(bool showSpinner = true)
+    private async Task LoadDataAsync(bool showSpinner = true, CancellationToken ct = default)
     {
         // On timer ticks the table is already populated, so flipping the spinner would blank it
         // out every few seconds for no reason.
         if (showSpinner) _loading = true;
 
-        await Task.Run(() =>
+        await Polling.ReadAsync(() =>
         {
             _semaphore = ThrottlingReader.GetSemaphore(SemaphoreId);
             _notFound = _semaphore is null;
             _holders = _notFound ? [] : ThrottlingReader.GetHolderDetails(_semaphore.HolderJobIds);
-        });
+        }, ct);
 
         _loading = false;
     }
@@ -195,7 +192,7 @@ else
     /// <summary>The table is already populated, so re-reading without flashing the spinner.</summary>
     private Task RefreshNowAsync() => LoadDataAsync(showSpinner: false);
 
-    public void Dispose() => _refreshTimer?.Dispose();
+    public void Dispose() => _poller?.Dispose();
 
     private int GetUsagePercent()
     {

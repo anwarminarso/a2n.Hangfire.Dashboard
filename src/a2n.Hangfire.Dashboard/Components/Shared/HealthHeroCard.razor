@@ -1,6 +1,7 @@
 @using a2n.Hangfire.Dashboard
 @using a2n.Hangfire.Dashboard.Services
 @inject HealthReportCache HealthCache
+@inject DashboardPolling Polling
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -74,51 +75,39 @@ else
 @code {
     private HealthReport _report;
     private List<KeyValuePair<string, HealthCheckResult>> _failingChecks = new();
-    private PeriodicTimer _timer;
-    private CancellationTokenSource _cts;
+    private DashboardPoller _poller;
     private bool _refreshing;
 
     /// <summary>
-    /// Refresh interval in milliseconds. Defaults to 10s.
+    /// Refresh interval in milliseconds. Defaults to
+    /// <see cref="PollingOptions.HealthCardRefreshInterval"/> (10 s).
     /// </summary>
-    [Parameter] public int RefreshIntervalMs { get; set; } = 10_000;
+    [Parameter] public int? RefreshIntervalMs { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
-        await RefreshAsync();
+        await RefreshCoreAsync(forceRefresh: false);
 
-        _cts = new CancellationTokenSource();
-        _timer = new PeriodicTimer(TimeSpan.FromMilliseconds(RefreshIntervalMs));
-        _ = PollAsync(_cts.Token);
+        var interval = RefreshIntervalMs is int ms
+            ? TimeSpan.FromMilliseconds(ms)
+            : Polling.Options.HealthCardRefreshInterval;
+        _poller = Polling.Start(nameof(HealthHeroCard), interval, async _ =>
+        {
+            // A failed refresh keeps the last report on screen and backs the loop off.
+            Exception error = null;
+            await InvokeAsync(async () => error = await RefreshCoreAsync(forceRefresh: false));
+            if (error is not null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(error);
+        });
     }
-
-    private async Task PollAsync(CancellationToken token)
-    {
-        try
-        {
-            while (await _timer.WaitForNextTickAsync(token))
-            {
-                await InvokeAsync(RefreshAsync);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Component disposed — stop polling.
-        }
-        catch
-        {
-            // Swallow — UI continues with last known good state.
-        }
-    }
-
-    private async Task RefreshAsync() => await RefreshCoreAsync(forceRefresh: false);
 
     /// <summary>Explicit user-initiated refresh — bypasses the shared cache TTL for fresh data.</summary>
     private async Task RefreshNowAsync() => await RefreshCoreAsync(forceRefresh: true);
 
-    private async Task RefreshCoreAsync(bool forceRefresh)
+    /// <returns>The error when the report could not be read, otherwise null.</returns>
+    private async Task<Exception> RefreshCoreAsync(bool forceRefresh)
     {
-        if (_refreshing) return;
+        if (_refreshing) return null;
         _refreshing = true;
         try
         {
@@ -128,12 +117,16 @@ else
             _report = await HealthCache.GetAsync(HealthReportCache.Mode.Full, forceRefresh);
             _failingChecks = _report.Checks
                 .Where(kv => kv.Value.Status != HealthStatus.Healthy)
+                // Checks skipped because storage is unreachable add nothing to the storage issue.
+                .Where(kv => kv.Value.Data?.ContainsKey("skipped") != true)
                 .OrderByDescending(kv => (int)kv.Value.Status)
                 .ToList();
+            return null;
         }
-        catch
+        catch (Exception ex)
         {
             // Keep previous _report; don't blank out the card on transient failures.
+            return ex;
         }
         finally
         {
@@ -230,8 +223,6 @@ else
 
     public void Dispose()
     {
-        _cts?.Cancel();
-        _timer?.Dispose();
-        _cts?.Dispose();
+        _poller?.Dispose();
     }
 }

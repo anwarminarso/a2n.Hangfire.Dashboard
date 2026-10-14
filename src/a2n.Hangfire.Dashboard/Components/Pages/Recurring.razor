@@ -2,6 +2,7 @@
 @using global::Hangfire.Storage
 @inject HangfireMonitorService Monitor
 @inject DashboardUIOptions Options
+@inject DashboardPolling Polling
 @implements IDisposable
 
 <PageTitle>Recurring Jobs</PageTitle>
@@ -279,7 +280,7 @@ else
     private int _pageSize = 20;
     private int _from;
     private int _stoppedFrom;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
     private string _successMessage;
     private string _errorMessage;
 
@@ -410,24 +411,20 @@ else
 
         await LoadData();
 
-        _refreshTimer = new Timer(async _ =>
+        _poller = Polling.Start(nameof(Recurring), Polling.Options.SlowPageRefreshInterval, ct => InvokeAsync(async () =>
         {
-            try
-            {
-                await LoadData();
-                await InvokeAsync(StateHasChanged);
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            await LoadData(ct);
+            StateHasChanged();
+        }));
     }
 
-    private async Task LoadData()
+    private async Task LoadData(CancellationToken ct = default)
     {
-        await Task.Run(() =>
+        await Polling.ReadAsync(() =>
         {
             _jobs = Monitor.GetRecurringJobs();
             LoadStoppedJobs();
-        });
+        }, ct);
         // The visible list can shrink after a reload (delete/trigger/stop/start, or the 10s
         // auto-refresh finding fewer jobs), which can leave _from/_stoppedFrom pointing past the
         // end and render an empty trailing page (Issue #37 follow-up). Re-clamp both offsets back
@@ -591,6 +588,6 @@ else
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

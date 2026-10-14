@@ -171,6 +171,13 @@ public class DashboardUIOptions
     public HeatmapOptions Heatmap { get; set; } = new HeatmapOptions();
 
     /// <summary>
+    /// How the dashboard bounds its background storage reads: the number of synchronous storage
+    /// calls in flight at once and the back-off of its refresh loops while storage is slow or
+    /// failing. See <see cref="PollingOptions"/>.
+    /// </summary>
+    public PollingOptions Polling { get; set; } = new PollingOptions();
+
+    /// <summary>
     /// Copies every configurable option value from this instance onto <paramref name="target"/>.
     /// Used to push host-supplied options onto the DI-registered singleton that Blazor components
     /// inject. Reflection over the public read/write properties means a newly added option is
@@ -197,6 +204,7 @@ public class DashboardUIOptions
         target.AuditLog ??= new AuditLogOptions();
         target.QueueOperations ??= new QueueOperationsOptions();
         target.Heatmap ??= new HeatmapOptions();
+        target.Polling ??= new PollingOptions();
     }
 
     /// <summary>

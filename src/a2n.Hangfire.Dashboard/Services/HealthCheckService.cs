@@ -19,172 +19,302 @@ public class HealthCheckService
 {
     private static readonly string PackageVersion = ResolvePackageVersion();
 
+    private static readonly string[] StorageDependentChecks =
+        ["servers", "queue_depth", "stuck_processing", "failure_rate", "recurring_jobs"];
+
     private readonly HangfireMonitorService _monitor;
     private readonly DashboardUIOptions _options;
     private readonly ILogger<HealthCheckService> _logger;
+    private readonly DashboardMetricsFeed _feed;
+    private readonly DashboardStorageGate _gate;
 
+    // Kept so assemblies compiled against 2.5.x find it.
     public HealthCheckService(
         HangfireMonitorService monitor,
         DashboardUIOptions options,
         ILogger<HealthCheckService> logger = null)
+        : this(monitor, options, logger, feed: null, gate: null)
+    {
+    }
+
+    /// <param name="monitor">Storage reads.</param>
+    /// <param name="options">Thresholds.</param>
+    /// <param name="logger">Optional.</param>
+    /// <param name="feed">
+    /// When given, the storage probe reuses the shared metrics snapshot instead of reading the
+    /// statistics again, and at most one probe read is ever in flight.
+    /// </param>
+    /// <param name="gate">When given, the other checks' storage reads go through it.</param>
+    public HealthCheckService(
+        HangfireMonitorService monitor,
+        DashboardUIOptions options,
+        ILogger<HealthCheckService> logger,
+        DashboardMetricsFeed feed,
+        DashboardStorageGate gate)
     {
         _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger;
+        _feed = feed;
+        _gate = gate;
     }
 
     /// <summary>
     /// Runs only the storage probe. Suitable for liveness probes (K8s) where the only goal is
     /// "the dashboard process is alive and can talk to its storage".
     /// </summary>
-    public HealthReport CheckLiveness()
-    {
-        var sw = Stopwatch.StartNew();
-        var report = new HealthReport
-        {
-            Version = PackageVersion,
-            Timestamp = DateTime.UtcNow,
-        };
-
-        report.Checks["storage"] = CheckStorage(out var statisticsForReuse);
-        _ = statisticsForReuse; // discarded for liveness
-        report.Status = report.Checks["storage"].Status;
-        report.DurationMs = sw.ElapsedMilliseconds;
-        return report;
-    }
+    /// <remarks>Blocks the calling thread; prefer <see cref="CheckLivenessAsync"/>.</remarks>
+    public HealthReport CheckLiveness() => CheckLivenessAsync().GetAwaiter().GetResult();
 
     /// <summary>
     /// Runs liveness checks plus a server-presence check. Suitable for readiness probes — answers
     /// "is the dashboard ready to take traffic and is at least one Hangfire server running?".
     /// </summary>
-    public HealthReport CheckReadiness()
-    {
-        var sw = Stopwatch.StartNew();
-        var report = new HealthReport
-        {
-            Version = PackageVersion,
-            Timestamp = DateTime.UtcNow,
-        };
-
-        report.Checks["storage"] = CheckStorage(out _);
-        report.Checks["servers"] = CheckServers();
-        report.Status = AggregateStatus(report.Checks.Values);
-        report.DurationMs = sw.ElapsedMilliseconds;
-        return report;
-    }
+    /// <remarks>Blocks the calling thread; prefer <see cref="CheckReadinessAsync"/>.</remarks>
+    public HealthReport CheckReadiness() => CheckReadinessAsync().GetAwaiter().GetResult();
 
     /// <summary>
     /// Runs all checks and returns a full diagnostic report. Use for monitoring / status pages /
     /// the dashboard hero card. More expensive than <see cref="CheckLiveness"/> — this iterates
     /// queues, processing jobs, and recurring jobs.
     /// </summary>
-    public HealthReport CheckFull()
+    /// <remarks>Blocks the calling thread; prefer <see cref="CheckFullAsync"/>.</remarks>
+    public HealthReport CheckFull() => CheckFullAsync().GetAwaiter().GetResult();
+
+    /// <summary>Asynchronous <see cref="CheckLiveness"/>.</summary>
+    /// <param name="forceProbe">
+    /// Read storage now rather than reuse a metrics snapshot younger than
+    /// <see cref="DashboardUIOptions.StatsPollingInterval"/> (a manual refresh).
+    /// </param>
+    /// <param name="ct">Stops waiting; a storage call already started completes in the background.</param>
+    public async Task<HealthReport> CheckLivenessAsync(bool forceProbe = false, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
-        var report = new HealthReport
-        {
-            Version = PackageVersion,
-            Timestamp = DateTime.UtcNow,
-        };
+        var report = NewReport();
 
-        // Storage probe also returns the StatisticsDto so subsequent checks reuse it.
-        report.Checks["storage"] = CheckStorage(out var stats);
-        report.Checks["servers"] = CheckServers();
-        report.Checks["queue_depth"] = CheckQueueDepth();
-        report.Checks["stuck_processing"] = CheckStuckProcessing(stats);
-        report.Checks["failure_rate"] = CheckFailureRate();
-        report.Checks["recurring_jobs"] = CheckRecurringJobs();
+        var probe = await ProbeStorageAsync(forceProbe, ct).ConfigureAwait(false);
+        report.Checks["storage"] = probe.Result;
+        report.Status = probe.Result.Status;
+        report.DurationMs = sw.ElapsedMilliseconds;
+        return report;
+    }
+
+    /// <summary>Asynchronous <see cref="CheckReadiness"/>.</summary>
+    /// <inheritdoc cref="CheckLivenessAsync" path="/param"/>
+    public async Task<HealthReport> CheckReadinessAsync(bool forceProbe = false, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        var report = NewReport();
+
+        var probe = await ProbeStorageAsync(forceProbe, ct).ConfigureAwait(false);
+        report.Checks["storage"] = probe.Result;
+        report.Checks["servers"] = probe.Reachable
+            ? await ServersCheckAsync(probe, ct).ConfigureAwait(false)
+            : Skipped();
+        report.Status = AggregateStatus(report.Checks.Values);
+        report.DurationMs = sw.ElapsedMilliseconds;
+        return report;
+    }
+
+    /// <summary>Asynchronous <see cref="CheckFull"/>.</summary>
+    /// <remarks>
+    /// When the storage probe fails or times out, the other checks are not run (each is reported
+    /// as skipped): with storage unreachable they could only fail, each after its own timeout.
+    /// </remarks>
+    /// <inheritdoc cref="CheckLivenessAsync" path="/param"/>
+    public async Task<HealthReport> CheckFullAsync(bool forceProbe = false, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        var report = NewReport();
+
+        var probe = await ProbeStorageAsync(forceProbe, ct).ConfigureAwait(false);
+        report.Checks["storage"] = probe.Result;
+
+        if (!probe.Reachable)
+        {
+            foreach (var name in StorageDependentChecks)
+                report.Checks[name] = Skipped();
+        }
+        else
+        {
+            // The probe also returns the statistics (and, from the feed, the servers), so the
+            // checks below reuse them.
+            var stats = probe.Statistics;
+            report.Checks["servers"] = await ServersCheckAsync(probe, ct).ConfigureAwait(false);
+            report.Checks["queue_depth"] = await RunCheckAsync("Queue depth", CheckQueueDepth, ct).ConfigureAwait(false);
+            report.Checks["stuck_processing"] = await RunCheckAsync("Stuck-processing", () => CheckStuckProcessing(stats), ct).ConfigureAwait(false);
+            report.Checks["failure_rate"] = await RunCheckAsync("Failure-rate", CheckFailureRate, ct).ConfigureAwait(false);
+            report.Checks["recurring_jobs"] = await RunCheckAsync("Recurring", CheckRecurringJobs, ct).ConfigureAwait(false);
+        }
 
         report.Status = AggregateStatus(report.Checks.Values);
         report.DurationMs = sw.ElapsedMilliseconds;
         return report;
     }
 
-    // ---- Individual checks ----
-
-    private HealthCheckResult CheckStorage(out StatisticsDto stats)
+    private static HealthReport NewReport() => new()
     {
-        var result = new HealthCheckResult { Data = new() };
-        stats = null;
+        Version = PackageVersion,
+        Timestamp = DateTime.UtcNow,
+    };
 
-        var sw = Stopwatch.StartNew();
+    private static HealthCheckResult Skipped() => new()
+    {
+        Status = HealthStatus.Unhealthy,
+        Description = "Skipped: the storage probe failed.",
+        Data = new() { ["skipped"] = true },
+    };
+
+    // ---- Running storage reads ----
+
+    private sealed record StorageProbe(
+        HealthCheckResult Result,
+        bool Reachable,
+        StatisticsDto Statistics = null,
+        IReadOnlyList<ServerDto> Servers = null);
+
+    private int StorageTimeoutMs => _options.HealthCheckThresholds.StorageProbeTimeoutMs;
+
+    private CancellationTokenSource TimeoutSource(CancellationToken ct)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (StorageTimeoutMs > 0) cts.CancelAfter(StorageTimeoutMs);
+        return cts;
+    }
+
+    // Through the gate when there is one. Either way the caller stops waiting on cancellation; the
+    // call itself can't be stopped (Hangfire's monitoring API is synchronous).
+    private Task<T> RunAsync<T>(Func<T> call, CancellationToken ct)
+        => _gate is not null ? _gate.RunAsync(call, ct) : Task.Run(call, CancellationToken.None).WaitAsync(ct);
+
+    /// <summary>Runs a check's storage reads under the probe timeout; a timeout reports it Degraded.</summary>
+    private async Task<HealthCheckResult> RunCheckAsync(string name, Func<HealthCheckResult> check, CancellationToken ct)
+    {
+        using var cts = TimeoutSource(ct);
         try
         {
-            stats = ProbeStatisticsWithTimeout(out var timedOut);
-            sw.Stop();
-
-            var elapsed = sw.ElapsedMilliseconds;
-            result.Data["responseTimeMs"] = elapsed;
-
-            if (timedOut)
+            return await RunAsync(check, cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new HealthCheckResult
             {
-                result.Status = HealthStatus.Unhealthy;
-                result.Description = $"Storage probe timed out after {_options.HealthCheckThresholds.StorageProbeTimeoutMs}ms.";
-                result.Data["timedOut"] = true;
-                return result;
-            }
+                Status = HealthStatus.Degraded,
+                Description = $"{name} probe timed out after {StorageTimeoutMs}ms.",
+                Data = new() { ["timedOut"] = true },
+            };
+        }
+    }
 
-            if (elapsed >= _options.HealthCheckThresholds.StorageResponseTimeCriticalMs)
+    private Task<HealthCheckResult> ServersCheckAsync(StorageProbe probe, CancellationToken ct)
+        => probe.Servers is not null
+            ? Task.FromResult(EvaluateServers(probe.Servers))
+            : RunCheckAsync("Server", CheckServers, ct);
+
+    // ---- Individual checks ----
+
+    /// <summary>
+    /// Reads the statistics, from the shared metrics snapshot when there is a feed, under
+    /// <see cref="HealthThresholds.StorageProbeTimeoutMs"/>.
+    /// </summary>
+    /// <remarks>
+    /// The previous probe blocked a thread on <c>Task.Wait</c> and left the abandoned read running,
+    /// so each probe after a timeout added another blocked thread (issue #64). The feed reads once
+    /// for all callers and starts no second read while one is still blocked, so a stalled storage
+    /// costs at most one thread here however often the probe runs.
+    /// </remarks>
+    private async Task<StorageProbe> ProbeStorageAsync(bool force, CancellationToken ct)
+    {
+        var result = new HealthCheckResult { Data = new() };
+        var sw = Stopwatch.StartNew();
+        using var cts = TimeoutSource(ct);
+
+        StatisticsDto stats;
+        IReadOnlyList<ServerDto> servers = null;
+        TimeSpan storageTime;
+        try
+        {
+            if (_feed is not null)
             {
-                result.Status = HealthStatus.Unhealthy;
-                result.Description = $"Storage probe took {elapsed}ms (critical threshold {_options.HealthCheckThresholds.StorageResponseTimeCriticalMs}ms).";
-            }
-            else if (elapsed >= _options.HealthCheckThresholds.StorageResponseTimeWarnMs)
-            {
-                result.Status = HealthStatus.Degraded;
-                result.Description = $"Storage probe took {elapsed}ms (warn threshold {_options.HealthCheckThresholds.StorageResponseTimeWarnMs}ms).";
+                var snapshot = force
+                    ? await _feed.RefreshAsync(cts.Token).ConfigureAwait(false)
+                    : await _feed.GetMetricsAsync(cts.Token).ConfigureAwait(false);
+                stats = snapshot.Statistics;
+                servers = snapshot.Servers;
+                // A reused snapshot answers at once, but says how long storage took to produce it.
+                storageTime = snapshot.ReadDuration > sw.Elapsed ? snapshot.ReadDuration : sw.Elapsed;
             }
             else
             {
-                result.Status = HealthStatus.Healthy;
-                result.Description = "Storage reachable.";
+                stats = await RunAsync(_monitor.GetStatistics, cts.Token).ConfigureAwait(false);
+                storageTime = sw.Elapsed;
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            sw.Stop();
+            result.Data["responseTimeMs"] = sw.ElapsedMilliseconds;
+            result.Status = HealthStatus.Unhealthy;
+            result.Description = $"Storage probe timed out after {StorageTimeoutMs}ms.";
+            result.Data["timedOut"] = true;
+            return new StorageProbe(result, Reachable: false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
             _logger?.LogWarning(ex, "Health check: storage probe failed");
             result.Status = HealthStatus.Unhealthy;
             result.Description = $"Storage probe failed: {ex.GetType().Name}: {ex.Message}";
             result.Data["error"] = ex.GetType().FullName;
+            return new StorageProbe(result, Reachable: false);
         }
 
-        return result;
-    }
+        var elapsed = (long)storageTime.TotalMilliseconds;
+        result.Data["responseTimeMs"] = elapsed;
 
-    /// <summary>
-    /// Runs the synchronous <c>GetStatistics</c> probe but stops waiting after
-    /// <see cref="HealthThresholds.StorageProbeTimeoutMs"/>. The underlying call cannot be
-    /// cancelled (Hangfire's monitoring API is synchronous), so the abandoned task is left to
-    /// complete on its own; we simply stop blocking the caller on it.
-    /// </summary>
-    private StatisticsDto ProbeStatisticsWithTimeout(out bool timedOut)
-    {
-        var timeoutMs = _options.HealthCheckThresholds.StorageProbeTimeoutMs;
-        if (timeoutMs <= 0)
+        if (elapsed >= _options.HealthCheckThresholds.StorageResponseTimeCriticalMs)
         {
-            timedOut = false;
-            return _monitor.GetStatistics();
+            result.Status = HealthStatus.Unhealthy;
+            result.Description = $"Storage probe took {elapsed}ms (critical threshold {_options.HealthCheckThresholds.StorageResponseTimeCriticalMs}ms).";
         }
-
-        var task = Task.Run(() => _monitor.GetStatistics());
-        if (task.Wait(timeoutMs))
+        else if (elapsed >= _options.HealthCheckThresholds.StorageResponseTimeWarnMs)
         {
-            timedOut = false;
-            return task.GetAwaiter().GetResult(); // surfaces any exception to the caller's catch
+            result.Status = HealthStatus.Degraded;
+            result.Description = $"Storage probe took {elapsed}ms (warn threshold {_options.HealthCheckThresholds.StorageResponseTimeWarnMs}ms).";
+        }
+        else
+        {
+            result.Status = HealthStatus.Healthy;
+            result.Description = "Storage reachable.";
         }
 
-        timedOut = true;
-        return null;
+        return new StorageProbe(result, Reachable: true, stats, servers);
     }
 
     private HealthCheckResult CheckServers()
+    {
+        IReadOnlyList<ServerDto> servers;
+        try
+        {
+            servers = _monitor.GetServers()?.ToArray() ?? [];
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Health check: server probe failed");
+            return new HealthCheckResult
+            {
+                Status = HealthStatus.Degraded,
+                Description = $"Server probe failed: {ex.GetType().Name}: {ex.Message}",
+                Data = new(),
+            };
+        }
+        return EvaluateServers(servers);
+    }
+
+    private HealthCheckResult EvaluateServers(IReadOnlyList<ServerDto> servers)
     {
         var result = new HealthCheckResult { Data = new() };
 
         try
         {
-            var servers = _monitor.GetServers();
             var tolerance = _options.HealthCheckThresholds.ServerHeartbeatTolerance;
             var threshold = DateTime.UtcNow - tolerance;
 

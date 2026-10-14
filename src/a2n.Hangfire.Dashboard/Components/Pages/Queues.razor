@@ -3,6 +3,8 @@
 @inject QueueOperationsService Operations
 @inject QueueOperationsStateCache StateCache
 @inject DashboardUIOptions Options
+@inject DashboardPolling Polling
+@inject DashboardMetricsFeed MetricsFeed
 @using a2n.Hangfire.Dashboard.Services
 @implements IDisposable
 
@@ -270,7 +272,7 @@ else
 @code {
     private QueueOperationsState _state;
     private List<QueueRow> _rows;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
     private string _maintenanceReason = string.Empty;
     private bool _filterRegistered = true;
 
@@ -320,25 +322,20 @@ else
     {
         _filterRegistered = a2n.Hangfire.Dashboard.Storage.QueuePauseServerFilter.IsRegistered();
         await LoadAsync();
-        _refreshTimer = new Timer(async _ =>
+        _poller = Polling.Start(nameof(Queues), Polling.Options.FastPageRefreshInterval, ct => InvokeAsync(async () =>
         {
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    await LoadAsync();
-                    StateHasChanged();
-                });
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+            await LoadAsync(ct);
+            StateHasChanged();
+        }));
     }
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(CancellationToken ct = default)
     {
         var state = await StateCache.GetAsync();
+        // Shared by every tab through the metrics feed (one read per StatsPollingInterval).
+        var servers = (await MetricsFeed.GetMetricsAsync(ct)).Servers;
 
-        var rows = await Task.Run(() =>
+        var rows = await Polling.ReadAsync(() =>
         {
             // Hangfire's IMonitoringApi.Queues() only returns queues that currently hold jobs, so a
             // paused but empty queue (or a configured queue with no pending jobs) would otherwise
@@ -353,7 +350,7 @@ else
                 byName[q.Name] = new QueueRow { Name = q.Name, Length = q.Length, Fetched = q.Fetched };
             }
 
-            foreach (var server in Monitor.GetServers() ?? new List<global::Hangfire.Storage.Monitoring.ServerDto>())
+            foreach (var server in servers)
             {
                 if (server.Queues is null) continue;
                 foreach (var name in server.Queues)
@@ -408,6 +405,6 @@ else
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

@@ -26,6 +26,9 @@
     <PackageReference Include="Cronos" Version="0.11.0" />
     <PackageReference Include="FsCheck.Xunit" Version="2.*" />
     <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+    <!-- FakeTimeProvider, so the refresh-loop tests (issue #64) step through intervals and back-off
+         deterministically instead of sleeping. Test-only; the dashboard uses TimeProvider.System. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
     <!-- In-memory ASP.NET Core pipeline host for the heatmap authorization integration test
          (task 21.2). Version is matched to each target framework's shared framework. -->
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="8.0.*" Condition="'$(TargetFramework)' == 'net8.0'" />

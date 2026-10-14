@@ -12,61 +12,46 @@ namespace a2n.Hangfire.Dashboard.Services;
 /// <see cref="DashboardHub"/>. Runs every <see cref="DashboardUIOptions.StatsPollingInterval"/>
 /// and only queries storage while someone is subscribed.
 /// </summary>
+/// <remarks>
+/// The loop is a fixed-cadence <see cref="DashboardPoller"/>: a read that fails, or that takes the
+/// whole interval, backs the next one off up to <see cref="PollingOptions.MaxBackoffInterval"/>
+/// instead of starting another read straight away (issue #64).
+/// </remarks>
 public class MetricsBroadcastService : BackgroundService
 {
     private readonly DashboardMetricsFeed _feed;
     private readonly IHubContext<DashboardHub> _hubContext;
     private readonly DashboardSubscriptionTracker _subscriptions;
+    private readonly DashboardUIOptions _options;
     private readonly ILogger<MetricsBroadcastService> _logger;
 
     public MetricsBroadcastService(
         DashboardMetricsFeed feed,
         IHubContext<DashboardHub> hubContext,
         DashboardSubscriptionTracker subscriptions,
+        DashboardUIOptions options,
         ILogger<MetricsBroadcastService> logger)
     {
         _feed = feed;
         _hubContext = hubContext;
         _subscriptions = subscriptions;
+        _options = options;
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Read once at start: UseHangfireDashboardUI has applied the host's options by now.
         var interval = _feed.Interval;
         _logger.LogInformation("MetricsBroadcastService started. Broadcasting every {Interval}ms", interval.TotalMilliseconds);
 
-        // Fixed cadence, like AnalyticsBroadcastService: a slow tick doesn't push the next one back.
-        using var timer = new PeriodicTimer(interval);
-
-        while (await SafeWaitForNextTickAsync(timer, stoppingToken))
+        var poller = new DashboardPoller("metrics broadcast", interval, BroadcastMetrics,
+            _options?.Polling, logger: _logger)
         {
-            try
-            {
-                await BroadcastMetrics(stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error broadcasting metrics");
-            }
-        }
-    }
-
-    private static async Task<bool> SafeWaitForNextTickAsync(PeriodicTimer timer, CancellationToken ct)
-    {
-        try
-        {
-            return await timer.WaitForNextTickAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
+            FixedCadence = true,
+            StopOnObjectDisposed = false,
+        };
+        return poller.RunUntilStoppedAsync(stoppingToken);
     }
 
     private async Task BroadcastMetrics(CancellationToken ct)

@@ -83,6 +83,7 @@ public class FailedPageGroupActionsTests : IDisposable
 
         _ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         _ctx.Services.AddSingleton(_options);
+        _ctx.Services.AddDashboardPolling();
         _ctx.Services.AddSingleton(new HangfireMonitorService(_storage, _audit, _options, new JobMethodResolver()));
         _ctx.Services.AddSingleton(_provider.Object);
     }

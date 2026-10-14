@@ -1,5 +1,6 @@
 @page "/jobs/deleted"
 @inject HangfireMonitorService Monitor
+@inject DashboardPolling Polling
 @implements IDisposable
 
 <PageTitle>Deleted Jobs</PageTitle>
@@ -113,39 +114,38 @@
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
     private bool _hasExceptionData;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+        _poller = Polling.Start(nameof(Deleted), Polling.Options.PageRefreshInterval, Refresh);
+    }
 
-        _refreshTimer = new Timer(async _ =>
+    private async Task Refresh(CancellationToken ct)
+    {
+        var (count, jobs) = await Polling.ReadAsync(() =>
         {
-            try
-            {
-                var newCount = Monitor.GetDeletedListCount();
-                if (newCount != _totalCount)
-                {
-                    var jobs = FetchPage(newCount);
-                    await InvokeAsync(() =>
-                    {
-                        _totalCount = newCount;
-                        _jobs = jobs;
-                        _hasExceptionData = jobs.Any(j => j.Value?.StateData != null &&
-                            j.Value.StateData.ContainsKey("Exception") &&
-                            !string.IsNullOrWhiteSpace(j.Value.StateData["Exception"]));
-                        StateHasChanged();
-                    });
-                }
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            var total = Monitor.GetDeletedListCount();
+            return (total, total != _totalCount ? FetchPage(total) : null);
+        }, ct);
+        if (jobs is null) return;
+
+        await InvokeAsync(() =>
+        {
+            _totalCount = count;
+            _jobs = jobs;
+            _hasExceptionData = jobs.Any(j => j.Value?.StateData != null &&
+                j.Value.StateData.ContainsKey("Exception") &&
+                !string.IsNullOrWhiteSpace(j.Value.StateData["Exception"]));
+            StateHasChanged();
+        });
     }
 
     private async Task LoadData()
     {
-        await Task.Run(() =>
+        await Polling.ReadAsync(() =>
         {
             _totalCount = Monitor.GetDeletedListCount();
             _jobs = FetchPage(_totalCount);
@@ -254,6 +254,6 @@
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

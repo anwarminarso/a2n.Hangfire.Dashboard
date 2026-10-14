@@ -1,5 +1,6 @@
 @page "/jobs/fetched/{QueueName}"
 @inject HangfireMonitorService Monitor
+@inject DashboardPolling Polling
 @implements IDisposable
 
 <PageTitle>Fetched Jobs — @QueueName</PageTitle>
@@ -113,7 +114,7 @@
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -121,35 +122,36 @@
         _selectedJobs.Clear();
         _selectAll = false;
         await LoadData();
-        StartTimer();
+        StartPoller();
     }
 
-    private void StartTimer()
+    // Restarted on every parameter change, so switching queues doesn't stack loops.
+    private void StartPoller()
     {
-        _refreshTimer?.Dispose();
-        _refreshTimer = new Timer(async _ =>
+        _poller?.Dispose();
+        _poller = Polling.Start(nameof(Fetched), Polling.Options.PageRefreshInterval, Refresh);
+    }
+
+    private async Task Refresh(CancellationToken ct)
+    {
+        var (count, jobs) = await Polling.ReadAsync(() =>
         {
-            try
-            {
-                var count = Monitor.GetFetchedCount(QueueName);
-                if (count != _totalCount)
-                {
-                    var jobs = FetchPage(count);
-                    await InvokeAsync(() =>
-                    {
-                        _totalCount = count;
-                        _jobs = jobs;
-                        StateHasChanged();
-                    });
-                }
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            var total = Monitor.GetFetchedCount(QueueName);
+            return (total, total != _totalCount ? FetchPage(total) : null);
+        }, ct);
+        if (jobs is null) return;
+
+        await InvokeAsync(() =>
+        {
+            _totalCount = count;
+            _jobs = jobs;
+            StateHasChanged();
+        });
     }
 
     private async Task LoadData()
     {
-        await Task.Run(() =>
+        await Polling.ReadAsync(() =>
         {
             _totalCount = Monitor.GetFetchedCount(QueueName);
             _jobs = FetchPage(_totalCount);
@@ -238,6 +240,6 @@
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

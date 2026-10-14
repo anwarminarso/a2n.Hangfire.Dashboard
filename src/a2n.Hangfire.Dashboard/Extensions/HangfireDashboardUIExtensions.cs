@@ -56,6 +56,15 @@ public static class HangfireDashboardUIExtensions
         services.AddSingleton<DashboardMetricsFeed>();
         services.AddSingleton<IHubFilter, DashboardHubAuthorizationFilter>();
 
+        // Bounds the dashboard's synchronous storage calls process-wide, and lets refresh loops
+        // pause while their circuit is disconnected, so a slow storage can't starve the host's
+        // thread pool (issue #64).
+        services.AddSingleton<DashboardStorageGate>();
+        services.AddScoped<DashboardCircuitState>();
+        services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler>(
+            sp => sp.GetRequiredService<DashboardCircuitState>());
+        services.AddScoped(DashboardPolling.Create);
+
         // JobMethodResolver holds the attribute-based discovery cache, computed once and reused
         // for the lifetime of the dashboard. Singleton lifetime keeps that cache alive across all
         // circuits and requests instead of recomputing per scope (Req 5.6, 5.8).
@@ -91,7 +100,10 @@ public static class HangfireDashboardUIExtensions
             var monitor = sp.GetRequiredService<HangfireMonitorService>();
             var options = sp.GetRequiredService<DashboardUIOptions>();
             var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<HealthCheckService>();
-            return new HealthCheckService(monitor, options, logger);
+            // The storage probe reuses the shared metrics snapshot, and the other checks read
+            // through the gate, so a stalled storage can't pile up health-check threads (#64).
+            return new HealthCheckService(monitor, options, logger,
+                sp.GetRequiredService<DashboardMetricsFeed>(), sp.GetRequiredService<DashboardStorageGate>());
         });
 
         // Audit log + queue operations services. Scoped lifetime so each Blazor circuit (and each

@@ -5,105 +5,75 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 
 namespace a2n.Hangfire.Dashboard.Services;
 
 /// <summary>
-/// Background service that broadcasts analytics data every 5 seconds.
+/// Background service that broadcasts analytics data every
+/// <see cref="PollingOptions.AnalyticsBroadcastInterval"/> (5 seconds by default).
 /// Only registered when IStorageMetricsProvider is available.
 /// Broadcasts last 1h throughput, server utilization snapshot, and queue depth snapshot
 /// to in-process subscribers (<see cref="DashboardMetricsFeed"/>) and to clients subscribed
 /// to the "analytics" SignalR group.
 /// </summary>
+/// <remarks>
+/// The loop is a fixed-cadence <see cref="DashboardPoller"/>: the interval runs from the start of
+/// one broadcast to the start of the next, so slow queries don't stretch the push gap by their own
+/// duration. A broadcast that fails, or that takes the whole interval, backs the next one off up to
+/// <see cref="PollingOptions.MaxBackoffInterval"/> (issue #64); the change into and out of that
+/// state is logged once at Warning, not on every tick.
+/// </remarks>
 public class AnalyticsBroadcastService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IHubContext<DashboardHub> _hubContext;
     private readonly DashboardSubscriptionTracker _subscriptions;
     private readonly DashboardMetricsFeed _feed;
+    private readonly DashboardUIOptions _options;
     private readonly ILogger<AnalyticsBroadcastService> _logger;
-    private readonly TimeSpan _interval = TimeSpan.FromSeconds(5);
 
     public AnalyticsBroadcastService(
         IServiceProvider serviceProvider,
         IHubContext<DashboardHub> hubContext,
         DashboardSubscriptionTracker subscriptions,
         DashboardMetricsFeed feed,
+        DashboardUIOptions options,
         ILogger<AnalyticsBroadcastService> logger)
     {
         _serviceProvider = serviceProvider;
         _hubContext = hubContext;
         _subscriptions = subscriptions;
         _feed = feed;
+        _options = options;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Read once at start: UseHangfireDashboardUI has applied the host's options by now.
+        var polling = _options?.Polling ?? new PollingOptions();
+        var interval = polling.AnalyticsBroadcastInterval;
+        if (interval <= TimeSpan.Zero)
+        {
+            _logger.LogInformation(
+                "AnalyticsBroadcastService is disabled (Polling.AnalyticsBroadcastInterval is zero); " +
+                "the Analytics page does not update live.");
+            return;
+        }
+
         _logger.LogInformation(
             "AnalyticsBroadcastService started. Broadcasting every {Interval}s",
-            _interval.TotalSeconds);
+            interval.TotalSeconds);
 
-        // PeriodicTimer fires on a fixed cadence independent of how long each broadcast takes.
-        // The previous implementation delayed _interval *after* finishing the work, so the
-        // real period was (query_time + _interval). On slow stores (e.g. SQL Server under load)
-        // that stretched the analytics push gap well past its target. With a fixed-cadence timer,
-        // ticks that arrive while a broadcast is still running are coalesced (PeriodicTimer keeps
-        // at most one pending tick), so we self-throttle instead of drifting ever further behind.
-        using var timer = new PeriodicTimer(_interval);
-
-        while (await SafeWaitForNextTickAsync(timer, stoppingToken))
+        var poller = new DashboardPoller("analytics broadcast", interval, BroadcastAnalytics,
+            polling, logger: _logger)
         {
-            try
-            {
-                var startedAt = Stopwatch.GetTimestamp();
-
-                await BroadcastAnalytics(stoppingToken);
-
-                var elapsed = Stopwatch.GetElapsedTime(startedAt);
-                if (elapsed > _interval)
-                {
-                    // The broadcast itself took longer than the cadence, so pushes cannot keep up.
-                    // This is the realtime-degrade signal (slow metrics queries) that has no
-                    // exception to surface on its own.
-                    _logger.LogWarning(
-                        "Analytics broadcast took {Elapsed}ms, exceeding the {Interval}s cadence; " +
-                        "realtime updates may lag. Consider profiling the metrics provider queries.",
-                        (long)elapsed.TotalMilliseconds, _interval.TotalSeconds);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                // Graceful shutdown, exit the loop
-                break;
-            }
-            catch (Exception ex)
-            {
-                // Logged at Error: a throwing metrics query (e.g. a malformed provider
-                // SQL statement) silently kills the analytics SignalR channel for every
-                // client, so it needs to be visible in default production log levels.
-                _logger.LogError(ex, "Error broadcasting analytics data");
-            }
-        }
+            FixedCadence = true,
+            StopOnObjectDisposed = false,
+        };
+        await poller.RunUntilStoppedAsync(stoppingToken).ConfigureAwait(false);
 
         _logger.LogInformation("AnalyticsBroadcastService stopped.");
-    }
-
-    /// <summary>
-    /// Awaits the next timer tick, translating the cancellation that fires on shutdown into a
-    /// clean <c>false</c> (loop exit) rather than a thrown <see cref="OperationCanceledException"/>.
-    /// </summary>
-    private static async Task<bool> SafeWaitForNextTickAsync(PeriodicTimer timer, CancellationToken ct)
-    {
-        try
-        {
-            return await timer.WaitForNextTickAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
     }
 
     private async Task BroadcastAnalytics(CancellationToken ct)
@@ -156,7 +126,8 @@ public class AnalyticsBroadcastService : BackgroundService
 }
 
 /// <summary>
-/// Payload broadcast to analytics SignalR subscribers every 5 seconds.
+/// Payload broadcast to analytics SignalR subscribers every
+/// <see cref="PollingOptions.AnalyticsBroadcastInterval"/> (5 seconds by default).
 /// Contains last 1h throughput timeline, server utilization snapshot, and queue depth snapshot.
 /// </summary>
 public class AnalyticsBroadcastPayload

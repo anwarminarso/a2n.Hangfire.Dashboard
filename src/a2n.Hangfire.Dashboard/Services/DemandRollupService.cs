@@ -88,9 +88,6 @@ public class DemandRollupService : IHostedService, IDisposable
     /// </summary>
     private const int RetentionWeeks = 9;
 
-    /// <summary>How often the rollup is refreshed from recent executions.</summary>
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(60);
-
     /// <summary>Delay before the first poll so the host can finish starting up.</summary>
     private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(10);
 
@@ -106,8 +103,7 @@ public class DemandRollupService : IHostedService, IDisposable
     private readonly DashboardUIOptions _options;
     private readonly ILogger<DemandRollupService> _logger;
 
-    private CancellationTokenSource _stoppingCts;
-    private Task _loopTask;
+    private DashboardPoller _poller;
 
     /// <summary>
     /// Indicates whether the rollup will actually run (a metrics provider and job storage are both
@@ -123,7 +119,7 @@ public class DemandRollupService : IHostedService, IDisposable
     public bool IsEnabled => _options?.Heatmap is not { } heatmap || (heatmap.Enabled && heatmap.DemandRollupEnabled);
 
     /// <summary>Whether <see cref="StartAsync"/> started the poll loop (tests).</summary>
-    internal bool IsRunning => _loopTask != null;
+    internal bool IsRunning => _poller != null;
 
     public DemandRollupService(IServiceProvider serviceProvider)
     {
@@ -163,85 +159,52 @@ public class DemandRollupService : IHostedService, IDisposable
             return Task.CompletedTask;
         }
 
-        _stoppingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        // Run the loop detached from the StartAsync caller so host startup is not blocked.
-        _loopTask = Task.Run(() => RunLoopAsync(_stoppingCts.Token));
+        var polling = _options?.Polling ?? new PollingOptions();
+        var interval = polling.RollupPollInterval;
+        if (interval <= TimeSpan.Zero)
+        {
+            _logger.LogInformation(
+                "DemandRollupService is disabled (Polling.RollupPollInterval is zero); ad-hoc demand is not collected.");
+            return Task.CompletedTask;
+        }
+
+        // A fixed-cadence loop off the StartAsync caller, so host startup is not blocked. A poll that
+        // throws, or that takes the whole interval, backs the next one off instead of starting it
+        // straight away (issue #64); the change into and out of that state is logged once.
+        _poller = new DashboardPoller("demand rollup", interval, ct =>
+            {
+                PollOnce(ct);
+                return Task.CompletedTask;
+            }, polling, logger: _logger)
+        {
+            InitialDelay = InitialDelay,
+            FixedCadence = true,
+            SlowThreshold = interval,
+            StopOnObjectDisposed = false,
+        };
+        _poller.Start();
         return Task.CompletedTask;
     }
 
     /// <inheritdoc />
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_loopTask == null)
+        if (_poller == null)
         {
             return;
         }
 
-        try
-        {
-            _stoppingCts?.Cancel();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Failed to signal cancellation while stopping the demand rollup service.");
-        }
+        _poller.Dispose();
 
         try
         {
             // Wait for the loop to unwind, but never past the host's shutdown token.
-            await Task.WhenAny(_loopTask, Task.Delay(Timeout.Infinite, cancellationToken))
+            await Task.WhenAny(_poller.Completion, Task.Delay(Timeout.Infinite, cancellationToken))
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             // Shutdown token fired — stop waiting; the loop observes its own cancellation.
-        }
-    }
-
-    /// <summary>
-    /// The background poll loop. Performs an initial delayed poll, then polls on a fixed interval
-    /// until cancellation. Each poll is fully guarded so a failure never escapes the loop.
-    /// </summary>
-    private async Task RunLoopAsync(CancellationToken ct)
-    {
-        try
-        {
-            await Task.Delay(InitialDelay, ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-
-        using var timer = new PeriodicTimer(PollInterval);
-        do
-        {
-            try
-            {
-                PollOnce(ct);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                // Never let a transient storage error crash the host; retry on the next tick.
-                _logger.LogError(ex, "Demand rollup poll failed; will retry on the next interval.");
-            }
-        }
-        while (await WaitForNextTickAsync(timer, ct).ConfigureAwait(false));
-    }
-
-    private static async Task<bool> WaitForNextTickAsync(PeriodicTimer timer, CancellationToken ct)
-    {
-        try
-        {
-            return await timer.WaitForNextTickAsync(ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
         }
     }
 
@@ -746,7 +709,7 @@ public class DemandRollupService : IHostedService, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        _stoppingCts?.Dispose();
+        _poller?.Dispose();
         GC.SuppressFinalize(this);
     }
 

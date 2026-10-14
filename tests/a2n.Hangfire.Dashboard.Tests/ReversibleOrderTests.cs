@@ -124,6 +124,7 @@ public class ReversibleOrderTests
         using var ctx = new TestContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         ctx.Services.AddSingleton(options);
+        ctx.Services.AddDashboardPolling();
         ctx.Services.AddSingleton(new HangfireMonitorService(storage, null, options, new JobMethodResolver()));
 
         var monitoring = storage.GetMonitoringApi();

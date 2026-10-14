@@ -1,5 +1,6 @@
 @page "/jobs/succeeded"
 @inject HangfireMonitorService Monitor
+@inject DashboardPolling Polling
 @implements IDisposable
 
 <PageTitle>Succeeded Jobs</PageTitle>
@@ -83,35 +84,34 @@
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private Timer _refreshTimer;
+    private DashboardPoller _poller;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+        _poller = Polling.Start(nameof(Succeeded), Polling.Options.PageRefreshInterval, Refresh);
+    }
 
-        _refreshTimer = new Timer(async _ =>
+    private async Task Refresh(CancellationToken ct)
+    {
+        var (count, jobs) = await Polling.ReadAsync(() =>
         {
-            try
-            {
-                var newCount = Monitor.GetSucceededListCount();
-                if (newCount != _totalCount)
-                {
-                    var jobs = FetchPage(newCount);
-                    await InvokeAsync(() =>
-                    {
-                        _totalCount = newCount;
-                        _jobs = jobs;
-                        StateHasChanged();
-                    });
-                }
-            }
-            catch { }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            var total = Monitor.GetSucceededListCount();
+            return (total, total != _totalCount ? FetchPage(total) : null);
+        }, ct);
+        if (jobs is null) return;
+
+        await InvokeAsync(() =>
+        {
+            _totalCount = count;
+            _jobs = jobs;
+            StateHasChanged();
+        });
     }
 
     private async Task LoadData()
     {
-        await Task.Run(() =>
+        await Polling.ReadAsync(() =>
         {
             _totalCount = Monitor.GetSucceededListCount();
             _jobs = FetchPage(_totalCount);
@@ -217,6 +217,6 @@
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        _poller?.Dispose();
     }
 }

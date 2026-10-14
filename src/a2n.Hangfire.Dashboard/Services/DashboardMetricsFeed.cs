@@ -16,6 +16,9 @@ public sealed class DashboardMetricsSnapshot
     public IReadOnlyList<ServerDto> Servers { get; init; } = [];
 
     public DateTime CapturedAtUtc { get; init; }
+
+    /// <summary>How long storage took to answer the read that produced this snapshot.</summary>
+    public TimeSpan ReadDuration { get; init; }
 }
 
 /// <summary>
@@ -88,39 +91,34 @@ public sealed class DashboardMetricsFeed : IDisposable
     /// Returns the latest snapshot when it is younger than <see cref="Interval"/>; otherwise reads
     /// a fresh one (single-flighted across callers).
     /// </summary>
+    /// <param name="ct">
+    /// Stops waiting. A read that has started can't be cancelled (the storage API is synchronous);
+    /// it completes in the background, and until it does no second read starts (issue #64).
+    /// </param>
     public async Task<DashboardMetricsSnapshot> GetMetricsAsync(CancellationToken ct = default)
     {
         var latest = Latest;
         if (IsFresh(latest)) return latest;
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            latest = Latest;
-            if (IsFresh(latest)) return latest;
-            return await ReadAndStoreAsync(ct).ConfigureAwait(false);
-        }
-        finally
+        latest = Latest;
+        if (IsFresh(latest))
         {
             _gate.Release();
+            return latest;
         }
+        return await ReadReleasingGateAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Reads a fresh snapshot regardless of the cached one. Used by
-    /// <see cref="MetricsBroadcastService"/> on every tick.
+    /// <see cref="MetricsBroadcastService"/> on every tick, and by a forced health check.
     /// </summary>
+    /// <inheritdoc cref="GetMetricsAsync" path="/param"/>
     public async Task<DashboardMetricsSnapshot> RefreshAsync(CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            return await ReadAndStoreAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        return await ReadReleasingGateAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -175,21 +173,43 @@ public sealed class DashboardMetricsFeed : IDisposable
     /// <summary>Number of in-process analytics subscribers (diagnostics and tests).</summary>
     public int AnalyticsSubscriberCount => Volatile.Read(ref _analyticsHandlers).Length;
 
-    public void Dispose() => _gate.Dispose();
-
-    private async Task<DashboardMetricsSnapshot> ReadAndStoreAsync(CancellationToken ct)
+    /// <summary>
+    /// Kept for compatibility. The gate is not disposed: a read still running in the background
+    /// releases it when it returns.
+    /// </summary>
+    public void Dispose()
     {
-        var snapshot = await Task.Run(() =>
+    }
+
+    // Called with the gate held. The gate is released when the read returns, not when the caller
+    // stops waiting, so a caller that times out (a health probe, a closed tab) never lets a second
+    // read pile up behind one that is still blocked in storage.
+    private Task<DashboardMetricsSnapshot> ReadReleasingGateAsync(CancellationToken ct)
+    {
+        var read = Task.Run(ReadAndStore, CancellationToken.None);
+        _ = read.ContinueWith(
+            static (_, gate) => ((SemaphoreSlim)gate).Release(),
+            _gate,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        return read.WaitAsync(ct);
+    }
+
+    private DashboardMetricsSnapshot ReadAndStore()
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        using var scope = _scopeFactory.CreateScope();
+        var monitor = scope.ServiceProvider.GetRequiredService<HangfireMonitorService>();
+        var statistics = monitor.GetStatistics();
+        var servers = monitor.GetServers()?.ToArray() ?? [];
+        var snapshot = new DashboardMetricsSnapshot
         {
-            using var scope = _scopeFactory.CreateScope();
-            var monitor = scope.ServiceProvider.GetRequiredService<HangfireMonitorService>();
-            return new DashboardMetricsSnapshot
-            {
-                Statistics = monitor.GetStatistics(),
-                Servers = monitor.GetServers()?.ToArray() ?? [],
-                CapturedAtUtc = DateTime.UtcNow,
-            };
-        }, ct).ConfigureAwait(false);
+            Statistics = statistics,
+            Servers = servers,
+            CapturedAtUtc = DateTime.UtcNow,
+            ReadDuration = System.Diagnostics.Stopwatch.GetElapsedTime(started),
+        };
 
         Volatile.Write(ref _latest, snapshot);
         return snapshot;
