@@ -85,8 +85,8 @@ internal sealed class HangfireDashboardHealthCheck : IHealthCheck
         DashboardHealthReport report;
         try
         {
-            // Shared cache single-flights and offloads the synchronous storage probes onto the
-            // thread pool, and reuses the same report the dashboard hero card / /healthz endpoint show.
+            // Shared cache single-flights the computation and reuses the same report the dashboard
+            // hero card / /healthz endpoint show; the checks bound their own storage reads.
             report = await _cache.GetAsync(HealthReportCache.Mode.Full, ct: cancellationToken);
         }
         catch (Exception ex)

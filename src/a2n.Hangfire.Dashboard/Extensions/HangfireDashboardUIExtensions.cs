@@ -100,7 +100,10 @@ public static class HangfireDashboardUIExtensions
             var monitor = sp.GetRequiredService<HangfireMonitorService>();
             var options = sp.GetRequiredService<DashboardUIOptions>();
             var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<HealthCheckService>();
-            return new HealthCheckService(monitor, options, logger);
+            // The storage probe reuses the shared metrics snapshot, and the other checks read
+            // through the gate, so a stalled storage can't pile up health-check threads (#64).
+            return new HealthCheckService(monitor, options, logger,
+                sp.GetRequiredService<DashboardMetricsFeed>(), sp.GetRequiredService<DashboardStorageGate>());
         });
 
         // Audit log + queue operations services. Scoped lifetime so each Blazor circuit (and each

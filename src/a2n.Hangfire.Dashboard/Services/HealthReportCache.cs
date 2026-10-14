@@ -50,17 +50,33 @@ public sealed class HealthReportCache : IDisposable
     }
 
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly DashboardUIOptions _options;
     private readonly Entry[] _entries;
+    private TimeSpan? _ttl;
 
     /// <summary>
     /// How long a computed report is reused before a fresh one is produced. Kept short so health
-    /// stays current, but long enough to absorb bursts from multiple circuits and probes.
+    /// stays current, but long enough to absorb bursts from multiple circuits and probes. Defaults
+    /// to <see cref="PollingOptions.HealthReportCacheTtl"/> (5 seconds).
     /// </summary>
-    public TimeSpan Ttl { get; set; } = TimeSpan.FromSeconds(5);
+    public TimeSpan Ttl
+    {
+        get => _ttl ?? _options?.Polling?.HealthReportCacheTtl ?? TimeSpan.FromSeconds(5);
+        set => _ttl = value;
+    }
 
+    // Kept so assemblies compiled against 2.5.x find it.
     public HealthReportCache(IServiceScopeFactory scopeFactory)
+        : this(scopeFactory, options: null)
+    {
+    }
+
+    /// <param name="scopeFactory">Creates the scope each report is computed in.</param>
+    /// <param name="options">Supplies the default <see cref="Ttl"/>.</param>
+    public HealthReportCache(IServiceScopeFactory scopeFactory, DashboardUIOptions options)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        _options = options;
 
         // One entry per Mode value, indexed by (int)mode. Sized off the enum so adding a mode
         // can't silently produce an index-out-of-range or a mismatched slot.
@@ -106,17 +122,19 @@ public sealed class HealthReportCache : IDisposable
                 return entry.Report;
             }
 
-            var report = await Task.Run(() =>
+            // The checks are asynchronous and bound their own storage reads (shared metrics
+            // snapshot, storage gate, probe timeout), so no thread is held here while they run.
+            HealthReport report;
+            using (var scope = _scopeFactory.CreateScope())
             {
-                using var scope = _scopeFactory.CreateScope();
                 var service = scope.ServiceProvider.GetRequiredService<HealthCheckService>();
-                return mode switch
+                report = await (mode switch
                 {
-                    Mode.Live => service.CheckLiveness(),
-                    Mode.Ready => service.CheckReadiness(),
-                    _ => service.CheckFull(),
-                };
-            }, ct).ConfigureAwait(false);
+                    Mode.Live => service.CheckLivenessAsync(forceRefresh, ct),
+                    Mode.Ready => service.CheckReadinessAsync(forceRefresh, ct),
+                    _ => service.CheckFullAsync(forceRefresh, ct),
+                }).ConfigureAwait(false);
+            }
 
             entry.Report = report;
             Volatile.Write(ref entry.ComputedAtTicks, DateTime.UtcNow.Ticks);

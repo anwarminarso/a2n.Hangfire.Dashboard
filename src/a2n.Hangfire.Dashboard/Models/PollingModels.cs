@@ -63,4 +63,17 @@ public class PollingOptions
     /// <see cref="TimeSpan.Zero"/> turns live updates off. Default: 2 seconds.
     /// </summary>
     public TimeSpan ConsoleRefreshInterval { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// How long a computed health report is reused by the <c>/healthz</c> endpoints, the ASP.NET
+    /// Core health check and the Home page's health card before it is computed again.
+    /// Default: 5 seconds.
+    /// </summary>
+    public TimeSpan HealthReportCacheTtl { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How often the health card on the Home page refreshes. <see cref="TimeSpan.Zero"/> turns its
+    /// automatic refresh off (the Refresh button still works). Default: 10 seconds.
+    /// </summary>
+    public TimeSpan HealthCardRefreshInterval { get; set; } = TimeSpan.FromSeconds(10);
 }
