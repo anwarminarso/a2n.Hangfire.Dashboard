@@ -121,13 +121,9 @@ public class GenericQueryProvider : IStorageQueryProvider
             if (jobData == null)
                 continue;
 
-            string jobName = "Unknown";
-            string queue = null;
-            if (jobData.Job != null)
-            {
-                jobName = $"{jobData.Job.Type.Name}.{jobData.Job.Method.Name}";
-                queue = jobData.Job.Queue;
-            }
+            // From the invocation data when the job's type can't be loaded (issue #70).
+            var jobName = JobNameHelper.GetTypeAndMethod(jobData.Job, jobData.InvocationData) ?? "Unknown";
+            var queue = QueueOf(jobData.Job, jobData.InvocationData);
 
             string[] tags = null;
             try { tags = _tagsReader.GetJobTags(jobId); } catch { }
@@ -209,9 +205,7 @@ public class GenericQueryProvider : IStorageQueryProvider
 
                 if (dto.TotalDuration.Value > 0)
                 {
-                    string jobName = dto.Job != null
-                        ? $"{dto.Job.Type.Name}.{dto.Job.Method.Name}"
-                        : "Unknown";
+                    var jobName = JobNameHelper.GetTypeAndMethod(dto.Job, dto.InvocationData) ?? "Unknown";
 
                     candidates.Add(new SlowestJobDto
                     {
@@ -257,9 +251,9 @@ public class GenericQueryProvider : IStorageQueryProvider
             read.AddRange(batch.Select(entry => (entry.Key, entry.Value)));
         }
 
-        // Unlike ScanFailed, a job whose type can't be loaded is kept: the fingerprint only needs the
-        // state, and a dashboard deployed apart from the job host often can't resolve job types. The
-        // job type is still known from the stored invocation data.
+        // A job whose type can't be loaded is kept, as the search scans keep it (issue #70): the
+        // fingerprint only needs the state, and a dashboard deployed apart from the job host often
+        // can't resolve job types. The job type is still known from the stored invocation data.
         //
         // Storages differ in which end of the list is newest, so jobs are ordered by when they failed;
         // a job without that time counts as the oldest.
@@ -318,7 +312,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 JobId = jobId,
                 JobName = JobNameHelper.GetDisplayName(jobData.Job, invocationData),
                 State = jobData.State,
-                Queue = jobData.Job?.Queue,
+                Queue = QueueOf(jobData.Job, invocationData),
                 CreatedAt = jobData.CreatedAt,
                 LastStateChange = FailureGrouping.ReadFailedAt(state?.Data, null),
                 ExceptionType = GetValue(state?.Data, "ExceptionType"),
@@ -435,13 +429,13 @@ public class GenericQueryProvider : IStorageQueryProvider
                 {
                     if (candidates.Count >= SafetyCap) break;
                     var dto = entry.Value;
-                    if (dto?.Job == null) continue;
+                    if (!IsSearchable(dto?.Job, dto?.InvocationData)) continue;
                     if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                     candidates.Add(new JobSummaryDto
                     {
                         JobId = entry.Key,
-                        JobName = $"{dto.Job.Type.Name}.{dto.Job.Method.Name}",
+                        JobName = JobNameHelper.GetTypeAndMethod(dto.Job, dto.InvocationData),
                         State = "Enqueued",
                         Queue = queue.Name,
                         CreatedAt = dto.EnqueuedAt,
@@ -466,15 +460,15 @@ public class GenericQueryProvider : IStorageQueryProvider
             {
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
-                if (dto?.Job == null) continue;
+                if (!IsSearchable(dto?.Job, dto?.InvocationData)) continue;
                 if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
                     JobId = entry.Key,
-                    JobName = $"{dto.Job.Type.Name}.{dto.Job.Method.Name}",
+                    JobName = JobNameHelper.GetTypeAndMethod(dto.Job, dto.InvocationData),
                     State = "Succeeded",
-                    Queue = dto.Job.Queue,
+                    Queue = QueueOf(dto.Job, dto.InvocationData),
                     CreatedAt = dto.SucceededAt,
                     LastStateChange = dto.SucceededAt,
                     DurationMs = dto.TotalDuration.HasValue ? (double)dto.TotalDuration.Value : null
@@ -497,15 +491,15 @@ public class GenericQueryProvider : IStorageQueryProvider
             {
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
-                if (dto?.Job == null) continue;
+                if (!IsSearchable(dto?.Job, dto?.InvocationData)) continue;
                 if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
                     JobId = entry.Key,
-                    JobName = $"{dto.Job.Type.Name}.{dto.Job.Method.Name}",
+                    JobName = JobNameHelper.GetTypeAndMethod(dto.Job, dto.InvocationData),
                     State = "Failed",
-                    Queue = dto.Job.Queue,
+                    Queue = QueueOf(dto.Job, dto.InvocationData),
                     CreatedAt = dto.FailedAt,
                     LastStateChange = dto.FailedAt,
                     ExceptionType = dto.ExceptionType,
@@ -532,15 +526,16 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 var job = getJob(dto);
-                if (job == null) continue;
-                if (!filter.Matches(entry.Key, job, getInvocationData(dto))) continue;
+                var invocationData = getInvocationData(dto);
+                if (!IsSearchable(job, invocationData)) continue;
+                if (!filter.Matches(entry.Key, job, invocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
                     JobId = entry.Key,
-                    JobName = $"{job.Type.Name}.{job.Method.Name}",
+                    JobName = JobNameHelper.GetTypeAndMethod(job, invocationData),
                     State = stateName,
-                    Queue = getQueue(dto),
+                    Queue = getQueue(dto) ?? invocationData?.Queue,
                     CreatedAt = getTimestamp(dto),
                     LastStateChange = getTimestamp(dto)
                 });
@@ -656,12 +651,23 @@ public class GenericQueryProvider : IStorageQueryProvider
         return filtered.ToList();
     }
 
-    private static bool MatchesName(Job job, string pattern)
+    /// <summary>
+    /// Whether a scanned job can be listed. <c>Job</c> is null when the dashboard can't load the job's
+    /// type, which is common when it runs in a process that doesn't reference the job assemblies;
+    /// such a job is still listed, named and matched from its invocation data (issue #70). Only a
+    /// job with neither is skipped.
+    /// </summary>
+    private static bool IsSearchable(Job job, InvocationData invocationData)
+        => job != null || invocationData != null;
+
+    private static string QueueOf(Job job, InvocationData invocationData)
+        => job?.Queue ?? invocationData?.Queue;
+
+    private static bool MatchesName(Job job, InvocationData invocationData, string pattern)
     {
         if (string.IsNullOrEmpty(pattern)) return true;
 
-        var typeName = job.Type?.Name;
-        var methodName = job.Method?.Name;
+        var (typeName, methodName) = JobNameHelper.GetTypeAndMethodNames(job, invocationData);
 
         if (typeName != null && typeName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
             return true;
@@ -707,7 +713,7 @@ public class GenericQueryProvider : IStorageQueryProvider
         public static ScanFilter None => default;
 
         public bool Matches(string jobId, Job job, InvocationData invocationData)
-            => MatchesName(job, NamePattern)
+            => MatchesName(job, invocationData, NamePattern)
             && MatchesArguments(job, invocationData, ArgumentsPattern)
             && MatchesFailureFingerprint(jobId, FailureFingerprint, Connection, Ct);
     }

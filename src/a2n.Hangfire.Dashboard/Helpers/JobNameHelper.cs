@@ -123,6 +123,34 @@ public static class JobNameHelper
     }
 
     /// <summary>
+    /// <c>Type.Method</c>, ignoring display-name attributes, as search results name a job: from the
+    /// job when its type is loaded, otherwise from the invocation data, so a job whose assembly the
+    /// dashboard doesn't reference still has a name (issue #70). Null when neither is available.
+    /// </summary>
+    internal static string GetTypeAndMethod(Job job, InvocationData invocationData)
+    {
+        var (typeName, methodName) = GetTypeAndMethodNames(job, invocationData);
+        if (typeName is null)
+            return null;
+        return string.IsNullOrWhiteSpace(methodName) ? typeName : $"{typeName}.{methodName}";
+    }
+
+    /// <summary>
+    /// The job's class name (as <see cref="Type.Name"/> gives it) and method name, from the job or,
+    /// when its type isn't loaded, from the invocation data. Nulls when neither is available.
+    /// </summary>
+    internal static (string TypeName, string MethodName) GetTypeAndMethodNames(Job job, InvocationData invocationData)
+    {
+        if (job?.Type is not null && job.Method is not null)
+            return (job.Type.Name, job.Method.Name);
+
+        if (invocationData is null || string.IsNullOrWhiteSpace(invocationData.Type))
+            return (null, null);
+
+        return (ClassNameOf(invocationData.Type), invocationData.Method);
+    }
+
+    /// <summary>
     /// Extracts class name and method from raw InvocationData type/method strings.
     /// Type format: "Namespace.ClassName, AssemblyName" or "Namespace.ClassName"
     /// </summary>
@@ -131,17 +159,27 @@ public static class JobNameHelper
         if (string.IsNullOrWhiteSpace(type))
             return "(unknown)";
 
-        // Strip assembly info: "Namespace.Class, Assembly" → "Namespace.Class"
-        var commaIdx = type.IndexOf(',');
-        var fullTypeName = commaIdx > 0 ? type[..commaIdx].Trim() : type.Trim();
-
-        // Get just the class name (last segment after dot)
-        var dotIdx = fullTypeName.LastIndexOf('.');
-        var className = dotIdx > 0 ? fullTypeName[(dotIdx + 1)..] : fullTypeName;
+        var className = ClassNameOf(type);
 
         if (!string.IsNullOrWhiteSpace(method))
             return $"{className}.{method}";
 
         return className;
+    }
+
+    private static readonly char[] TypeNameEnd = { ',', '[' };
+    private static readonly char[] TypeNameSeparators = { '.', '+' };
+
+    /// <summary>
+    /// The class name in an assembly-qualified type name, as <see cref="Type.Name"/> gives it:
+    /// <c>"Ns.Outer+Inner`1[[System.String, mscorlib]], App"</c> → <c>"Inner`1"</c>. The assembly and
+    /// generic arguments are cut first, since they contain commas and dots of their own.
+    /// </summary>
+    private static string ClassNameOf(string type)
+    {
+        var end = type.IndexOfAny(TypeNameEnd);
+        var fullTypeName = (end > 0 ? type[..end] : type).Trim();
+        var start = fullTypeName.LastIndexOfAny(TypeNameSeparators);
+        return start >= 0 ? fullTypeName[(start + 1)..] : fullTypeName;
     }
 }
