@@ -267,6 +267,12 @@ ORDER BY CAST(JSON_VALUE(s.[Data], '$.PerformanceDuration') AS BIGINT) DESC;";
     // GetFailureGroupsAsync / GetFailureGroupJobsAsync
     // ═══════════════════════════════════════════════════════════════════════════
 
+    // The job's current state, for the failed-job columns below. State's clustered key is
+    // (JobId, Id), so both are given: on Id alone SQL Server can't seek it and reads the whole State
+    // table, which holds every state of every job, however few rows the query returns.
+    private static string CurrentStateJoin(string stateTable)
+        => $"LEFT JOIN {stateTable} s ON s.JobId = j.Id AND s.Id = j.StateId";
+
     // The failed-job columns FailureGrouping reads, named after FailedJobRow's properties.
     private const string FailedJobRowColumns = @"
 j.Id AS Id,
@@ -327,14 +333,14 @@ WHERE j.StateName = 'Failed';";
         var fallbackSql = $@"
 SELECT TOP (@Limit) {FailedJobRowColumns}
 FROM {jobTable} j
-LEFT JOIN {stateTable} s ON s.Id = j.StateId
+{CurrentStateJoin(stateTable)}
 WHERE {withoutStoredFingerprint}
 ORDER BY j.Id DESC;";
 
         var samplesSql = $@"
 SELECT {FailedJobRowColumns}
 FROM {jobTable} j
-LEFT JOIN {stateTable} s ON s.Id = j.StateId
+{CurrentStateJoin(stateTable)}
 WHERE j.Id IN @Ids AND j.StateName = 'Failed';";
 
         var parameters = new
@@ -397,7 +403,7 @@ FROM (
     ORDER BY m.Id DESC
 ) m
 INNER JOIN {jobTable} j ON j.Id = m.Id
-LEFT JOIN {stateTable} s ON s.Id = j.StateId
+{CurrentStateJoin(stateTable)}
 ORDER BY j.Id DESC;";
 
         using var connection = new SqlConnection(_connectionString);
