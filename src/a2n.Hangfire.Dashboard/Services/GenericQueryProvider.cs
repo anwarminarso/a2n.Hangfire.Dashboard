@@ -430,6 +430,10 @@ public class GenericQueryProvider : IStorageQueryProvider
                     if (candidates.Count >= SafetyCap) break;
                     var dto = entry.Value;
                     if (!IsSearchable(dto?.Job, dto?.InvocationData)) continue;
+                    // A job stays in its queue until a worker fetches it, even after it moves to
+                    // another state (deleted or succeeded while enqueued). The scan of that state
+                    // finds it, so listing it here too would return it twice.
+                    if (!dto.InEnqueuedState) continue;
                     if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
 
                     candidates.Add(new JobSummaryDto
