@@ -435,8 +435,7 @@ SELECT @JobId;",
             {
                 await using var connection = new SqlConnection(connectionString);
                 await connection.OpenAsync();
-                await connection.ExecuteAsync($"EXEC('CREATE SCHEMA [{schema.Name}]')");
-                SqlServerObjectsInstaller.Install(connection, schema.Name, true);
+                await SqlServerFixture.CreateSchemaAsync(connection, schema.Name);
                 await connection.ExecuteAsync($@"
 SET IDENTITY_INSERT [{schema.Name}].[Job] ON;
 WITH n AS (SELECT TOP (@Total) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS g FROM sys.all_objects a CROSS JOIN sys.all_objects b)
@@ -465,7 +464,7 @@ SELECT Id, @Name, @Fingerprint FROM [{schema.Name}].[Job] WHERE Id <= @Stored;",
             {
                 await using var connection = new SqlConnection(_connectionString);
                 await connection.OpenAsync();
-                await connection.ExecuteAsync(SqlServerFixture.BuildDropSchemaScript(Name));
+                await SqlServerFixture.DropSchemaAsync(connection, Name);
             }
             catch
             {
