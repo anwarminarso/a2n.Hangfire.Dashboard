@@ -95,13 +95,16 @@ public static class FailureGrouping
         return AsUtc(stateCreatedAt);
     }
 
-    /// <summary>Fingerprints a failed job read by a storage adapter.</summary>
+    /// <summary>
+    /// Fingerprints a failed job read by a storage adapter. Its <see cref="ComputedFailure.Sequence"/>
+    /// is the row's <see cref="FailedJobRow.StateId"/>, or its id when the adapter doesn't read that.
+    /// </summary>
     public static ComputedFailure Compute(FailedJobRow row)
     {
         var stateData = ReadStateData(row.StateData);
         return new ComputedFailure(
             row.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            row.Id,
+            row.StateId ?? row.Id,
             FailureFingerprint.Compute(stateData, ReadJobTypeName(row.InvocationData)),
             ReadFailedAt(stateData, row.StateCreatedAt));
     }
@@ -127,15 +130,17 @@ public static class FailureGrouping
 
     /// <summary>
     /// Merges the stored fingerprints and the ones computed by the fallback into groups, most jobs
-    /// first, and labels the <paramref name="labelCount"/> largest from their newest job.
+    /// first, and labels the <paramref name="labelCount"/> largest from their newest job: the one with
+    /// the highest <see cref="ComputedFailure.Sequence"/> or <see cref="StoredFailureGroup.NewestSequence"/>,
+    /// which is the job that failed last.
     /// </summary>
     /// <param name="stored">Per stored fingerprint: how many failed jobs carry it and the newest of them.</param>
     /// <param name="unfingerprintedCount">Failed jobs without a current-version stored fingerprint.</param>
     /// <param name="computed">The ones of those the fallback read and fingerprinted.</param>
     /// <param name="labelCount">How many of the largest groups to label.</param>
     /// <param name="loadNewestJobs">
-    /// Reads and fingerprints the given jobs in one round trip; used for groups whose newest job has a
-    /// stored fingerprint. May be null when <paramref name="stored"/> is empty.
+    /// Reads and fingerprints the jobs with the given ids in one round trip; used for groups whose
+    /// newest job has a stored fingerprint. May be null when <paramref name="stored"/> is empty.
     /// </param>
     /// <param name="ct">Cancellation token</param>
     public static async Task<FailureGroupsResult> BuildAsync(
@@ -158,14 +163,14 @@ public static class FailureGrouping
         {
             var group = For(s.Fingerprint);
             group.StoredCount += s.Count;
-            group.Offer(s.NewestJobId, s.NewestJobId.ToString(System.Globalization.CultureInfo.InvariantCulture), newest: null);
+            group.Offer(s.NewestSequence, s.NewestJobId.ToString(System.Globalization.CultureInfo.InvariantCulture), s.NewestJobId, newest: null);
         }
 
         foreach (var c in computed ?? Array.Empty<ComputedFailure>())
         {
             var group = For(c.Result.Fingerprint);
             group.Computed.Add(c);
-            group.Offer(c.Sequence, c.JobId, c);
+            group.Offer(c.Sequence, c.JobId, storedJobId: null, c);
         }
 
         var ordered = groups.Values
@@ -175,12 +180,15 @@ public static class FailureGrouping
             .ToList();
 
         var toLabel = ordered.Take(Math.Max(0, labelCount)).ToList();
-        var samples = new Dictionary<long, ComputedFailure>();
-        var missing = toLabel.Where(g => g.Newest is null).Select(g => g.NewestSequence).ToList();
+        // Matched by job id: a sample's sequence is whatever the adapter read it with.
+        var samples = new Dictionary<string, ComputedFailure>(StringComparer.Ordinal);
+        var missing = toLabel.Where(g => g.Newest is null && g.NewestStoredJobId.HasValue)
+            .Select(g => g.NewestStoredJobId.Value)
+            .ToList();
         if (missing.Count > 0 && loadNewestJobs != null)
         {
             foreach (var sample in await loadNewestJobs(missing, ct).ConfigureAwait(false))
-                samples[sample.Sequence] = sample;
+                samples[sample.JobId] = sample;
         }
 
         var labeled = new HashSet<GroupBuilder>(toLabel);
@@ -198,7 +206,7 @@ public static class FailureGrouping
             };
 
             var newest = group.Newest
-                ?? (samples.TryGetValue(group.NewestSequence, out var sample) ? sample : (ComputedFailure?)null);
+                ?? (samples.TryGetValue(group.NewestJobId, out var sample) ? sample : (ComputedFailure?)null);
             if (labeled.Contains(group) && newest is { } label)
             {
                 dto.IsLabeled = true;
@@ -238,32 +246,49 @@ public static class FailureGrouping
         public long NewestSequence { get; private set; } = long.MinValue;
         public string NewestJobId { get; private set; }
 
+        /// <summary>The newest job's id when it carries a stored fingerprint, for loading its label.</summary>
+        public long? NewestStoredJobId { get; private set; }
+
         /// <summary>The newest job when the fallback read it, so it doesn't need loading for the label.</summary>
         public ComputedFailure? Newest { get; private set; }
 
-        public void Offer(long sequence, string jobId, ComputedFailure? newest)
+        public void Offer(long sequence, string jobId, long? storedJobId, ComputedFailure? newest)
         {
             if (sequence <= NewestSequence)
                 return;
             NewestSequence = sequence;
             NewestJobId = jobId;
+            NewestStoredJobId = storedJobId;
             Newest = newest;
         }
     }
 }
 
 /// <summary>
-/// A fingerprint stored on failed jobs: how many failed jobs carry it, and the id of the newest.
-/// Intended for storage adapters, as input to <see cref="FailureGrouping.BuildAsync"/>.
+/// A fingerprint stored on failed jobs: how many failed jobs carry it, and the id of the newest, the
+/// one that failed last. Intended for storage adapters, as input to <see cref="FailureGrouping.BuildAsync"/>.
 /// </summary>
-public readonly record struct StoredFailureGroup(string Fingerprint, long Count, long NewestJobId);
+public readonly record struct StoredFailureGroup(string Fingerprint, long Count, long NewestJobId)
+{
+    /// <summary>
+    /// Orders the newest job against the fallback's jobs, on the scale of their
+    /// <see cref="ComputedFailure.Sequence"/>: its <see cref="FailedJobRow.StateId"/> on the SQL Server and
+    /// PostgreSQL adapters. Defaults to <see cref="NewestJobId"/>.
+    /// </summary>
+    public long NewestSequence { get; init; } = NewestJobId;
+}
 
 /// <summary>
 /// A failed job fingerprinted from its stored strings. Intended for storage adapters, as input to
 /// <see cref="FailureGrouping.BuildAsync"/>.
 /// </summary>
 /// <param name="JobId">The job id.</param>
-/// <param name="Sequence">Orders jobs by age, higher is newer: the job id on storages with numeric ids.</param>
+/// <param name="Sequence">
+/// Orders jobs by when they failed, higher is more recent. On the SQL Server and PostgreSQL adapters
+/// it is the id of the job's current state (<see cref="FailedJobRow.StateId"/>), which grows with
+/// every state change, so a job that was created long ago and failed just now counts as newer than
+/// one created after it that failed earlier.
+/// </param>
 /// <param name="Result">The computed fingerprint and its parts.</param>
 /// <param name="FailedAt">When the job failed; see <see cref="FailureGrouping.ReadFailedAt"/>.</param>
 public readonly record struct ComputedFailure(string JobId, long Sequence, FailureFingerprintResult Result, DateTime? FailedAt);
@@ -277,6 +302,14 @@ public sealed class FailedJobRow
 {
     /// <summary>The job id.</summary>
     public long Id { get; set; }
+
+    /// <summary>
+    /// The id of the job's current state, its Failed state. State ids grow with every state change, so
+    /// they order failed jobs by when they failed, which job ids (creation order) don't for a job that
+    /// was scheduled, retried or requeued first. Null when the adapter doesn't read it; the job id is
+    /// used then.
+    /// </summary>
+    public long? StateId { get; set; }
 
     /// <summary>The stored invocation data payload, as text.</summary>
     public string InvocationData { get; set; }

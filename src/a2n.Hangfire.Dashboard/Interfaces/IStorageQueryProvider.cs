@@ -74,12 +74,12 @@ public interface IStorageQueryProvider
     /// <para>
     /// A job's fingerprint is the value <c>FailureFingerprintFilter</c> stored on it, when that value
     /// is of the current version (<see cref="Helpers.FailureFingerprint.IsCurrentVersion"/>). Jobs
-    /// without one are fingerprinted on the fly from their state data and stored job type, newest
-    /// first and at most <see cref="JobFilterCriteria.CountLimit"/> of them; beyond that the result is
-    /// partial. Nothing is written back, so this is safe in read-only mode.
+    /// without one are fingerprinted on the fly from their state data and stored job type, the most
+    /// recently failed first and at most <see cref="JobFilterCriteria.CountLimit"/> of them; beyond that
+    /// the result is partial. Nothing is written back, so this is safe in read-only mode.
     /// </para>
     /// <para>
-    /// Labels are read from one sample job per group, the newest, for the
+    /// Labels are read from one sample job per group, the one that failed last, for the
     /// <paramref name="labelCount"/> largest groups only.
     /// </para>
     /// <para>
@@ -103,8 +103,10 @@ public interface IStorageQueryProvider
     /// fingerprinted again. This is a default interface method that returns no jobs.
     /// </para>
     /// <para>
-    /// "Newest" is by job id, that is creation order, on the SQL Server and PostgreSQL adapters, and by
-    /// failure time on the generic provider. For a delayed or requeued job the two can differ.
+    /// "Newest" means the job that failed last, on every provider, so a job that was scheduled, retried
+    /// or requeued before it failed is placed by when it failed, not when it was created. The SQL
+    /// Server and PostgreSQL adapters order by the id of the job's current state, which grows with
+    /// every state change; the generic provider orders by the Failed state's <c>FailedAt</c>.
     /// </para>
     /// </remarks>
     /// <param name="group">A group returned by <see cref="GetFailureGroupsAsync"/>.</param>

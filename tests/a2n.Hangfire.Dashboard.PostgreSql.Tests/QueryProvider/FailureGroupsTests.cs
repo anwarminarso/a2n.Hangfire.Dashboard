@@ -330,6 +330,69 @@ public class FailureGroupsTests
     }
 
     [SkippableFact]
+    public async Task AJobCreatedFirstThatFailedLast_IsTheGroupsNewest()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        try
+        {
+            // Scheduled first and failed after the others, as a delayed, retried or requeued job does.
+            // Newest means the job that failed last, on this adapter as on the generic provider.
+            var withFilter = new BackgroundJobClient(_storage, new JobFilterCollection { new FailureFingerprintFilter() });
+            var withoutFilter = new BackgroundJobClient(_storage, new JobFilterCollection());
+            var storedLast = CreateWithFilter(new ScheduledState(TimeSpan.FromHours(1)));
+            var computedLast = CreateWithoutFilter(new ScheduledState(TimeSpan.FromHours(1)));
+            var storedFirst = CreateWithFilter(Fail("Order 61 is locked"));
+            var computedFirst = CreateWithoutFilter(Fail("Order 62 is locked"));
+            withoutFilter.ChangeState(computedLast, Fail("Order 63 is locked"));
+            withFilter.ChangeState(storedLast, Fail("Order 64 is locked"));
+
+            using var connection = _storage.GetConnection();
+            var key = connection.GetJobParameter(storedFirst, FailureFingerprint.ParameterName);
+            Assert.Equal(key, connection.GetJobParameter(storedLast, FailureFingerprint.ParameterName));
+
+            var group = Assert.Single((await GroupsAsync()).Groups, g => g.Fingerprint == key);
+
+            Assert.Equal(storedLast, group.NewestJobId);
+            Assert.Equal(FailureGrouping.ReadFailedAt(connection.GetStateData(storedLast).Data, null), group.LastFailedAt);
+            Assert.Equal(new[] { computedLast, computedFirst }, group.ComputedJobIds);
+            var failedLastFirst = new[] { storedLast, computedLast, computedFirst, storedFirst };
+            var jobs = await _provider.GetFailureGroupJobsAsync(group, 10, CancellationToken.None);
+            Assert.Equal(failedLastFirst, jobs.Select(j => j.JobId));
+            Assert.Equal(failedLastFirst.Take(2), (await _provider.GetFailureGroupJobsAsync(group, 2, CancellationToken.None)).Select(j => j.JobId));
+            Assert.Equal(failedLastFirst, await _provider.GetFailureGroupJobIdsAsync(group, CancellationToken.None));
+        }
+        finally
+        {
+            DeleteCreated();
+        }
+    }
+
+    [SkippableFact]
+    public async Task APartialResult_ReadsTheJobsThatFailedLast_NotTheLastCreated()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        const int failedLast = 5;
+        const int total = JobFilterCriteria.CountLimit + 10;
+        // Jobs 1 to 5 were created first and failed after all the others.
+        await using var schema = await ThrowawaySchema.CreateAsync(_fixture.ConnectionString, total, storedJobs: 0, failedLast);
+        var provider = new PostgreSqlQueryProvider(_fixture.ConnectionString, schema.Name);
+
+        var result = await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None);
+
+        // The 1,000 read are jobs 1 to 5 and the newest 995 of the others; 6 to 15 weren't read.
+        Assert.True(result.IsPartial);
+        var group = Assert.Single(result.Groups);
+        var read = Enumerable.Range(1, failedLast).Reverse()
+            .Concat(Enumerable.Range(total - (JobFilterCriteria.CountLimit - failedLast) + 1, JobFilterCriteria.CountLimit - failedLast).Reverse())
+            .Select(id => id.ToString())
+            .ToList();
+        Assert.Equal(read, group.ComputedJobIds);
+        Assert.Equal("5", group.NewestJobId);
+        Assert.Equal(read.Take(3), (await provider.GetFailureGroupJobsAsync(group, 3, CancellationToken.None)).Select(j => j.JobId));
+        Assert.Equal(read, await provider.GetFailureGroupJobIdsAsync(group, CancellationToken.None));
+    }
+
+    [SkippableFact]
     public async Task GroupJobIds_OfAPartialResult_AreTheStoredMembersAndTheFallbackMembersRead()
     {
         PostgreSqlFixture.RequireAvailable();
@@ -441,7 +504,8 @@ UPDATE ""{schema}"".job SET stateid = (SELECT id FROM s) WHERE id = @JobId",
     /// <summary>
     /// A schema of its own with <c>total</c> failed jobs (ids 1..total, all the same failure), the
     /// first <c>storedJobs</c> of them with the fingerprint stored, since the shared fixture's jobs are
-    /// counted exactly by other tests.
+    /// counted exactly by other tests. Jobs fail in the order they were created, except the first
+    /// <c>failedLast</c>, which failed after all the others: their state ids come last.
     /// </summary>
     private sealed class ThrowawaySchema : IAsyncDisposable
     {
@@ -463,7 +527,7 @@ UPDATE ""{schema}"".job SET stateid = (SELECT id FROM s) WHERE id = @JobId",
 
         public string Fingerprint { get; }
 
-        public static async Task<ThrowawaySchema> CreateAsync(string connectionString, int total, int storedJobs)
+        public static async Task<ThrowawaySchema> CreateAsync(string connectionString, int total, int storedJobs, int failedLast = 0)
         {
             var schema = new ThrowawaySchema(connectionString);
             try
@@ -476,11 +540,11 @@ INSERT INTO ""{schema.Name}"".job (id, invocationdata, arguments, createdat, sta
 SELECT g, '{{""Type"":""{JobType}"",""Method"":""Run"",""ParameterTypes"":""[]"",""Arguments"":null}}', '[]', now(), 'Failed'
 FROM generate_series(1, @Total) g;
 INSERT INTO ""{schema.Name}"".state (id, jobid, name, createdat, data)
-SELECT g, g, 'Failed', now(), @StateData::jsonb FROM generate_series(1, @Total) g;
-UPDATE ""{schema.Name}"".job SET stateid = id;
+SELECT CASE WHEN g <= @FailedLast THEN @Total + g ELSE g END, g, 'Failed', now(), @StateData::jsonb FROM generate_series(1, @Total) g;
+UPDATE ""{schema.Name}"".job SET stateid = CASE WHEN id <= @FailedLast THEN @Total + id ELSE id END;
 INSERT INTO ""{schema.Name}"".jobparameter (jobid, name, value)
 SELECT g, @Name, @Fingerprint FROM generate_series(1, @Stored) g;",
-                    new { Total = total, Stored = storedJobs, StateData, Name = FailureFingerprint.ParameterName, schema.Fingerprint });
+                    new { Total = total, Stored = storedJobs, FailedLast = failedLast, StateData, Name = FailureFingerprint.ParameterName, schema.Fingerprint });
                 return schema;
             }
             catch
