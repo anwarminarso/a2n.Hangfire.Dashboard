@@ -45,6 +45,32 @@
     <EmbeddedResource Include="Content\**\*" />
   </ItemGroup>
 
+  <!--
+    .NET 10 only: a fallback copy of _framework/blazor.web.js.
+    In .NET 10 the Blazor script is no longer embedded in the framework; it comes from the
+    Microsoft.AspNetCore.App.Internal.Assets package, which the SDK only restores for a host that
+    has a .razor file or sets RequiresAspNetWebAssets. A package's props can't set that in time
+    (NuGet doesn't import package props during restore), so a plain web host gets no script and the
+    dashboard never goes interactive. FrameworkScriptMiddleware serves this copy only when the host
+    doesn't serve its own. net8.0 and net9.0 don't need it (the script is embedded in their
+    framework) and don't get it.
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <BlazorWebScriptPackageVersion>10.0.12</BlazorWebScriptPackageVersion>
+    <BlazorWebScriptPath>$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))microsoft.aspnetcore.app.internal.assets/$(BlazorWebScriptPackageVersion)/_framework/blazor.web.js</BlazorWebScriptPath>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageDownload Include="Microsoft.AspNetCore.App.Internal.Assets" Version="[$(BlazorWebScriptPackageVersion)]" />
+    <EmbeddedResource Include="$(BlazorWebScriptPath)" LogicalName="a2n.Hangfire.Dashboard.Framework.blazor.web.js"
+                      Condition="Exists('$(BlazorWebScriptPath)')" />
+    <AssemblyMetadata Include="BundledBlazorWebScriptVersion" Value="$(BlazorWebScriptPackageVersion)" />
+  </ItemGroup>
+  <!-- Fail the build rather than ship a net10.0 assembly without the fallback copy. -->
+  <Target Name="EnsureBundledBlazorWebScript" BeforeTargets="CoreCompile"
+          Condition="'$(TargetFramework)' == 'net10.0' and !Exists('$(BlazorWebScriptPath)')">
+    <Error Text="The bundled blazor.web.js wasn't found at $(BlazorWebScriptPath). Restore the project (it downloads Microsoft.AspNetCore.App.Internal.Assets $(BlazorWebScriptPackageVersion))." />
+  </Target>
+
   <!-- Include build props/targets in NuGet package for consumer projects -->
   <ItemGroup>
     <None Include="build\a2n.Hangfire.Dashboard.props" Pack="true" PackagePath="build\" />

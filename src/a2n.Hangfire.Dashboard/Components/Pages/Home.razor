@@ -1,10 +1,15 @@
 @page "/"
 @inject HangfireMonitorService Monitor
 @inject DashboardMetricsFeed MetricsFeed
+@inject DashboardPolling Polling
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
 <PageTitle>Dashboard</PageTitle>
+
+@* When the metrics shown were read (UTC ticks), changing on every realtime update, so a browser test
+   can tell an update arrived even when no count changed. Not displayed. *@
+<span hidden data-testid="metrics-snapshot" data-snapshot-at="@_snapshotAtTicks"></span>
 
 <HealthHeroCard />
 
@@ -229,11 +234,15 @@ else if (_statsExpanded)
         _ => null
     }, s => s.Name);
     private IDisposable _metricsSubscription;
+    private long _snapshotAtTicks;
     private long _prevSucceeded;
     private long _prevDeleted;
     private long _prevFailed;
     private bool _chartsInitialized;
     private string _historyPeriod = "day";
+
+    // Cancels the history reads' wait when the page goes away.
+    private readonly CancellationTokenSource _disposed = new();
     // Detailed metrics grid is expanded by default. The user's choice is persisted to
     // localStorage (see prefs.js) and restored on first render, mirroring the theme preference.
     private bool _statsExpanded = true;
@@ -263,6 +272,7 @@ else if (_statsExpanded)
         var snapshot = await MetricsFeed.GetMetricsAsync();
         _stats = snapshot.Statistics;
         _servers = snapshot.Servers;
+        _snapshotAtTicks = snapshot.CapturedAtUtc.Ticks;
         _prevSucceeded = _stats.Succeeded;
         _prevFailed = _stats.Failed;
         _prevDeleted = _stats.Deleted;
@@ -282,6 +292,7 @@ else if (_statsExpanded)
 
         _stats = stats;
         _servers = snapshot.Servers;
+        _snapshotAtTicks = snapshot.CapturedAtUtc.Ticks;
         StateHasChanged();
 
         if (_chartsInitialized)
@@ -321,20 +332,25 @@ else if (_statsExpanded)
             // Load history data
             try
             {
-                var hourlySucceeded = Monitor.GetHourlySucceededJobs();
-                var hourlyFailed = Monitor.GetHourlyFailedJobs();
-
-                var succeededValues = hourlySucceeded.Values.ToArray();
-                var failedValues = hourlyFailed.Values.ToArray();
-
+                var (succeededValues, failedValues) = await ReadHistoryAsync("day");
                 await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues);
             }
             catch { }
         }
     }
 
+    // Through the storage gate, off the circuit's thread: called synchronously here, a slow storage
+    // blocked one thread-pool thread and the circuit per open Home tab (issue #64).
+    private Task<(long[] Succeeded, long[] Failed)> ReadHistoryAsync(string period)
+        => Polling.ReadAsync(() => period == "week"
+            ? (Monitor.GetSucceededByDatesCount().Values.ToArray(), Monitor.GetFailedByDatesCount().Values.ToArray())
+            : (Monitor.GetHourlySucceededJobs().Values.ToArray(), Monitor.GetHourlyFailedJobs().Values.ToArray()),
+            _disposed.Token);
+
     public async ValueTask DisposeAsync()
     {
+        _disposed.Cancel();
+        _disposed.Dispose();
         _metricsSubscription?.Dispose();
 
         // Destroy Chart.js instances to stop streaming plugin from updating removed canvases
@@ -356,22 +372,9 @@ else if (_statsExpanded)
 
         try
         {
-            if (period == "week")
-            {
-                var dailySucceeded = Monitor.GetSucceededByDatesCount();
-                var dailyFailed = Monitor.GetFailedByDatesCount();
-                var succeededValues = dailySucceeded.Values.ToArray();
-                var failedValues = dailyFailed.Values.ToArray();
-                await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues, "week");
-            }
-            else
-            {
-                var hourlySucceeded = Monitor.GetHourlySucceededJobs();
-                var hourlyFailed = Monitor.GetHourlyFailedJobs();
-                var succeededValues = hourlySucceeded.Values.ToArray();
-                var failedValues = hourlyFailed.Values.ToArray();
-                await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues, "day");
-            }
+            var (succeededValues, failedValues) = await ReadHistoryAsync(period);
+            await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues,
+                period == "week" ? "week" : "day");
         }
         catch { }
     }

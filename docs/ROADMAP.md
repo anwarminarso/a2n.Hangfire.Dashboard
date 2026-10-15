@@ -93,7 +93,7 @@ samples/
 - ✅ Custom middleware pipeline (`app.Map` + `DashboardMiddleware` + `FrameworkScriptMiddleware`)
 - ✅ Static assets served via embedded resources (`_content/*`)
 - ✅ `_framework/blazor.web.js` served via custom middleware in branched pipeline
-- ✅ NuGet `buildTransitive` props for automatic `RequiresAspNetWebAssets` propagation
+- ✅ NuGet `buildTransitive` props for automatic `RequiresAspNetWebAssets` propagation (this never reached the host's restore, where .NET 10 decides whether the script is included; since 2.6.0 the net10.0 build carries its own copy of `blazor.web.js`)
 - ✅ True NuGet drop-in: add package reference + `AddHangfireDashboardUI()` + `UseHangfireDashboardUI()`
 - ✅ Relative URL links for path prefix compatibility
 

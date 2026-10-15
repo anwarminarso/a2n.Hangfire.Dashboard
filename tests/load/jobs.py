@@ -27,6 +27,7 @@ import json
 import random
 import sys
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -37,6 +38,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich.table import Table
 
 import config as cfg_mod
+import guard
 from db import get_connection, _schema_prefix
 
 console = Console()
@@ -45,23 +47,55 @@ JobType = Literal["simple", "console", "tagged", "failing", "scheduled", "all"]
 
 # ─── Invocation data templates ────────────────────────────────────────────────
 
-def _invocation(type_name: str, method: str, args: list | None = None) -> str:
-    """Build a Hangfire-style invocation JSON string."""
-    return json.dumps({
-        "t": type_name,
-        "m": method,
-        "a": [json.dumps(a) if not isinstance(a, str) else a for a in (args or [])],
-        "pn": "Hangfire",
-    })
+_SAMPLE_JOBS = "SampleApp.SharedJobs.SampleJobs, SampleApp.SharedJobs"
+_PERFORM_CONTEXT = "Hangfire.Server.PerformContext, Hangfire.Core"
+
+
+@dataclass(frozen=True)
+class JobSpec:
+    """A job method and its arguments, before it is serialized for a provider."""
+    type_name: str
+    method: str
+    parameter_types: tuple[str, ...] = ()
+    args: tuple = ()
+
+    def arguments_json(self) -> str:
+        """The Job.Arguments column: a JSON array whose elements are each a JSON string, as
+        Hangfire serializes them; an injected PerformContext is stored as null."""
+        return json.dumps([None if a is None else json.dumps(a) for a in self.args])
+
+
+def invocation_data(provider: str, spec: JobSpec) -> str:
+    """The Job.InvocationData column as each storage writes it, without the arguments, which go
+    in the Arguments column (both storages read them from there).
+
+    Hangfire.SqlServer stores the compact payload ({"t","m","p"}) that SerializePayload writes;
+    Hangfire.PostgreSql serializes the whole InvocationData object, so it reads Type, Method
+    and ParameterTypes (a JSON array inside a string) and can't load the compact form.
+    """
+    if provider == "postgresql":
+        return json.dumps({
+            "Type": spec.type_name,
+            "Method": spec.method,
+            "ParameterTypes": json.dumps(list(spec.parameter_types)),
+            "Arguments": None,
+        }, separators=(",", ":"))
+    payload: dict = {"t": spec.type_name, "m": spec.method}
+    if spec.parameter_types:
+        payload["p"] = list(spec.parameter_types)
+    return json.dumps(payload, separators=(",", ":"))
 
 
 INVOCATIONS = {
-    "simple": _invocation("SampleApp.SharedJobs.SampleJobs, SampleApp.SharedJobs", "SimpleJob"),
-    "console": _invocation("SampleApp.SharedJobs.SampleJobs, SampleApp.SharedJobs", "ConsoleJob", [None]),
-    "tagged": _invocation("SampleApp.SharedJobs.SampleJobs, SampleApp.SharedJobs", "TaggedJob", [None]),
-    "failing": _invocation("SampleApp.SharedJobs.SampleJobs, SampleApp.SharedJobs", "FailingJob"),
-    "long": _invocation("SampleApp.SharedJobs.SampleJobs, SampleApp.SharedJobs", "LongRunningJob", [None]),
+    "simple": JobSpec(_SAMPLE_JOBS, "SimpleJob"),
+    "console": JobSpec(_SAMPLE_JOBS, "ConsoleJob", (_PERFORM_CONTEXT,), (None,)),
+    "tagged": JobSpec(_SAMPLE_JOBS, "TaggedJob", (_PERFORM_CONTEXT,), (None,)),
+    "failing": JobSpec(_SAMPLE_JOBS, "FailingJob"),
+    "long": JobSpec(_SAMPLE_JOBS, "LongRunningJob", (_PERFORM_CONTEXT,), (None,)),
 }
+
+# Hangfire only sets ExpireAt when a job reaches a final state; until then the job is kept.
+_FINAL_STATES = {"Succeeded", "Deleted"}
 
 TAGS_BY_TYPE = {
     "tagged": ["orders", "processing"],
@@ -126,7 +160,7 @@ def _scheduled_state(enqueue_at: datetime) -> dict:
 def _insert_job(
     cur,
     provider: str,
-    invocation: str,
+    spec: JobSpec,
     state: dict,
     queue: str = "default",
     created_offset_hours: float = 0,
@@ -134,15 +168,21 @@ def _insert_job(
 ) -> str:
     """Insert a single job + its state, return the job ID."""
     s = _schema_prefix(provider)
+    invocation = invocation_data(provider, spec)
+    arguments = spec.arguments_json()
     now = datetime.now(timezone.utc) - timedelta(hours=created_offset_hours)
-    expire = now + timedelta(hours=expire_hours)
+    # A final job expires `expire_hours` from now, as Hangfire counts it from when the state was
+    # applied; a backdated created time would otherwise put it in the past and let the expiration
+    # manager delete it straight away. Non-final jobs never expire.
+    expire = (datetime.now(timezone.utc) + timedelta(hours=expire_hours)
+              if state["stateName"] in _FINAL_STATES else None)
 
     if provider == "postgresql":
         cur.execute(f"""
             INSERT INTO {s}job (invocationdata, arguments, createdat, expireat, statename)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING id
-        """, (invocation, "[]", now, expire, state["stateName"]))
+        """, (invocation, arguments, now, expire, state["stateName"]))
         job_id = str(cur.fetchone()[0])
 
         cur.execute(f"""
@@ -175,7 +215,7 @@ def _insert_job(
             INSERT INTO {s}Job (InvocationData, Arguments, CreatedAt, ExpireAt, StateName)
             OUTPUT INSERTED.Id
             VALUES (?, ?, ?, ?, ?)
-        """, (invocation, "[]", now, expire, state["stateName"]))
+        """, (invocation, arguments, now, expire, state["stateName"]))
         job_id = str(cur.fetchone()[0])
 
         cur.execute(f"""
@@ -305,8 +345,10 @@ def cli():
 @click.option("--count", "-n", default=20, show_default=True, help="Number of jobs to insert.")
 @click.option("--queue", "-q", default="default", show_default=True, help="Queue name for enqueued jobs.")
 @click.option("--spread-hours", default=48.0, show_default=True, help="Spread created timestamps over N hours.")
-def seed(job_type: str, count: int, queue: str, spread_hours: float):
+@guard.yes_option
+def seed(job_type: str, count: int, queue: str, spread_hours: float, assume_yes: bool):
     """Seed test jobs directly into the database."""
+    guard.ensure_writable(cfg_mod.load(), f"seed {count} jobs", assume_yes)
     conn, provider = get_connection()
     try:
         inserted = seed_jobs(conn, provider, job_type, count, queue, spread_hours)
@@ -321,23 +363,28 @@ def seed(job_type: str, count: int, queue: str, spread_hours: float):
               type=click.Choice(["Succeeded", "Failed", "Deleted", "Enqueued", "Scheduled"]),
               help="State of jobs to purge.")
 @click.option("--older-than", default=None, type=float, help="Only purge jobs older than N days.")
-@click.confirmation_option(prompt="This will DELETE jobs from the database. Continue?")
-def purge(state: str, older_than: float | None):
+@guard.yes_option
+def purge(state: str, older_than: float | None, assume_yes: bool):
     """Delete all jobs in a given state from the database."""
+    guard.ensure_writable(cfg_mod.load(), f"delete every {state} job", assume_yes)
     conn, provider = get_connection()
     s = _schema_prefix(provider)
+    ph = "?" if provider == "sqlserver" else "%s"
     cur = conn.cursor()
 
-    where_clauses = ["statename = %s"]
+    where_clauses = [f"statename = {ph}"]
     params: list = [state]
     if older_than is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=older_than)
-        where_clauses.append("createdat < %s")
+        where_clauses.append(f"createdat < {ph}")
         params.append(cutoff)
 
     where = " AND ".join(where_clauses)
+    # State and JobParameter rows go with the job (ON DELETE CASCADE on both schemas). JobQueue
+    # rows have no foreign key, so the queue entries of purged Enqueued jobs are removed after.
     cur.execute(f"DELETE FROM {s}job WHERE {where}", params)
     deleted = cur.rowcount
+    cur.execute(f"DELETE FROM {s}jobqueue WHERE jobid NOT IN (SELECT id FROM {s}job)")
     conn.commit()
     cur.close()
     conn.close()
@@ -348,30 +395,36 @@ def purge(state: str, older_than: float | None):
 @cli.command("trigger-recurring")
 @click.option("--id", "job_id", default=None, help="Recurring job ID to trigger.")
 @click.option("--all", "trigger_all", is_flag=True, help="Trigger all recurring jobs.")
-def trigger_recurring(job_id: str | None, trigger_all: bool):
+@guard.yes_option
+def trigger_recurring(job_id: str | None, trigger_all: bool, assume_yes: bool):
     """Force recurring jobs to run now by setting NextExecution to the past."""
     if not job_id and not trigger_all:
         console.print("[red]Specify --id <id> or --all[/red]")
         sys.exit(1)
 
+    guard.ensure_writable(cfg_mod.load(), "reschedule recurring jobs", assume_yes)
     conn, provider = get_connection()
     s = _schema_prefix(provider)
     cur = conn.cursor()
 
     past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    if provider == "sqlserver":
+        hash_table, ph, key, field, value, like = f"{s}[Hash]", "?", "[Key]", "[Field]", "[Value]", "'recurring-job:%'"
+    else:
+        hash_table, ph, key, field, value, like = f"{s}hash", "%s", "key", "field", "value", "'recurring-job:%%'"
 
     if trigger_all:
         cur.execute(f"""
-            UPDATE {s}hash SET value = %s
-            WHERE key LIKE 'recurring-job:%%' AND field = 'NextExecution'
+            UPDATE {hash_table} SET {value} = {ph}
+            WHERE {key} LIKE {like} AND {field} = 'NextExecution'
         """, (past,))
         count = cur.rowcount
         conn.commit()
         console.print(f"[green]Triggered {count} recurring job(s) (NextExecution set to past).[/green]")
     else:
         cur.execute(f"""
-            UPDATE {s}hash SET value = %s
-            WHERE key = %s AND field = 'NextExecution'
+            UPDATE {hash_table} SET {value} = {ph}
+            WHERE {key} = {ph} AND {field} = 'NextExecution'
         """, (past, f"recurring-job:{job_id}"))
         count = cur.rowcount
         conn.commit()

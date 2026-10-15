@@ -10,6 +10,10 @@
 
 <h4 class="mb-3">Analytics Overview</h4>
 
+@* When the last live update arrived (UTC ticks, 0 before the first), so a browser test can measure
+   the live cadence of the "Last 1h" view. Not displayed. *@
+<span hidden data-testid="analytics-update" data-received-at="@_analyticsReceivedAtTicks"></span>
+
 <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
     <TimeRangeSelector SelectedPreset="@_selectedPreset" OnRangeChanged="OnTimeRangeChanged" />
     @if (_selectedPreset == TimeRangePreset.Last1h)
@@ -110,6 +114,7 @@ else
 
     // Realtime analytics from the in-process feed (non-null while "Last 1h" is selected).
     private IDisposable _analyticsSubscription;
+    private long _analyticsReceivedAtTicks;
 
     // Stat card values
     private long _totalProcessed;
@@ -165,6 +170,7 @@ else
 
     private Task OnAnalyticsAsync(AnalyticsBroadcastPayload payload) => InvokeAsync(async () =>
     {
+        _analyticsReceivedAtTicks = DateTime.UtcNow.Ticks;
         try
         {
             // Update throughput data and rebuild charts

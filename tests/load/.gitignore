@@ -15,3 +15,6 @@ screenshots/*.png
 # Playwright state
 playwright-report/
 test-results/
+
+# release-check reports (copy the ones worth keeping to docs/)
+reports/

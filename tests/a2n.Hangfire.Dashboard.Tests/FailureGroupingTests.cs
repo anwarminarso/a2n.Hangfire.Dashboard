@@ -168,6 +168,25 @@ public class FailureGroupingTests
     }
 
     [Fact]
+    public async Task GenericProvider_OnInMemory_ReadsTheNewestFailedJobs_WhenThereAreMoreThanTheCap()
+    {
+        var (_, client, provider) = InMemory();
+        // Older failures first, then CountLimit newer ones of another exception.
+        for (var i = 0; i < 50; i++)
+            client.Create(OrderJob, Fail(new TimeoutException("The old gateway did not answer.")));
+        var newer = Enumerable.Range(1, JobFilterCriteria.CountLimit)
+            .Select(_ => client.Create(OrderJob, Fail(new InvalidOperationException("The order is locked."))))
+            .ToList();
+
+        var result = await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None);
+
+        Assert.True(result.IsPartial);
+        var group = Assert.Single(result.Groups);
+        Assert.Equal("System.InvalidOperationException", group.ExceptionType);
+        Assert.Equal(newer[^1], group.NewestJobId);
+    }
+
+    [Fact]
     public async Task GenericProvider_JobWithAnUnloadableType_IsGrouped_UsingItsStoredType()
     {
         // The dashboard can't load Contoso.Billing; the job still failed, and its stored type still

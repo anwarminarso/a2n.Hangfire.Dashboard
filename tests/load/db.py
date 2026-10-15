@@ -24,6 +24,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 import config as cfg_mod
+import guard
 
 console = Console()
 
@@ -550,9 +551,10 @@ def query(sql: str):
 
 @cli.command()
 @click.option("--days", "-d", default=7, show_default=True, help="Delete expired jobs older than N days")
-@click.confirmation_option(prompt="This will DELETE expired jobs from the database. Continue?")
-def cleanup(days: int):
+@guard.yes_option
+def cleanup(days: int, assume_yes: bool):
     """Delete expired jobs from the database."""
+    guard.ensure_writable(cfg_mod.load(), "delete expired jobs", assume_yes)
     conn, provider = get_connection()
     try:
         result = do_cleanup(conn, provider, days)

@@ -29,6 +29,8 @@ Usage:
     python cli.py e2e smoke              # Playwright smoke test
     python cli.py e2e all                # Full E2E suite
     python cli.py e2e screenshot --page /queues
+    python cli.py bulk volume --total 100000
+    python cli.py release-check --provider pg --profile quick --yes
 """
 from __future__ import annotations
 
@@ -52,6 +54,8 @@ import signalr as signalr_mod
 import monitor as monitor_mod
 import e2e as e2e_mod
 import stress as stress_mod
+import bulkseed as bulk_mod
+import release as release_mod
 
 
 @click.group()
@@ -73,6 +77,8 @@ main.add_command(signalr_mod.cli, name="signalr")
 main.add_command(monitor_mod.cli, name="monitor")
 main.add_command(e2e_mod.cli, name="e2e")
 main.add_command(stress_mod.cli, name="stress")
+main.add_command(bulk_mod.cli, name="bulk")
+main.add_command(release_mod.cli, name="release-check")
 
 
 @main.command("check-all")
