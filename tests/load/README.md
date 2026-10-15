@@ -34,6 +34,11 @@ class of problem this toolkit exists to surface.
   dotnet tool install --global dotnet-counters
   ```
   If it isn't found, tests still run — they just report client-side numbers only.
+- **dotnet-gcdump** for `release-check` tier R2, which counts live circuits and dashboard pages
+  after a full GC (dumps saved to `reports/heap-*.gcdump`):
+  ```bash
+  dotnet tool install --global dotnet-gcdump
+  ```
 - **dotnet-stack** for `release-check` tier S1, which counts the threads blocked in storage from
   the app's managed stacks (saved to `reports/stacks-*.txt`):
   ```bash
@@ -126,12 +131,12 @@ python cli.py release-check --provider pg --only R1,R2 --scale 0.05 --yes   # tr
 |------|--------|-----------|
 | P0 preflight | dashboard, `/healthz`, a server heartbeating in the DB, dotnet-counters attached | all answer |
 | R1 realtime | Home's `data-snapshot-at` in several tabs and Analytics ▸ Last 1h's `data-received-at`, with 50 extra hub clients | Home gap p95 ≤ 1.25 × `StatsPollingInterval`, Analytics ≤ 6.5 s, all clients connected |
-| R2 circuits | N circuits opened, held, closed | working set back within +15 %, connections back to baseline |
+| R2 circuits | two rounds of N circuits opened, held, closed | after a full GC (`dotnet-gcdump`) no `CircuitHost` and no dashboard page component is alive, connections back to baseline; working-set growth is reported (and judged, ≤ +10 % round 1 → round 2, only without `dotnet-gcdump`) |
 | M2 pause | concurrent pause/resume on `queue:paused` (SQL only) | no errors, no duplicate rows |
 | V1 volume | list pages and Search over a seeded job table | list p95 ≤ `list_p95_ms` (2 s), Search inside its timeout |
 | V2 grouping | Failed page groups with all, half and no stored fingerprints; Search `?exception=` | groups load inside the search timeout; the fingerprint search finds what the DB holds |
-| M1 group actions | Requeue all (cancelled after 2 s), then Delete all, with workers running | cancelled cleanly; deleted + skipped = snapshot |
-| S1 slow storage | the job table locked 10 s / free 5 s, 5 then 20 circuits, `/healthz*` polled (SQL only) | pool workers blocked in the storage driver ≤ `MaxConcurrentStorageCalls` + 3 at 5 and at 20 circuits (from `dotnet-stack`, 6 s into a lock), thread-pool threads under a ceiling, probes inside their timeout, Home refreshes after |
+| M1 group actions | on the seeded `StressJobs.Fail(0)` group (picked by its message): Requeue all (cancelled after 2 s), then Delete all, with workers running | cancelled cleanly (on the generic provider the snapshot is the 1,000 newest failures, so Requeue all may finish first); deleted + skipped = snapshot |
+| S1 slow storage | the job table locked 10 s / free 5 s (SQL Server: a schema lock, since its reads use NOLOCK), 5 then 20 circuits, `/healthz*` polled (SQL only) | pool workers blocked in the storage driver ≤ `MaxConcurrentStorageCalls` + 3 at 5 and at 20 circuits (from `dotnet-stack`, 6 s into a lock), thread-pool threads under a ceiling, probes inside their timeout, Home refreshes after |
 | S2 storage down | the test database refuses connections for a minute (SQL only) | no Blazor error UI, `/healthz` answers, everything recovers |
 | E1 soak | stress tier E for an hour (full profile, SQL only) | working set plateaus |
 | P1 package | `dotnet pack`, then a fresh app per target framework installs it | the page and static assets serve on net8, net9 and net10 |

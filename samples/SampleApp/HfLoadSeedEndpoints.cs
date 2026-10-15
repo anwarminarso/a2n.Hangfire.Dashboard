@@ -13,6 +13,7 @@ using SampleApp.SharedJobs;
 internal static class HfLoadSeedEndpoints
 {
     private const string IdleQueue = "hfload-idle";
+    private const string ServedQueue = "default";
 
     public static void MapHfLoadSeedEndpoints(this WebApplication app)
     {
@@ -63,15 +64,21 @@ internal static class HfLoadSeedEndpoints
             return Results.Ok(written);
         });
 
-        // Jobs still waiting in a served queue or processing, so the harness knows when the
-        // server has failed the jobs /failures enqueued.
+        // StressJobs jobs still waiting in the queue /failures uses or processing, so the harness
+        // knows when the server has failed them. Only StressJobs count: SampleApp's other jobs sit
+        // in queues its server doesn't listen to, or run for minutes, and would never reach 0.
         group.MapGet("/pending", (JobStorage storage) =>
         {
+            // Paged by the actual counts: some storages compute from + count and return nothing for
+            // a page size of int.MaxValue.
             var monitoring = storage.GetMonitoringApi();
-            var enqueued = monitoring.Queues()
-                .Where(q => !string.Equals(q.Name, IdleQueue, StringComparison.OrdinalIgnoreCase))
-                .Sum(q => q.Length);
-            return Results.Ok(new { pending = enqueued + monitoring.ProcessingCount(), failed = monitoring.FailedCount() });
+            var enqueuedCount = (int)Math.Min(monitoring.EnqueuedCount(ServedQueue), int.MaxValue / 2);
+            var processingCount = (int)Math.Min(monitoring.ProcessingCount(), int.MaxValue / 2);
+            var enqueued = enqueuedCount == 0 ? 0 : monitoring.EnqueuedJobs(ServedQueue, 0, enqueuedCount)
+                .Count(j => j.Value?.Job?.Type == typeof(StressJobs));
+            var processing = processingCount == 0 ? 0 : monitoring.ProcessingJobs(0, processingCount)
+                .Count(j => j.Value?.Job?.Type == typeof(StressJobs));
+            return Results.Ok(new { pending = enqueued + processing, failed = monitoring.FailedCount() });
         });
     }
 }

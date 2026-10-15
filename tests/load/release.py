@@ -225,6 +225,16 @@ class Browser:
         return page
 
     def close_pages(self):
+        # Navigate away first, as closing a real tab does: the page's unload sends Blazor's
+        # disconnect beacon and the circuit is disposed at once. Closing the context outright skips
+        # unload, so the server keeps each circuit as "disconnected" for
+        # DisconnectedCircuitRetentionPeriod (3 min) in case the browser comes back.
+        for ctx in self._contexts:
+            for page in list(ctx.pages):
+                try:
+                    page.goto("about:blank", timeout=5000)
+                except Exception:
+                    pass
         for ctx in self._contexts:
             try:
                 ctx.close()
@@ -289,8 +299,28 @@ def _wait_marker_change(page, selector: str, attr: str, timeout_s: float) -> flo
 
 # ─── P0 preflight ─────────────────────────────────────────────────────────────
 
+def _wait_for_dashboard(url: str, timeout_s: float = 120) -> float | None:
+    """Seconds until the dashboard answers (an app started just before the run may still be
+    starting), or None if it never does."""
+    started = time.monotonic()
+    while time.monotonic() - started < timeout_s:
+        try:
+            if httpx.get(url, timeout=10, follow_redirects=True).status_code < 500:
+                return time.monotonic() - started
+        except Exception:
+            pass
+        time.sleep(2)
+    return None
+
+
 def tier_p0(ctx: Context) -> TierResult:
     rows, notes, ok = [], [], True
+    waited = _wait_for_dashboard(ctx.dashboard)
+    if waited is not None and waited > 5:
+        notes.append(f"The dashboard answered after {waited:.0f} s (the app was still starting).")
+    # Sampling attaches to the SampleApp process found at startup; find it again now it's up.
+    if not ctx.sampler.available:
+        ctx.sampler = ServerMetricsSampler.autodetect(process_name=ctx.cfg.get("release", {}).get("process_name", "SampleApp"))
     with httpx.Client(timeout=30) as client:
         for label, url in (("dashboard", ctx.dashboard), ("/healthz", ctx.dashboard + "/healthz"),
                            ("/healthz/full", ctx.dashboard + "/healthz/full"),
@@ -305,6 +335,19 @@ def tier_p0(ctx: Context) -> TierResult:
             except Exception as e:
                 rows.append((label, f"error: {e}"))
                 ok = False
+    if not ctx.sql:
+        # No database to look a heartbeat up in: the seed endpoints prove the app is the
+        # InMemory SampleApp started for this run, not another one left on the port.
+        try:
+            r = httpx.get(f"{ctx.base}/hfload/pending", timeout=10)
+            rows.append(("/hfload seed endpoints", f"HTTP {r.status_code}"))
+            if r.status_code != 200:
+                ok = False
+                notes.append("The app on this port has no /hfload endpoints: it isn't the InMemory SampleApp "
+                             "started with --HfLoad:SeedEndpoints=true (is another app still on the port?).")
+        except Exception as e:
+            ok = False
+            rows.append(("/hfload seed endpoints", f"error: {e}"))
     if ctx.sql:
         try:
             from db import fetch_stats
@@ -397,51 +440,131 @@ def tier_r1(ctx: Context, browser: Browser) -> TierResult:
 
 # ─── R2 circuits ──────────────────────────────────────────────────────────────
 
+def _find_tool(name: str) -> str | None:
+    exe = shutil.which(name)
+    if exe:
+        return exe
+    candidate = Path.home() / ".dotnet" / "tools" / (f"{name}.exe" if os.name == "nt" else name)
+    return str(candidate) if candidate.exists() else None
+
+
+@dataclass
+class _HeapCensus:
+    heap_bytes: int = 0
+    circuits: int = 0          # live CircuitHost objects
+    pages: int = 0             # live dashboard page components (a2n.Hangfire.Dashboard.Components.Pages.*)
+    path: Path | None = None
+
+
+def _gcdump(ctx: Context, label: str) -> _HeapCensus | None:
+    """With dotnet-gcdump installed, a heap census after a full GC (the collection induces one)."""
+    exe = _find_tool("dotnet-gcdump")
+    if not exe or not ctx.sampler.pid:
+        return None
+    REPORTS_DIR.mkdir(exist_ok=True)
+    path = REPORTS_DIR / f"heap-{ctx.provider_key}-{label}-{datetime.now():%Y%m%d-%H%M%S}.gcdump"
+    try:
+        subprocess.run([exe, "collect", "-p", str(ctx.sampler.pid), "-o", str(path)],
+                       capture_output=True, text=True, timeout=180)
+        report = subprocess.run([exe, "report", str(path)], capture_output=True, text=True, timeout=180).stdout
+    except Exception:
+        return None
+    census = _HeapCensus(path=path)
+    # Lines: "<bytes>  <count>  <type>  [<assembly>]", the first one "<bytes>  GC Heap bytes".
+    for line in report.splitlines():
+        m = re.match(r"\s*([\d,]+)\s+([\d,]+)\s+(\S.*?)(?:\s+\[[^\]]+\])?\s*$", line)
+        if not m:
+            m_total = re.match(r"\s*([\d,]+)\s+GC Heap bytes", line)
+            if m_total:
+                census.heap_bytes = _int(m_total.group(1))
+            continue
+        count, type_name = _int(m.group(2)), m.group(3).split(" (Bytes")[0].strip()
+        if type_name == "Microsoft.AspNetCore.Components.Server.Circuits.CircuitHost":
+            census.circuits += count
+        elif type_name.startswith("a2n.Hangfire.Dashboard.Components.Pages.") and "<" not in type_name:
+            census.pages += count
+    path.with_suffix(".txt").write_text(report, encoding="utf-8")
+    return census
+
+
 def tier_r2(ctx: Context, browser: Browser) -> TierResult:
+    """Two identical rounds of N circuits opened, held and closed. What the first round leaves
+    behind is warm-up (JIT, caches, pools, and on InMemory the storage's own growth); a per-circuit
+    leak leaves the same again after the second. So the verdict is the growth from the end of
+    round 1 to the end of round 2; the first round's residual is reported as information."""
     p = ctx.p
     n, hold = p["r2_circuits"], p["r2_hold"]
-    warm, settle = 5, 30
-    window = 10 + warm * 2 + 15 + n * 0.3 + hold + settle + 10
+    settle = 30
+    window = 15 + 2 * (n * 0.3 + hold + settle) + 15
     rows, notes = [], []
     opened = 0
+    marks: list[float] = []   # end of each settle, seconds since t0
     with ctx.sampler.session(window) as session:
         t0 = time.monotonic()
-        # Warm-up: open and close a few circuits so JIT, caches and pools are in place.
-        for _ in range(warm):
-            _wait_interactive(browser.page(ctx.dashboard + "/"))
-        browser.close_pages()
-        time.sleep(15)
-        baseline_end = time.monotonic() - t0
-        for _ in range(n):
-            try:
-                browser.page(ctx.dashboard + "/")
-                opened += 1
-            except Exception as e:
-                notes.append(f"open failed: {str(e)[:80]}")
-            time.sleep(0.3)
-        time.sleep(hold)
-        browser.close_pages()
-        time.sleep(settle)
-        end = time.monotonic() - t0
+        time.sleep(10)
+        marks.append(time.monotonic() - t0)
+        for _ in range(2):
+            for _ in range(n):
+                try:
+                    browser.page(ctx.dashboard + "/")
+                    opened += 1
+                except Exception as e:
+                    notes.append(f"open failed: {str(e)[:80]}")
+                time.sleep(0.3)
+            time.sleep(hold)
+            browser.close_pages()
+            time.sleep(settle)
+            marks.append(time.monotonic() - t0)
+    # The direct leak check: after a full GC, no circuit and no dashboard page may outlive the
+    # closed tabs. The working set alone can't tell a leak from storage growth (InMemory keeps
+    # every job in the heap, and SampleApp's own jobs keep adding to it).
+    census = _gcdump(ctx, "r2-after")
     stats = _metrics_window(session)
     ws, conns = _samples(stats, "working_set_mb"), _samples(stats, "connections")
-    ok = opened == n
-    if ws:
-        base = statistics.mean(_window(ws, baseline_end - 5, baseline_end) or ws[:3])
-        final = statistics.mean(ws[-5:])
-        peak = max(ws)
-        residual = (final - base) / base * 100 if base else 0
-        rows += [("Working set baseline / peak / after close", f"{base:,.0f} / {peak:,.0f} / {final:,.0f} MB"),
-                 ("Residual after close (limit +15 %)", f"{residual:+.1f} %")]
-        ok &= residual <= 15
+    gc = _samples(stats, "gc_heap_mb")
+    ok = opened == 2 * n
+    rows.append(("Circuits opened (2 rounds)", f"{opened}/{2 * n}"))
+
+    def at(samples: list[float], mark: float) -> float | None:
+        w = _window(samples, mark - 5, mark)
+        return statistics.mean(w) if w else None
+
+    if ws and len(marks) == 3:
+        start, after1, after2 = (at(ws, m) for m in marks)
+        if None in (start, after1, after2):
+            ok = False
+            notes.append(f"dotnet-counters stopped early ({len(ws)} samples): the rounds weren't covered.")
+        else:
+            growth = (after2 - after1) / after1 * 100 if after1 else 0
+            judged_by_heap = census is not None
+            rows += [("Working set start / after round 1 / after round 2 / peak",
+                      f"{start:,.0f} / {after1:,.0f} / {after2:,.0f} / {max(ws):,.0f} MB"),
+                     ("Round 1 residual (warm-up, information)", f"{(after1 - start) / start * 100:+.1f} %"),
+                     ("Growth from round 1 to round 2" + (" (information)" if judged_by_heap else " (limit +10 %)"),
+                      f"{growth:+.1f} %")]
+            if not judged_by_heap:
+                ok &= growth <= 10
+            if gc:
+                g1, g2 = at(gc, marks[1]), at(gc, marks[2])
+                if g1 is not None and g2 is not None:
+                    rows.append(("GC heap after round 1 / round 2 (information)", f"{g1:,.0f} / {g2:,.0f} MB"))
     else:
-        notes.append("No server metrics: the working-set check wasn't made.")
+        # Without the working set this tier has no verdict to give.
+        ok = False
+        why = session.failure if session is not None else "dotnet-counters isn't attached (see P0)"
+        notes.append(f"No server metrics, so the working-set check wasn't made: {why}.")
     if conns:
-        base_c = min(_window(conns, baseline_end - 5, baseline_end) or conns[:3])
+        base_c = min(_window(conns, marks[0] - 5, marks[0]) or conns[:3])
         rows.append(("Connections baseline / peak / after close",
                      f"{base_c:,.0f} / {max(conns):,.0f} / {conns[-1]:,.0f}"))
         ok &= conns[-1] <= base_c + 2
-    rows.insert(0, ("Circuits opened", f"{opened}/{n}"))
+    if census is not None:
+        rows.append((f"After a full GC: live circuits / dashboard pages (limit 0 / 0) — {census.path.name}",
+                     f"{census.circuits} / {census.pages}; heap {census.heap_bytes / 1048576:,.0f} MB"))
+        ok &= census.circuits == 0 and census.pages == 0
+    else:
+        notes.append("dotnet-gcdump isn't installed, so the working set stands in for the leak check "
+                     "and storage growth can fail it: `dotnet tool install --global dotnet-gcdump`.")
     if session:
         session.cleanup()
     return TierResult("R2", "Circuits open and close", ok,
@@ -539,7 +662,16 @@ def _search(page, ctx: Context, query: str) -> tuple[float, str]:
 
 def _search_outcome(page, ctx: Context, started: float) -> tuple[float, str]:
     timeout = (ctx.settings.search_timeout_s + 30) * 1000
-    page.locator("text=/result(s)? found|Search Timed Out|Search Error|No jobs|No failed jobs/").first.wait_for(timeout=timeout)
+    outcome = page.locator("text=/result(s)? found|Search Timed Out|Search Error|No results found/").first
+    # A search opened from a URL is prerendered and then run again once the circuit is
+    # interactive, so the first outcome can disappear while the second search runs. Read it
+    # only once the page is interactive and the outcome is there again.
+    outcome.wait_for(timeout=timeout)
+    try:
+        _wait_interactive(page, timeout_ms=30000)
+    except Exception:
+        pass
+    outcome.wait_for(timeout=timeout)
     ms = (time.perf_counter() - started) * 1000
     if page.locator("text=Search Timed Out").count():
         return ms, "timed out"
@@ -549,7 +681,9 @@ def _search_outcome(page, ctx: Context, started: float) -> tuple[float, str]:
         return ms, "0 found"
     # The count is formatted in the server's culture (1,000 or 1.000); normalize to 1,000.
     strong = page.locator("strong").filter(has_text=re.compile(r"^[\d.,\u00a0 ]+\+?$")).first
-    if not strong.count():
+    try:
+        strong.wait_for(timeout=10000)
+    except Exception:
         return ms, "? found"
     raw = strong.inner_text().strip()
     digits = re.sub(r"\D", "", raw)
@@ -676,9 +810,14 @@ def tier_v2(ctx: Context, browser: Browser) -> TierResult:
 
 # ─── M1 group actions ─────────────────────────────────────────────────────────
 
-def _select_largest_group(page, ctx: Context) -> str:
+# StressJobs.Fail(0)'s message: M1 seeds its big group with kind 0. Picking the group by it, not
+# by size, keeps M1 off other large groups (V1's synthetic failures are one 12,000-job group).
+_M1_GROUP_MESSAGE = "The invoice was rejected by the gateway"
+
+
+def _select_m1_group(page, ctx: Context) -> str:
     _open_groups(page, ctx)
-    page.locator(".hf-exception-option").first.click()
+    page.locator(".hf-exception-option", has_text=_M1_GROUP_MESSAGE).first.click()
     total = page.locator("[data-testid=group-total]")
     total.wait_for(timeout=(ctx.settings.search_timeout_s + 30) * 1000)
     return total.inner_text().strip()
@@ -717,20 +856,27 @@ def tier_m1(ctx: Context, browser: Browser) -> TierResult:
     page = browser.page(timeout_ms=120000)
     ok = not notes
     try:
-        before = _select_largest_group(page, ctx)
+        before = _select_m1_group(page, ctx)
         rows.append(("Group selected", before))
         secs, text = _run_group_action(page, ctx, "requeue-all", "Requeue all", cancel_after_s=2)
         rows.append(("Requeue all, cancelled after ~2 s", f"{secs:.1f}s → {text}"))
         if text.startswith("Requeued"):
-            # Finished inside the 2 s: nothing to cancel. Only acceptable for a small group.
-            notes.append("Requeue all finished before the cancel; the group is too small to test cancelling.")
-            ok &= n < 5000 and "error" not in text.lower()
+            # Finished inside the 2 s: nothing to cancel. Acceptable for a small group, and on the
+            # generic provider, whose snapshot is at most the 1,000 newest failures it grouped
+            # (README "Requeue or delete a whole group").
+            m_snap = re.search(r"of (\d[\d.,\u00a0]*) jobs", text)
+            snapshot = _int(m_snap.group(1)) if m_snap else 0
+            generic_cap = not ctx.sql and snapshot <= 1000
+            notes.append("Requeue all finished before the cancel"
+                         + (": the generic provider acts on the 1,000 newest failures it grouped." if generic_cap
+                            else "; the group is too small to test cancelling."))
+            ok &= (n < 5000 or generic_cap) and "error" not in text.lower()
         else:
             ok &= text.startswith("Cancelled after")
 
         page.reload(wait_until="domcontentloaded")
         _wait_interactive(page)
-        group = _select_largest_group(page, ctx)
+        group = _select_m1_group(page, ctx)
         secs, text = _run_group_action(page, ctx, "delete-all", "Delete all", cancel_after_s=None)
         rows.append(("Delete all", f"{secs:.1f}s → {text}"))
         # Counts are formatted in the server's culture: 1,000 or 1.000.
@@ -757,7 +903,9 @@ def tier_m1(ctx: Context, browser: Browser) -> TierResult:
 # ─── S1 slow storage ──────────────────────────────────────────────────────────
 
 class _LockCycler(threading.Thread):
-    """Holds an exclusive lock on the job table for `hold_s`, releases it for `gap_s`, repeatedly."""
+    """Locks the job table for `hold_s`, releases it for `gap_s`, repeatedly: PostgreSQL ACCESS
+    EXCLUSIVE; SQL Server a schema-modification lock (an uncommitted column add), since its
+    monitoring reads use NOLOCK and pass an exclusive table lock."""
 
     def __init__(self, ctx: Context, hold_s: float = 10, gap_s: float = 5):
         super().__init__(daemon=True)
@@ -787,8 +935,10 @@ class _LockCycler(threading.Thread):
         try:
             while not self.stop_evt.is_set():
                 if provider == "sqlserver":
-                    cur.execute("SELECT TOP 1 1 FROM [HangFire].Job WITH (TABLOCKX, HOLDLOCK)")
-                    cur.fetchall()
+                    # Hangfire.SqlServer's monitoring API reads WITH (NOLOCK), which an exclusive
+                    # table lock doesn't block. A schema change does: NOLOCK still takes a
+                    # schema-stability lock. The column add is rolled back with the transaction.
+                    cur.execute("ALTER TABLE [HangFire].[Job] ADD [hfload_s1_lock] int NULL")
                 else:
                     cur.execute("LOCK TABLE hangfire.job IN ACCESS EXCLUSIVE MODE")
                 self.held_since = time.monotonic()
@@ -1179,9 +1329,56 @@ def _run(cmd: list[str], cwd: Path, timeout: int = 900, env: dict | None = None)
     return r.returncode, (r.stdout + r.stderr)[-2000:]
 
 
+def _probe_p1_app(out_dir: Path, name: str, port: int, run_env: dict, app_log: Path):
+    """Start a published P1 app, check the dashboard page, _content and blazor.web.js, stop it.
+    Returns (page_ok, assets_ok, framework_ok, process, last log lines)."""
+    log_handle = open(app_log, "w", encoding="utf-8", errors="replace")
+    proc = subprocess.Popen(["dotnet", str(out_dir / f"{name}.dll"), "--urls", f"http://localhost:{port}"],
+                            cwd=out_dir, env=run_env, stdout=log_handle, stderr=subprocess.STDOUT)
+    page_ok = assets_ok = framework_ok = False
+    root = f"http://localhost:{port}/hangfire"
+    try:
+        for _ in range(90):
+            if proc.poll() is not None:
+                break  # exited: the log says why
+            try:
+                r = httpx.get(root, timeout=10, follow_redirects=True)
+                page_ok = r.status_code == 200 and "blazor.web.js" in r.text
+                if page_ok:
+                    assets = [f"{root}/_content/css/app.css", f"{root}/_content/lib/bootstrap/css/bootstrap.min.css",
+                              f"{root}/_content/js/charts.js"]
+                    assets_ok = all(httpx.get(a, timeout=10).status_code == 200 for a in assets)
+                    framework_ok = httpx.get(f"{root}/_framework/blazor.web.js", timeout=10).status_code == 200
+                    break
+            except Exception:
+                pass
+            time.sleep(1)
+    finally:
+        exited_on_its_own = proc.poll() is not None
+        if not exited_on_its_own:
+            proc.terminate()
+            try:
+                proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+        log_handle.close()
+    tail = app_log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-15:]
+    if not exited_on_its_own:
+        proc.returncode = None  # stopped by us, not a crash
+    return page_ok, assets_ok, framework_ok, proc, tail
+
+
 def tier_p1(ctx: Context) -> TierResult:
     rows, notes = [], []
-    work = Path(tempfile.mkdtemp(prefix="hfload-p1-"))
+    # Under reports/ (git-ignored) rather than %TEMP%: Windows Application Control can block a
+    # freshly built, unsigned assembly loaded from the temp folder.
+    REPORTS_DIR.mkdir(exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="p1-work-", dir=REPORTS_DIR))
+    # Inside the repo, MSBuild would import the repo's Directory.Build.* files into the test apps
+    # and could hide exactly what P1 checks. Empty ones here stop the search.
+    for name in ("Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props"):
+        (work / name).write_text("<Project />\n", encoding="utf-8")
     feed = work / "feed"
     # The local feed plus nuget.org for the dependencies, and a package cache of its own, so a
     # same-version package cached from an earlier pack can't stand in for this one.
@@ -1239,33 +1436,35 @@ def tier_p1(ctx: Context) -> TierResult:
             notes.append(out[-400:])
             continue
         run_env = {**env, "ASPNETCORE_ENVIRONMENT": "Production"}
-        proc = subprocess.Popen(["dotnet", str(out_dir / f"{app.name}.dll"), "--urls", f"http://localhost:{port}"],
-                                cwd=out_dir, env=run_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        try:
-            page_ok = assets_ok = framework_ok = False
-            root = f"http://localhost:{port}/hangfire"
-            for _ in range(60):
-                try:
-                    r = httpx.get(root, timeout=10, follow_redirects=True)
-                    page_ok = r.status_code == 200 and "blazor.web.js" in r.text
-                    if page_ok:
-                        assets = [f"{root}/_content/css/app.css", f"{root}/_content/lib/bootstrap/css/bootstrap.min.css",
-                                  f"{root}/_content/js/charts.js"]
-                        assets_ok = all(httpx.get(a, timeout=10).status_code == 200 for a in assets)
-                        framework_ok = httpx.get(f"{root}/_framework/blazor.web.js", timeout=10).status_code == 200
-                        break
-                except Exception:
-                    pass
-                time.sleep(1)
-            rows.append((tfm, f"page {'200' if page_ok else 'FAILED'}, _content {'200' if assets_ok else 'FAILED'}, "
-                              f"blazor.web.js {'200' if framework_ok else 'FAILED'}"))
-            ok &= page_ok and assets_ok and framework_ok
-        finally:
-            proc.terminate()
-            try:
-                proc.wait(timeout=20)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+        app_log = app / "run.log"
+        # Windows Application Control (Smart App Control) sometimes blocks a freshly built,
+        # unsigned assembly on its first loads (0x800711C7), which says nothing about the package.
+        # That one failure is retried; it is reported as the environment's if it persists.
+        blocked = False
+        for attempt in range(3):
+            page_ok, assets_ok, framework_ok, proc, tail = _probe_p1_app(out_dir, app.name, port, run_env, app_log)
+            blocked = proc.returncode is not None and any("Application Control policy has blocked" in line for line in tail)
+            if not blocked:
+                break
+            time.sleep(10)
+        if blocked:
+            rows.append((tfm, "not run: Windows Application Control blocked the test app (environment, not the package)"))
+            ok = False
+            notes.append(f"{tfm}: the test app's own dll was blocked by Windows Application Control 3 times "
+                         "(0x800711C7). Rerun P1, or allow the reports/ folder.")
+            continue
+        rows.append((tfm, f"page {'200' if page_ok else 'FAILED'}, _content {'200' if assets_ok else 'FAILED'}, "
+                          f"blazor.web.js {'200' if framework_ok else 'FAILED'}"
+                          + (f" (after {attempt} blocked start{'s' if attempt != 1 else ''})" if attempt else "")))
+        ok &= page_ok and assets_ok and framework_ok
+        if not (page_ok and assets_ok and framework_ok):
+            if proc.returncode is not None:
+                what = f"exited with code {proc.returncode}"
+            elif page_ok:
+                what = "served the page but not everything it needs"
+            else:
+                what = "didn't serve the dashboard page in 90 s"
+            notes.append(f"{tfm} app on port {port} {what}. Last log lines:\n" + "\n".join(tail))
     if not keep:
         shutil.rmtree(work, ignore_errors=True)
     return TierResult("P1", "Package drop-in (net8/9/10)", ok, "installs and serves on every target" if ok else "see rows",

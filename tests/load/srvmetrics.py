@@ -252,11 +252,14 @@ class _Session:
         creationflags = 0
         if sys.platform == "win32":
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+        # The tool's own output, so a session that produced no CSV can say why.
+        self._log_path = self._csv_path + ".log"
+        self._log = open(self._log_path, "w", encoding="utf-8", errors="replace")
         self._proc = subprocess.Popen(
             cmd,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=self._log,
+            stderr=subprocess.STDOUT,
             creationflags=creationflags,
         )
         self._started = True
@@ -282,6 +285,24 @@ class _Session:
                 except Exception:
                     pass
         time.sleep(0.5)
+        try:
+            self._log.close()
+        except Exception:
+            pass
+
+    @property
+    def failure(self) -> str | None:
+        """Why no samples were collected (exit code and the tool's last output), or None if there were."""
+        if self._csv_path and os.path.exists(self._csv_path) and os.path.getsize(self._csv_path) > 0:
+            return None
+        code = self._proc.returncode if self._proc is not None else None
+        tail = ""
+        try:
+            with open(self._log_path, encoding="utf-8", errors="replace") as f:
+                tail = " | ".join(line.strip() for line in f.read().strip().splitlines()[-4:] if line.strip())
+        except (OSError, AttributeError):
+            pass
+        return f"dotnet-counters exited with code {code} and wrote no CSV" + (f": {tail}" if tail else "")
 
     def summarize(self) -> dict[str, CounterStats]:
         result: dict[str, CounterStats] = {}
@@ -314,11 +335,12 @@ class _Session:
         return self._csv_path
 
     def cleanup(self):
-        if self._csv_path and os.path.exists(self._csv_path):
-            try:
-                os.remove(self._csv_path)
-            except OSError:
-                pass
+        for path in (self._csv_path, getattr(self, "_log_path", None)):
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 
 class ServerMetricsSampler:

@@ -309,17 +309,47 @@ def pending_stress_jobs(conn, provider: str) -> int:
         conn.commit()
 
 
+def other_queued_jobs(conn, provider: str) -> int:
+    """Non-StressJobs jobs waiting in any queue but the idle one. A server dequeues by job id, so
+    older leftovers (e.g. from an earlier run that was stopped mid-way) are worked off first."""
+    cur = conn.cursor()
+    try:
+        if provider == "sqlserver":
+            cur.execute(f"""
+                SELECT COUNT(*) FROM [HangFire].JobQueue q JOIN [HangFire].Job j ON j.Id = q.JobId
+                WHERE q.Queue <> ? AND q.FetchedAt IS NULL AND NOT ({_marker_where(provider)})
+            """, (IDLE_QUEUE,))
+        else:
+            cur.execute(f"""
+                SELECT COUNT(*) FROM hangfire.jobqueue q JOIN hangfire.job j ON j.id = q.jobid
+                WHERE q.queue <> %s AND q.fetchedat IS NULL AND NOT ({_marker_where(provider)})
+            """, (IDLE_QUEUE,))
+        return int(cur.fetchone()[0])
+    finally:
+        cur.close()
+        conn.commit()
+
+
 def wait_until_processed(conn, provider: str, timeout_s: float = 1800, poll_s: float = 5.0) -> tuple[bool, float]:
     """Block until no StressJobs job is waiting in a served queue; returns (done, seconds)."""
     started = time.monotonic()
     last = None
+    last_other_report = 0.0
     while time.monotonic() - started < timeout_s:
         pending = pending_stress_jobs(conn, provider)
         if pending == 0:
             return True, time.monotonic() - started
+        now = time.monotonic()
         if pending != last:
             console.print(f"  [dim]{pending:,} stress jobs still to process …[/dim]")
             last = pending
+            last_other_report = now
+        elif now - last_other_report >= 60:
+            # No progress for a minute: say why, so a backlog isn't mistaken for a stall.
+            other = other_queued_jobs(conn, provider)
+            if other:
+                console.print(f"  [dim]… {other:,} other queued jobs are being worked off first[/dim]")
+            last_other_report = now
         time.sleep(poll_s)
     return False, time.monotonic() - started
 
