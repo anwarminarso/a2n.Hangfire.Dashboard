@@ -22,6 +22,10 @@ public sealed class HealthProbeStarvationTests : IDisposable
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
 
+    // The tests of a timeout use this budget. The others keep the defaults (a 10 s budget, Degraded
+    // from 1 s): a busy CI runner can take more than 200 ms to start the first read (#86).
+    private const int ShortTimeoutMs = 200;
+
     private readonly ManualResetEventSlim _releaseStatistics = new(initialState: true);
     private readonly ManualResetEventSlim _releaseQueues = new(initialState: true);
     private readonly Mock<IMonitoringApi> _api = new();
@@ -50,8 +54,6 @@ public sealed class HealthProbeStarvationTests : IDisposable
         _api.Setup(m => m.HourlyFailedJobs()).Returns(new Dictionary<DateTime, long>());
         _storage.Setup(s => s.GetMonitoringApi()).Returns(_api.Object);
 
-        _options.HealthCheckThresholds.StorageProbeTimeoutMs = 200;
-
         var services = new ServiceCollection();
         services.AddSingleton(_options);
         services.AddSingleton(new HangfireMonitorService(_storage.Object));
@@ -77,6 +79,9 @@ public sealed class HealthProbeStarvationTests : IDisposable
     [Fact]
     public async Task AStalledStorage_CostsOneRead_HoweverOftenTheProbeRuns()
     {
+        _options.HealthCheckThresholds.StorageProbeTimeoutMs = ShortTimeoutMs;
+        // Keeps the read that finishes below fresh, however long the runner takes to get there.
+        _options.StatsPollingInterval = 60_000;
         _releaseStatistics.Reset();
         var service = CreateService();
 
@@ -102,6 +107,7 @@ public sealed class HealthProbeStarvationTests : IDisposable
     [Fact]
     public async Task WhenTheProbeTimesOut_TheOtherChecksAreSkipped_WithoutReadingStorage()
     {
+        _options.HealthCheckThresholds.StorageProbeTimeoutMs = ShortTimeoutMs;
         _releaseStatistics.Reset();
 
         var report = await CreateService().CheckFullAsync().WaitAsync(Wait);
@@ -148,6 +154,15 @@ public sealed class HealthProbeStarvationTests : IDisposable
     [Fact]
     public async Task ACheckThatHangs_TimesOut_AndTheOthersStillRun()
     {
+        // The other checks' reads have to finish within the same budget, so it's longer than
+        // ShortTimeoutMs. The storage probe reuses a fresh snapshot instead of a cold first read.
+        _options.HealthCheckThresholds.StorageProbeTimeoutMs = 1_000;
+        Feed.PublishMetrics(new DashboardMetricsSnapshot
+        {
+            Statistics = new StatisticsDto(),
+            Servers = [new ServerDto { Name = "s", Heartbeat = DateTime.UtcNow }],
+            CapturedAtUtc = DateTime.UtcNow,
+        });
         _releaseQueues.Reset();
 
         var report = await CreateService().CheckFullAsync().WaitAsync(Wait);
@@ -162,6 +177,9 @@ public sealed class HealthProbeStarvationTests : IDisposable
     [Fact]
     public void TheSynchronousApi_StillReturnsTheFullReport()
     {
+        // How long the first read takes on a busy runner isn't what this tests.
+        _options.HealthCheckThresholds.StorageResponseTimeWarnMs = 5_000;
+
         var report = CreateService().CheckFull();
 
         Assert.Equal(6, report.Checks.Count);
