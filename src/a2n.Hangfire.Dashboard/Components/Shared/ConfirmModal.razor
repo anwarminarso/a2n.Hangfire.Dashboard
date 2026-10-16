@@ -1,18 +1,26 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
 @if (Visible)
 {
     <div class="modal-backdrop fade show"></div>
-    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+    @* Bootstrap's modal markup without Bootstrap's JavaScript, so the dialog handles the keyboard
+       itself: Escape cancels, and hfModal (nav.js) moves focus to Cancel when it opens, keeps Tab and
+       Shift+Tab inside it, and gives focus back when it closes. *@
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true"
+         aria-labelledby="@TitleId" aria-describedby="@MessageId"
+         @ref="_dialog" @onkeydown="HandleKeyDown">
         <div class="modal-dialog modal-dialog-centered modal-sm" role="document">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">@Title</h5>
-                    <button type="button" class="btn-close" @onclick="OnCancel"></button>
+                    <h5 class="modal-title" id="@TitleId">@Title</h5>
+                    <button type="button" class="btn-close" aria-label="Close" @onclick="OnCancel"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="mb-0">@Message</p>
+                    <p class="mb-0" id="@MessageId">@Message</p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="OnCancel">Cancel</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" @ref="_cancelButton" @onclick="OnCancel">Cancel</button>
                     <button type="button" class="btn @ConfirmClass btn-sm" @onclick="OnConfirm">
                         <i class="bi bi-@ConfirmIcon"></i> @ConfirmText
                     </button>
@@ -33,4 +41,58 @@
     [Parameter] public string ConfirmClass { get; set; } = "btn-danger";
     [Parameter] public EventCallback OnConfirm { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
+
+    // Per instance, since a page can hold more than one dialog (the Failed page has two).
+    private readonly string _id = "hf-confirm-" + Guid.NewGuid().ToString("N")[..8];
+    private string TitleId => _id + "-title";
+    private string MessageId => _id + "-message";
+
+    private ElementReference _dialog;
+    private ElementReference _cancelButton;
+
+    // True while hfModal has the dialog open, that is, focus was moved into it and is owed back.
+    private bool _open;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            await OnCancel.InvokeAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Visible == _open)
+            return;
+
+        _open = Visible;
+        // Cancel gets focus, not the confirm button: it's the safe choice for a destructive action,
+        // and aria-describedby has the message read out with it.
+        if (_open)
+            await InvokeModal("hfModal.open", _id, _dialog, _cancelButton);
+        else
+            await InvokeModal("hfModal.close", _id);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // A page that removes the dialog rather than hiding it (the Failed page's group actions)
+        // closes it here.
+        if (!_open)
+            return;
+
+        _open = false;
+        await InvokeModal("hfModal.close", _id);
+    }
+
+    private async Task InvokeModal(string identifier, params object[] args)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync(identifier, args);
+        }
+        catch (Exception)
+        {
+            // Only moves focus; the dialog still works without it, also when the circuit is gone.
+        }
+    }
 }
