@@ -347,15 +347,21 @@ SELECT COUNT(*)
 FROM {_jobTable} j
 WHERE j.statename = 'Failed'";
 
-        // The ones that failed last. No index orders jobs by stateid, so this reads every failed job
-        // without a stored fingerprint rather than stopping at @Limit, as walking the primary key did.
+        // The ones that failed last. No index orders jobs by stateid, so every failed job without a
+        // stored fingerprint is read rather than stopping at @Limit, as walking the primary key did.
+        // Only their id and stateid are sorted, though: the @Limit picked are then joined to the wide
+        // columns and their state, as a group's page is, rather than carrying them through the sort.
         var fallbackSql = $@"
 SELECT {FailedJobRowColumns}
-FROM {_jobTable} j
+FROM (
+    SELECT j.id, j.stateid
+    FROM {_jobTable} j
+    WHERE {withoutStoredFingerprint}
+    ORDER BY j.stateid DESC NULLS LAST, j.id DESC
+    LIMIT @Limit) m
+INNER JOIN {_jobTable} j ON j.id = m.id
 LEFT JOIN {_stateTable} s ON s.id = j.stateid
-WHERE {withoutStoredFingerprint}
-ORDER BY j.stateid DESC, j.id DESC
-LIMIT @Limit";
+ORDER BY m.stateid DESC NULLS LAST, m.id DESC";
 
         var samplesSql = $@"
 SELECT {FailedJobRowColumns}
@@ -416,11 +422,11 @@ WHERE j.id = ANY(@Ids) AND j.statename = 'Failed'";
 SELECT {FailedJobRowColumns}
 FROM (
     {FailureGroupMembersSql}
-    ORDER BY stateid DESC, id DESC
+    ORDER BY stateid DESC NULLS LAST, id DESC
     LIMIT @Count) m
 INNER JOIN {_jobTable} j ON j.id = m.id
 LEFT JOIN {_stateTable} s ON s.id = j.stateid
-ORDER BY m.stateid DESC, m.id DESC";
+ORDER BY m.stateid DESC NULLS LAST, m.id DESC";
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
@@ -447,7 +453,7 @@ ORDER BY m.stateid DESC, m.id DESC";
         // read however large the group is. The order comes from job.stateid.
         var sql = $@"
 {FailureGroupMembersSql}
-ORDER BY stateid DESC, id DESC";
+ORDER BY stateid DESC NULLS LAST, id DESC";
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);

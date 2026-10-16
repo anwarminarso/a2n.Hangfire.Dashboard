@@ -337,14 +337,21 @@ SELECT COUNT_BIG(*)
 FROM {jobTable} j
 WHERE j.StateName = 'Failed';";
 
-        // The ones that failed last. No index orders jobs by StateId, so this reads every failed job
-        // without a stored fingerprint rather than stopping at @Limit, as walking the primary key did.
+        // The ones that failed last. No index orders jobs by StateId, so every failed job without a
+        // stored fingerprint is read rather than stopping at @Limit, as walking the primary key did.
+        // Only their Id and StateId are sorted, though: the @Limit picked are then joined to the wide
+        // columns and their state, as a group's page is, rather than carrying them through the sort.
         var fallbackSql = $@"
-SELECT TOP (@Limit) {FailedJobRowColumns}
-FROM {jobTable} j
+SELECT {FailedJobRowColumns}
+FROM (
+    SELECT TOP (@Limit) j.Id, j.StateId
+    FROM {jobTable} j
+    WHERE {withoutStoredFingerprint}
+    ORDER BY j.StateId DESC, j.Id DESC
+) m
+INNER JOIN {jobTable} j ON j.Id = m.Id
 {CurrentStateJoin(stateTable)}
-WHERE {withoutStoredFingerprint}
-ORDER BY j.StateId DESC, j.Id DESC;";
+ORDER BY m.StateId DESC, m.Id DESC;";
 
         var samplesSql = $@"
 SELECT {FailedJobRowColumns}

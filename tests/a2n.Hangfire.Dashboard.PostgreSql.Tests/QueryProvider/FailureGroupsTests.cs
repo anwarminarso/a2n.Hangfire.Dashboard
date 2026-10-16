@@ -393,6 +393,41 @@ public class FailureGroupsTests
     }
 
     [SkippableFact]
+    public async Task AStoredMemberWithoutAStateId_IsOrderedLast()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        // A Failed job practically always has a state id; one without it is ordered as the oldest
+        // failure. PostgreSQL sorts NULL highest, so a descending order needs NULLS LAST to agree with SQL Server.
+        await using var schema = await ThrowawaySchema.CreateAsync(_fixture.ConnectionString, total: 4, storedJobs: 4);
+        await schema.ClearStateIdAsync(4);
+        var provider = new PostgreSqlQueryProvider(_fixture.ConnectionString, schema.Name);
+
+        var group = Assert.Single((await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None)).Groups);
+
+        Assert.Equal("3", group.NewestJobId);
+        var order = new[] { "3", "2", "1", "4" };
+        Assert.Equal(order, (await provider.GetFailureGroupJobsAsync(group, 10, CancellationToken.None)).Select(j => j.JobId));
+        Assert.Equal(order, await provider.GetFailureGroupJobIdsAsync(group, CancellationToken.None));
+    }
+
+    [SkippableFact]
+    public async Task AFailedJobWithoutAStateId_IsReadLastByTheFallback()
+    {
+        PostgreSqlFixture.RequireAvailable();
+        const int total = JobFilterCriteria.CountLimit + 1;
+        // The newest job has no state id, so it is the one a partial result leaves out.
+        await using var schema = await ThrowawaySchema.CreateAsync(_fixture.ConnectionString, total, storedJobs: 0);
+        await schema.ClearStateIdAsync(total);
+        var provider = new PostgreSqlQueryProvider(_fixture.ConnectionString, schema.Name);
+
+        var result = await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None);
+
+        Assert.True(result.IsPartial);
+        var group = Assert.Single(result.Groups);
+        Assert.Equal(Enumerable.Range(1, JobFilterCriteria.CountLimit).Reverse().Select(id => id.ToString()), group.ComputedJobIds);
+    }
+
+    [SkippableFact]
     public async Task GroupJobIds_OfAPartialResult_AreTheStoredMembersAndTheFallbackMembersRead()
     {
         PostgreSqlFixture.RequireAvailable();
@@ -552,6 +587,12 @@ SELECT g, @Name, @Fingerprint FROM generate_series(1, @Stored) g;",
                 await schema.DisposeAsync();
                 throw;
             }
+        }
+
+        public async Task ClearStateIdAsync(long jobId)
+        {
+            await using var connection = new NpgsqlConnection(_connectionString);
+            await connection.ExecuteAsync($@"UPDATE ""{Name}"".job SET stateid = NULL WHERE id = @Id", new { Id = jobId });
         }
 
         public async ValueTask DisposeAsync()
