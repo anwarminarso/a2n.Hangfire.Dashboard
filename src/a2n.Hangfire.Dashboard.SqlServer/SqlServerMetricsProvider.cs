@@ -409,7 +409,7 @@ FROM (
                JSON_VALUE(s.Data, '$.Queue'),
                'default') AS QueueName
     FROM {Table("Job")} j
-    LEFT JOIN {Table("State")} s ON s.Id = j.StateId
+    LEFT JOIN {Table("State")} s ON s.JobId = j.Id AND s.Id = j.StateId
     WHERE j.StateName IN ('Enqueued', 'Processing')
 ) q
 GROUP BY q.QueueName";
@@ -540,7 +540,7 @@ SELECT TOP (@Count)
        s.Reason
 FROM {Table("Job")} j
 INNER JOIN {Table("JobParameter")} jp ON jp.JobId = j.Id AND jp.Name = 'RecurringJobId'
-INNER JOIN {Table("State")} s ON s.Id = j.StateId
+INNER JOIN {Table("State")} s ON s.JobId = j.Id AND s.Id = j.StateId
 WHERE jp.Value IN @RecurringJobIdValues
   AND s.Name IN ('Succeeded', 'Failed')
 ORDER BY s.CreatedAt DESC";
@@ -591,7 +591,7 @@ WITH Ranked AS (
            ROW_NUMBER() OVER (PARTITION BY jp.Value ORDER BY s.CreatedAt DESC) AS rn
     FROM {Table("Job")} j
     INNER JOIN {Table("JobParameter")} jp ON jp.JobId = j.Id AND jp.Name = 'RecurringJobId'
-    INNER JOIN {Table("State")} s ON s.Id = j.StateId
+    INNER JOIN {Table("State")} s ON s.JobId = j.Id AND s.Id = j.StateId
     WHERE jp.Value IN @RecurringJobIdValues
       AND s.Name IN ('Succeeded', 'Failed')
 )
@@ -1046,7 +1046,7 @@ WITH Ranked AS (
            ROW_NUMBER() OVER (PARTITION BY jp.Value ORDER BY s.CreatedAt DESC) AS rn
     FROM {Table("Job")} j
     INNER JOIN {Table("JobParameter")} jp ON jp.JobId = j.Id AND jp.Name = 'RecurringJobId'
-    INNER JOIN {Table("State")} s ON s.Id = j.StateId
+    INNER JOIN {Table("State")} s ON s.JobId = j.Id AND s.Id = j.StateId
     WHERE jp.Value IN @RecurringJobIdValues
       AND s.Name IN ('Succeeded', 'Failed')
 )

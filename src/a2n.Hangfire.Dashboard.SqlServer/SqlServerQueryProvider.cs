@@ -73,7 +73,9 @@ JSON_VALUE(s.[Data], '$.ExceptionMessage') AS ExceptionMessage";
         var contentCte = BuildContentSearchCte(criteria, parameters);
 
         // ═══ Final: Assemble ═══
-        var stateJoin = $"LEFT JOIN {stateTable} s ON s.Id = j.StateId";
+        // State's clustered key is (JobId, Id). On Id alone SQL Server can't seek it, and reads the
+        // whole State table (every state of every job) however few rows the query returns.
+        var stateJoin = $"LEFT JOIN {stateTable} s ON s.JobId = j.Id AND s.Id = j.StateId";
         var whereClause = conditions.Count > 0
             ? "WHERE " + string.Join(" AND ", conditions)
             : "";
@@ -150,7 +152,7 @@ WHERE st.[Key] = @TagKey
 SELECT {JobColumns}
 FROM {setTable} st
 INNER JOIN {jobTable} j ON j.Id = TRY_CAST(st.Value AS BIGINT)
-LEFT JOIN {stateTable} s ON s.Id = j.StateId
+LEFT JOIN {stateTable} s ON s.JobId = j.Id AND s.Id = j.StateId
 WHERE st.[Key] = @TagKey
   AND TRY_CAST(st.Value AS BIGINT) IS NOT NULL
 ORDER BY j.CreatedAt DESC
@@ -211,7 +213,7 @@ WHERE j.StateName = @StateName;";
         var querySql = $@"
 SELECT {JobColumns}
 FROM {jobTable} j
-LEFT JOIN {stateTable} s ON s.Id = j.StateId
+LEFT JOIN {stateTable} s ON s.JobId = j.Id AND s.Id = j.StateId
 WHERE j.StateName = @StateName
 ORDER BY j.CreatedAt DESC
 OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
@@ -647,7 +649,7 @@ ORDER BY m.Id DESC;";
             unionParts.Add($@"
                 SELECT j2.Id
                 FROM {jobTable} j2
-                INNER JOIN {stateTable} s2 ON s2.Id = j2.StateId
+                INNER JOIN {stateTable} s2 ON s2.JobId = j2.Id AND s2.Id = j2.StateId
                 WHERE s2.[Data] IS NOT NULL
                   AND s2.[Data] LIKE @ContentPattern");
         }
