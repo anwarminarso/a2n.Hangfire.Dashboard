@@ -169,15 +169,14 @@ dependency. `Hubs/DashboardHub` is plain SignalR — its only surface is
 | `branch.UseWebSockets()` | `FrameworkScriptMiddleware` (serves `_framework/blazor.web.js`) |
 | `DashboardMiddleware` (auth, antiforgery, `_content/*`) | `MapRazorComponents<DashboardApp>().AddInteractiveServerRenderMode()` |
 | `MapHub<DashboardHub>("/hubs/dashboard")` | `AddRazorComponents().AddInteractiveServerComponents()` |
-| All service registrations, storage adapters, hosted broadcast services | `HtmlShellRenderer` / `DashboardApp.razor` (hardcodes Blazor + Bootstrap + Chart.js tags) |
+| All service registrations, storage adapters, hosted broadcast services | `DashboardApp.razor` (hardcodes Blazor + Bootstrap + Chart.js tags) |
 
 ### Two places that need new abstractions
 
 These are not simple file moves.
 
-**Shell rendering.** `Middleware/HtmlShellRenderer.cs` and `Components/DashboardApp.razor`
-both hand-write a complete HTML document including
-`<script src=".../_framework/blazor.web.js">`. Each UI package must supply its own shell.
+**Shell rendering.** `Components/DashboardApp.razor` hand-writes a complete HTML document
+including `<script src=".../_framework/blazor.web.js">`. Each UI package must supply its own shell.
 
 **Asset serving.** `Middleware/EmbeddedResourceDispatcher.cs` binds assets to a single
 assembly:
@@ -364,10 +363,10 @@ because "the host app may not have `UseWebSockets()`". A client-rendered app deg
 polling and stays usable.
 
 **Embedding friction.** The machinery currently required to serve Blazor from inside a DLL
-mounted at an arbitrary path: a hand-written `HtmlShellRenderer`; a `FrameworkScriptMiddleware`
-that exists *solely* because `MapRazorComponents` via `MapStaticAssets` does not work in a
-branched pipeline; forced `UseWebSockets()` inside the branch; antiforgery skip rules for
-`/_blazor`; and a long ordering-pitfalls comment block in `samples/SampleAppSpa/Program.cs`.
+mounted at an arbitrary path: a `FrameworkScriptMiddleware` that exists *solely* because
+`MapRazorComponents` via `MapStaticAssets` does not work in a branched pipeline; forced
+`UseWebSockets()` inside the branch; antiforgery skip rules for `/_blazor`; and a long
+ordering-pitfalls comment block in `samples/SampleAppSpa/Program.cs`.
 
 **The visual layer is already JavaScript.** `charts.js`, `analyticsCharts.js`, `heatmap.js`,
 `chartjs-plugin-streaming`, moment.js, plus a `MutationObserver` for theme changes. For the
