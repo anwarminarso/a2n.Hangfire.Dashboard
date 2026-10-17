@@ -96,7 +96,11 @@ public static class HangfireDashboardUIExtensions
             var options = sp.GetRequiredService<DashboardUIOptions>();
             var resolver = sp.GetRequiredService<JobMethodResolver>();
             var failedJobs = sp.GetService<IFailedJobPageSource>();
-            return new HangfireMonitorService(storage, audit, options, resolver, failedJobs);
+            return new HangfireMonitorService(storage, audit, options, resolver, failedJobs)
+            {
+                // Same scope, so the same permissions the pages of this circuit render with.
+                Permissions = sp.GetService<DashboardPermissionsState>(),
+            };
         });
 
         services.AddScoped<HealthCheckService>(sp =>
@@ -132,7 +136,10 @@ public static class HangfireDashboardUIExtensions
             var audit = sp.GetRequiredService<AuditLogService>();
             var actor = sp.GetService<AuditActorAccessor>();
             var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<QueueOperationsService>();
-            return new QueueOperationsService(storage, options, audit, actor, logger);
+            return new QueueOperationsService(storage, options, audit, actor, logger)
+            {
+                Permissions = sp.GetService<DashboardPermissionsState>(),
+            };
         });
 
         // Process-wide cache so concurrent circuits (hero card) and K8s probes share a single

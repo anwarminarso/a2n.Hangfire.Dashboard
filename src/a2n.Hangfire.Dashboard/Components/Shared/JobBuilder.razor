@@ -32,7 +32,7 @@
 <div class="job-builder">
 
     @* --- Access-control banners (Req 4.1–4.3) ------------------------------------------------ *@
-    @if (Options.IsReadOnly)
+    @if (IsReadOnly)
     {
         @* Persistent read-only indication (Req 4.2). *@
         <div class="alert alert-secondary d-flex align-items-center gap-2" role="status">
@@ -299,6 +299,11 @@
 }
 
 @code {
+    // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
+    // cascades (absent only when a component is rendered on its own, as in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
+
     /// <summary>Whether the builder constructs a recurring job or enqueues a one-off job (Req 11, 12).</summary>
     [Parameter] public JobBuilderMode Mode { get; set; } = JobBuilderMode.Recurring;
 
@@ -445,7 +450,7 @@
     // mode, while recurring administration is disabled (Req 4.3). The same flag disables the
     // composite-owned inputs so the form reads as inert.
     private bool MutationsDisabled =>
-        Options.IsReadOnly || (Mode == JobBuilderMode.Recurring && !Options.EnableJobManagement);
+        IsReadOnly || (Mode == JobBuilderMode.Recurring && !Options.EnableJobManagement);
 
     protected override void OnInitialized()
     {

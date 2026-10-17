@@ -4,14 +4,13 @@
 @inject IJSRuntime JS
 @inject IServiceProvider Services
 @inject a2n.Hangfire.Dashboard.Services.AuditActorAccessor ActorAccessor
-@inject DashboardPermissionsState PermissionsState
 @implements IDisposable
 
 @* data-hf-readonly / data-hf-readonly-reason expose the permissions of this page load for smoke
    tests; the server never reads them back. *@
 <div class="d-flex vh-100 overflow-hidden"
-     data-hf-readonly="@(PermissionsState.IsReadOnly ? "true" : "false")"
-     data-hf-readonly-reason="@PermissionsState.Current.Reason">
+     data-hf-readonly="@(CurrentPermissions.IsReadOnly ? "true" : "false")"
+     data-hf-readonly-reason="@CurrentPermissions.Reason">
     <!-- Sidebar: full width from 1400px, an icon rail from 992px (hf-sidebar-desktop), off-canvas below -->
     <aside class="d-none d-lg-flex flex-column flex-shrink-0 hf-sidebar hf-sidebar-desktop" id="sidebar">
         <NavMenu />
@@ -53,6 +52,17 @@
                         <i class="bi bi-search"></i>
                     </a>
                 }
+                @if (CurrentPermissions.IsReadOnly)
+                {
+                    @* The reason is in the tooltip and, for screen readers, in visually hidden text: an
+                       aria-label on a span without a role isn't reliably announced. *@
+                    <span class="badge text-bg-secondary d-inline-flex align-items-center hf-readonly-badge"
+                          title="@CurrentPermissions.Describe()" data-hf-readonly-badge>
+                        <i class="bi bi-lock-fill" aria-hidden="true"></i>
+                        <span class="d-none d-md-inline ms-1" aria-hidden="true">Read-only</span>
+                        <span class="visually-hidden">Read-only. @CurrentPermissions.Describe()</span>
+                    </span>
+                }
                 @if (Options.AppPath is not null)
                 {
                     <a href="@Options.AppPath" class="btn btn-sm btn-outline-secondary">
@@ -74,6 +84,10 @@
 </div>
 
 @code {
+    // DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes cascades (absent in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private DashboardPermissions CurrentPermissions => DashboardPermissions.Resolve(Permissions, Options);
+
     private string _pageTitle = "Dashboard";
     private bool _isSearchPage;
 

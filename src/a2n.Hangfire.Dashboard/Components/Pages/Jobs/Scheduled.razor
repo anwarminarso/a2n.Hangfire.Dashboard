@@ -22,7 +22,7 @@
     {
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <div class="d-flex gap-2">
-                @if (!Options.IsReadOnly)
+                @if (!IsReadOnly)
                 {
                     <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="EnqueueSelected">
                         <i class="bi bi-play-fill"></i> Enqueue
@@ -41,7 +41,7 @@
                     <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                @if (!Options.IsReadOnly)
+                                @if (!IsReadOnly)
                                 {
                                     <th style="width: 40px;">
                                         <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
@@ -58,7 +58,7 @@
                             @foreach (var job in _jobs)
                             {
                                 <tr>
-                                    @if (!Options.IsReadOnly)
+                                    @if (!IsReadOnly)
                                     {
                                         <td class="hf-cell-select">
                                             <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)" @onchange="() => ToggleJob(job.Key)" aria-label="Select job @job.Key" />
@@ -97,6 +97,11 @@
               OnCancel="CancelDelete" />
 
 @code {
+    // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
+    // cascades (absent only when a component is rendered on its own, as in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
+
     private JobList<ScheduledJobDto> _jobs;
     private long _totalCount;
     private readonly ReversibleOrder _order = new();

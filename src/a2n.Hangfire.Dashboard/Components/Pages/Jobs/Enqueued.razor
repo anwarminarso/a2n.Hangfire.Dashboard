@@ -9,7 +9,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="fw-semibold mb-0">Enqueued Jobs</h2>
-    @if (Options.EnableJobManagement && !Options.IsReadOnly)
+    @if (Options.EnableJobManagement && !IsReadOnly)
     {
         @* Navigate to the Job Builder (Enqueue mode). Hidden when job management is disabled
            (Req 4, 6) — the same gate that makes the /jobs/enqueue route return Not Found — and in
@@ -62,7 +62,7 @@ else
         {
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                 <div class="d-flex gap-2">
-                    @if (!Options.IsReadOnly)
+                    @if (!IsReadOnly)
                     {
                         <button class="btn btn-danger btn-sm" disabled="@(!_selectedJobs.Any())" @onclick="ShowDeleteConfirm">
                             <i class="bi bi-trash"></i> Delete
@@ -78,7 +78,7 @@ else
                         <table class="table table-hover table-sm mb-0 hf-stack">
                             <thead>
                                 <tr>
-                                    @if (!Options.IsReadOnly)
+                                    @if (!IsReadOnly)
                                     {
                                         <th style="width: 40px;">
                                             <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
@@ -95,7 +95,7 @@ else
                                 @foreach (var job in _jobs)
                                 {
                                     <tr>
-                                        @if (!Options.IsReadOnly)
+                                        @if (!IsReadOnly)
                                         {
                                             <td class="hf-cell-select">
                                                 <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
@@ -131,6 +131,11 @@ else
               OnCancel="CancelDelete" />
 
 @code {
+    // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
+    // cascades (absent only when a component is rendered on its own, as in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
+
     [Parameter] public string QueueName { get; set; }
 
     private IList<QueueWithTopEnqueuedJobsDto> _queues;

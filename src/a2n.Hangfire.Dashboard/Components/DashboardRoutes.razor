@@ -4,12 +4,16 @@
 @inject DashboardPermissionsState PermissionsState
 @inject ILoggerFactory LoggerFactory
 
-<Router AppAssembly="typeof(DashboardApp).Assembly">
-    <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
-    </Found>
-</Router>
+@* Every page and layout reads the permissions from this cascade (fixed: they never change during a
+   circuit). The scoped DashboardPermissionsState carries the same value for the services. *@
+<CascadingValue Value="PermissionsState.Current" IsFixed="true">
+    <Router AppAssembly="typeof(DashboardApp).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+    </Router>
+</CascadingValue>
 
 @code {
     /// <summary>

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using a2n.Hangfire.Dashboard.Models;
+using a2n.Hangfire.Dashboard.Security;
 using Microsoft.AspNetCore.Components;
 
 namespace a2n.Hangfire.Dashboard.Components.Shared;
@@ -83,8 +84,14 @@ public partial class DrillDownDrawer
     /// </summary>
     private bool IsOpen => Visible && Result is not null && (HasError || SortedJobs.Count > 0);
 
+    /// <summary>
+    /// The permissions of this page load, cascaded by <c>DashboardRoutes</c>; null when rendered
+    /// outside it. <see cref="DashboardUIOptions.IsReadOnly"/> applies either way.
+    /// </summary>
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+
     /// <summary>Edit actions are only offered when job management is enabled and not read-only (Req 10.4, 10.5).</summary>
-    private bool CanEdit => Options.EnableJobManagement && !Options.IsReadOnly;
+    private bool CanEdit => Options.EnableJobManagement && !DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
     /// <summary>
     /// The contributing jobs sorted by next run ascending, with jobs that have no known next run

@@ -146,12 +146,21 @@ public class DashboardPermissionsTests
     // DashboardPermissionsState
     // ---------------------------------------------------------------------------------------------
 
-    [Fact]
-    public void State_IsReadOnlyUntilInitialized_AndTheFirstValueWins()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void State_FollowsTheOptionUntilInitialized(bool optionReadOnly)
     {
-        var state = new DashboardPermissionsState();
+        var state = new DashboardPermissionsState(new DashboardUIOptions { IsReadOnly = optionReadOnly });
+
         Assert.False(state.IsInitialized);
-        Assert.True(state.IsReadOnly);
+        Assert.Equal(optionReadOnly, state.IsReadOnly);
+    }
+
+    [Fact]
+    public void State_TheFirstValueWins()
+    {
+        var state = new DashboardPermissionsState(new DashboardUIOptions());
 
         state.Initialize(new DashboardPermissions(true, ReadOnlyReason.IsReadOnlyFunc));
         state.Initialize(DashboardPermissions.Writable);
@@ -159,6 +168,124 @@ public class DashboardPermissionsTests
         Assert.True(state.IsInitialized);
         Assert.Equal(ReadOnlyReason.IsReadOnlyFunc, state.Current.Reason);
         Assert.True(state.IsReadOnly);
+    }
+
+    [Fact]
+    public void Resolve_TheOptionWinsOverTheScopedPermissions()
+    {
+        var options = new DashboardUIOptions { IsReadOnly = true };
+
+        Assert.Equal(ReadOnlyReason.Option, DashboardPermissions.Resolve(DashboardPermissions.Writable, options).Reason);
+        Assert.Equal(DashboardPermissions.Writable, DashboardPermissions.Resolve(null, new DashboardUIOptions()));
+        Assert.Equal(ReadOnlyReason.IsReadOnlyFunc,
+            DashboardPermissions.Resolve(new DashboardPermissions(true, ReadOnlyReason.IsReadOnlyFunc), new DashboardUIOptions()).Reason);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Routes_InitializeTheCircuitFromTheirParameter_OrFailClosedWithoutIt(bool withParameter)
+    {
+        using var ctx = new Bunit.BunitContext();
+        var logs = new CapturingLoggerProvider();
+        ctx.Services.AddSingleton<ILoggerFactory>(new LoggerFactory(new[] { logs }));
+        ctx.Services.AddSingleton(new DashboardUIOptions());
+        ctx.Services.AddScoped<DashboardPermissionsState>();
+        // No page matches, so the router renders nothing that needs the dashboard's services.
+        ctx.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().NavigateTo("/no-such-page");
+
+        var viewer = new DashboardPermissions(true, ReadOnlyReason.IsReadOnlyFunc);
+        ctx.Render<a2n.Hangfire.Dashboard.Components.DashboardRoutes>(p =>
+        {
+            if (withParameter)
+                p.Add(c => c.Permissions, viewer);
+        });
+
+        var state = ctx.Services.GetRequiredService<DashboardPermissionsState>();
+        Assert.Equal(withParameter ? viewer : DashboardPermissions.FailedClosed, state.Current);
+        Assert.Equal(!withParameter, logs.Entries.Any(e =>
+            e.Category == DashboardPermissionEvaluator.LoggerCategory && e.Level == LogLevel.Warning));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Services read the permissions of their scope at call time
+    // ---------------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(ReadOnlyReason.IsReadOnlyFunc)]
+    [InlineData(ReadOnlyReason.EvaluationFailed)]
+    public void MonitorService_RefusesWrites_WhenTheScopeIsReadOnly(ReadOnlyReason reason)
+    {
+        using var storage = new InMemoryStorage();
+        var jobId = CreateFailedJob(storage);
+        var (monitor, _) = ServicesWith(storage, new DashboardPermissions(true, reason));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => monitor.RequeueJob(jobId));
+        Assert.Contains(new DashboardPermissions(true, reason).Describe(), ex.Message);
+        Assert.Throws<InvalidOperationException>(() => monitor.DeleteJob(jobId));
+        Assert.Throws<InvalidOperationException>(() => monitor.TriggerRecurringJob("any"));
+        Assert.Equal(HangfireMonitorService.ReadOnlyMessage, monitor.EnqueueJob(SampleEnqueue()).Error);
+        Assert.Equal(FailedStateName, StateOf(storage, jobId));
+    }
+
+    [Fact]
+    public void QueueOperations_AreRefused_WhenTheScopeIsReadOnly()
+    {
+        using var storage = new InMemoryStorage();
+        var (_, queues) = ServicesWith(storage, new DashboardPermissions(true, ReadOnlyReason.IsReadOnlyFunc));
+
+        Assert.Throws<InvalidOperationException>(() => queues.PauseQueue("default"));
+        Assert.Throws<InvalidOperationException>(() => queues.EnableMaintenanceMode());
+        Assert.Empty(queues.GetState().PausedQueues);
+    }
+
+    [Fact]
+    public void Services_Write_WhenTheScopeIsWritable()
+    {
+        using var storage = new InMemoryStorage();
+        var jobId = CreateFailedJob(storage);
+        var (monitor, queues) = ServicesWith(storage, DashboardPermissions.Writable);
+
+        Assert.True(monitor.RequeueJob(jobId));
+        queues.PauseQueue("default");
+        Assert.Contains("default", queues.GetState().PausedQueues);
+    }
+
+    [Fact]
+    public void Services_RefuseWrites_WhenTheOptionIsSet_EvenIfTheScopeIsWritable()
+    {
+        using var storage = new InMemoryStorage();
+        var jobId = CreateFailedJob(storage);
+        var (monitor, queues) = ServicesWith(storage, DashboardPermissions.Writable, optionReadOnly: true);
+
+        Assert.Throws<InvalidOperationException>(() => monitor.RequeueJob(jobId));
+        Assert.Throws<InvalidOperationException>(() => queues.PauseQueue("default"));
+    }
+
+    [Fact]
+    public void DiFactories_GiveTheServicesThePermissionsOfTheirScope()
+    {
+        using var storage = new InMemoryStorage();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<JobStorage>(storage);
+        services.AddHangfireDashboardUI();
+        using var provider = services.BuildServiceProvider();
+
+        using var scopeA = provider.CreateScope();
+        using var scopeB = provider.CreateScope();
+        var stateA = scopeA.ServiceProvider.GetRequiredService<DashboardPermissionsState>();
+        stateA.Initialize(new DashboardPermissions(true, ReadOnlyReason.IsReadOnlyFunc));
+        scopeB.ServiceProvider.GetRequiredService<DashboardPermissionsState>().Initialize(DashboardPermissions.Writable);
+
+        var monitorA = scopeA.ServiceProvider.GetRequiredService<HangfireMonitorService>();
+        var monitorB = scopeB.ServiceProvider.GetRequiredService<HangfireMonitorService>();
+        Assert.Same(stateA, monitorA.Permissions);
+        Assert.Same(stateA, scopeA.ServiceProvider.GetRequiredService<QueueOperationsService>().Permissions);
+
+        var jobId = CreateFailedJob(storage);
+        Assert.Throws<InvalidOperationException>(() => monitorA.RequeueJob(jobId));
+        Assert.True(monitorB.RequeueJob(jobId));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -182,6 +309,9 @@ public class DashboardPermissionsTests
 
         Assert.Contains($"data-hf-readonly=\"{readOnly}\"", html);
         Assert.Contains($"data-hf-readonly-reason=\"{reason}\"", html);
+        Assert.Equal(readOnly == "true", html.Contains("data-hf-readonly-badge"));
+        if (readOnly == "true")
+            Assert.Contains(new DashboardPermissions(true, ReadOnlyReason.IsReadOnlyFunc).Describe(), html);
         Assert.Equal(1, calls);
     }
 
@@ -256,6 +386,44 @@ public class DashboardPermissionsTests
 
     private static bool IsNotAdmin(DashboardContext context)
         => context.GetHttpContext().Request.Headers[RoleHeader] != "admin";
+
+    private static readonly string FailedStateName = global::Hangfire.States.FailedState.StateName;
+
+    private static string CreateFailedJob(JobStorage storage)
+    {
+        // No global filters: AutomaticRetry would turn the Failed job into a Scheduled one.
+        var client = new BackgroundJobClient(storage, new global::Hangfire.Common.JobFilterCollection());
+        return client.Create(
+            global::Hangfire.Common.Job.FromExpression(() => Console.WriteLine("permissions")),
+            new global::Hangfire.States.FailedState(new InvalidOperationException("boom")));
+    }
+
+    private static string StateOf(JobStorage storage, string jobId)
+    {
+        using var connection = storage.GetConnection();
+        return connection.GetStateData(jobId).Name;
+    }
+
+    private static EnqueueJobRequest SampleEnqueue() => new(
+        TypeName: typeof(RecurringEditorFixtureJob).FullName,
+        MethodName: nameof(RecurringEditorFixtureJob.DoNothing),
+        ParameterJson: "[]",
+        Queue: "default",
+        IsCustomMethod: false);
+
+    /// <summary>The two write services of one scope whose permissions are <paramref name="permissions"/>.</summary>
+    private static (HangfireMonitorService Monitor, QueueOperationsService Queues) ServicesWith(
+        JobStorage storage, DashboardPermissions permissions, bool optionReadOnly = false)
+    {
+        var options = new DashboardUIOptions { IsReadOnly = optionReadOnly };
+        var state = new DashboardPermissionsState(options);
+        state.Initialize(permissions);
+
+        var monitor = new HangfireMonitorService(storage, null, options, new JobMethodResolver()) { Permissions = state };
+        var audit = new AuditLogService(storage, options, httpContext: null);
+        var queues = new QueueOperationsService(storage, options, audit) { Permissions = state };
+        return (monitor, queues);
+    }
 
     private static DashboardUIOptions UiOptionsFrom(DashboardOptions hangfireOptions)
         => DashboardUIOptions.FromDashboardOptions(hangfireOptions);
