@@ -39,7 +39,7 @@ ConnectionStrings__SqlServer="Server=localhost;Database=master;..."
 ConnectionStrings__PostgreSql="Host=localhost;Port=5432;Database=hangfire_test;..."
 ```
 
-Each run creates a uniquely named schema and drops it again on completion, so it will not disturb existing data. The SQL Server suite skips only when it can't connect: once connected, a failure to prepare its schema fails its tests rather than skipping them.
+Each run creates a uniquely named schema and drops it again on completion, so it will not disturb existing data. Each suite skips only when it can't connect: once connected, a failure to prepare its schema fails its tests rather than skipping them.
 
 4. Run the sample app:
 

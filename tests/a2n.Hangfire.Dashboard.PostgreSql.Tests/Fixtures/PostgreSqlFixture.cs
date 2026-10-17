@@ -16,10 +16,15 @@ namespace a2n.Hangfire.Dashboard.PostgreSql.Tests.Fixtures;
 /// 4. Seed controlled test data
 /// 5. Tests run against this schema
 /// 6. DROP SCHEMA CASCADE on dispose
+///
+/// Requires a reachable PostgreSQL server (connection string in appsettings.json). Tests that
+/// depend on this fixture are skipped automatically when the server can't be reached. Once it
+/// can, a failure to prepare the schema fails every test in the collection instead.
 /// </summary>
 public class PostgreSqlFixture : IAsyncLifetime
 {
     private readonly string _connectionString;
+    private bool _reachable;
 
     /// <summary>
     /// The unique schema name for this test run.
@@ -51,12 +56,13 @@ public class PostgreSqlFixture : IAsyncLifetime
     /// <summary>
     /// True when a PostgreSQL instance was reachable and the schema/data was prepared.
     /// Tests should <c>Skip.IfNot(fixture.Available, ...)</c> to stay green on machines without
-    /// PostgreSQL, mirroring <c>SqlServerFixture</c>.
+    /// PostgreSQL, mirroring <c>SqlServerFixture</c>. When the server is reachable but preparing it
+    /// fails, <see cref="InitializeAsync"/> throws instead, so the tests fail rather than skip.
     /// </summary>
     public bool Available { get; private set; }
 
     /// <summary>
-    /// Captured reason the fixture could not initialize (for skip messages / diagnostics).
+    /// Why the server couldn't be reached (for skip messages / diagnostics).
     /// </summary>
     public string UnavailableReason { get; private set; }
 
@@ -75,44 +81,48 @@ public class PostgreSqlFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Only a server that can't be reached skips the suite. Anything that fails after connecting
+        // (the schema, Hangfire's tables, the seed) is thrown, so xUnit fails every test in the
+        // collection instead of reporting them all as skipped, which reads as green.
+        await using var connection = new NpgsqlConnection(_connectionString);
         try
         {
-            // 1. Create the schema
-            await using (var connection = new NpgsqlConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                await connection.ExecuteAsync($"CREATE SCHEMA \"{SchemaName}\"");
-            }
-
-            // 2. Let Hangfire create tables in our schema
-            // This ensures table structure is 100% compatible
-            GlobalConfiguration.Configuration.UsePostgreSqlStorage(opts =>
-            {
-                opts.UseNpgsqlConnection(_connectionString);
-            }, new PostgreSqlStorageOptions
-            {
-                SchemaName = SchemaName,
-                PrepareSchemaIfNecessary = true
-            });
-
-            // 3. Seed test data
-            await TestDataSeeder.SeedAsync(_connectionString, SchemaName);
-
-            Available = true;
+            await connection.OpenAsync();
         }
         catch (Exception ex)
         {
             Available = false;
             UnavailableReason = ex.Message;
+            _unavailableReasonStatic = UnavailableReason;
+            return;
         }
+        _reachable = true;
 
-        _availableStatic = Available;
-        _unavailableReasonStatic = UnavailableReason;
+        // 1. Create the schema
+        await connection.ExecuteAsync($"CREATE SCHEMA \"{SchemaName}\"");
+
+        // 2. Let Hangfire create tables in our schema
+        // This ensures table structure is 100% compatible
+        GlobalConfiguration.Configuration.UsePostgreSqlStorage(opts =>
+        {
+            opts.UseNpgsqlConnection(_connectionString);
+        }, new PostgreSqlStorageOptions
+        {
+            SchemaName = SchemaName,
+            PrepareSchemaIfNecessary = true
+        });
+
+        // 3. Seed test data
+        await TestDataSeeder.SeedAsync(_connectionString, SchemaName);
+
+        Available = true;
+        _availableStatic = true;
     }
 
     public async Task DisposeAsync()
     {
-        if (!Available)
+        // Also when preparing the schema failed partway, so a failed run doesn't leave it behind.
+        if (!_reachable)
             return;
 
         // Drop the entire schema with all tables — clean slate
