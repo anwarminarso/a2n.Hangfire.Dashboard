@@ -2,6 +2,7 @@ using a2n.Hangfire.Dashboard;
 using a2n.Hangfire.Dashboard.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using DashboardHealthCheckService = a2n.Hangfire.Dashboard.Services.HealthCheckService;
 using DashboardHealthReport = a2n.Hangfire.Dashboard.HealthReport;
 using DashboardHealthStatus = a2n.Hangfire.Dashboard.HealthStatus;
@@ -72,10 +73,17 @@ public static class HangfireDashboardHealthCheckExtensions
 internal sealed class HangfireDashboardHealthCheck : IHealthCheck
 {
     private readonly HealthReportCache _cache;
+    private readonly DashboardUIOptions _options;
+    private readonly ILogger _logger;
 
-    public HangfireDashboardHealthCheck(HealthReportCache cache)
+    public HangfireDashboardHealthCheck(
+        HealthReportCache cache,
+        DashboardUIOptions options = null,
+        ILoggerFactory loggerFactory = null)
     {
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _options = options;
+        _logger = loggerFactory?.CreateLogger("a2n.Hangfire.Dashboard.HealthCheck");
     }
 
     public async Task<AspNetHealthCheckResult> CheckHealthAsync(
@@ -91,10 +99,13 @@ internal sealed class HangfireDashboardHealthCheck : IHealthCheck
         }
         catch (Exception ex)
         {
+            // The message stays in the server log: the host's response writer decides what reaches
+            // the caller, and some (HealthChecks.UI) serialize Exception.Message.
+            _logger?.LogError(ex, "Hangfire dashboard health probe threw");
             return new AspNetHealthCheckResult(
                 status: context.Registration.FailureStatus,
-                description: $"Hangfire health probe threw: {ex.GetType().Name}: {ex.Message}",
-                exception: ex);
+                description: $"Hangfire health probe threw: {ex.GetType().Name}. Details are in the server log.",
+                exception: _options?.IncludeExceptionInHealthCheckResult == true ? ex : null);
         }
 
         // Map our status enum to ASP.NET Core's. We collapse Degraded to Degraded and

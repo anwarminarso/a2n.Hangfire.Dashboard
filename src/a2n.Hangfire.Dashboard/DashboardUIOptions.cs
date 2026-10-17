@@ -150,6 +150,15 @@ public class DashboardUIOptions
     public HealthCheckAuthorization HealthCheckAuthorizationMode { get; set; } = HealthCheckAuthorization.AllowAnonymous;
 
     /// <summary>
+    /// Whether the ASP.NET Core health check registered by <c>AddHangfireDashboard()</c> passes the
+    /// exception to <c>HealthCheckResult.Exception</c> when the dashboard's health probe throws.
+    /// Off by default: response writers such as HealthChecks.UI's <c>UIResponseWriter</c> serialize
+    /// <c>Exception.Message</c>, which can expose database host names and connection details on the
+    /// host's own health endpoint. The exception is always written to the server log. Default: false.
+    /// </summary>
+    public bool IncludeExceptionInHealthCheckResult { get; set; } = false;
+
+    /// <summary>
     /// Configurable thresholds for the dashboard's built-in health checks.
     /// Modify individual properties to tune what counts as Degraded vs Unhealthy.
     /// </summary>
