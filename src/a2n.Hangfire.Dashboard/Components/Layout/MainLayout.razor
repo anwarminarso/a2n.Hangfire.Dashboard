@@ -4,9 +4,14 @@
 @inject IJSRuntime JS
 @inject IServiceProvider Services
 @inject a2n.Hangfire.Dashboard.Services.AuditActorAccessor ActorAccessor
+@inject DashboardPermissionsState PermissionsState
 @implements IDisposable
 
-<div class="d-flex vh-100 overflow-hidden">
+@* data-hf-readonly / data-hf-readonly-reason expose the permissions of this page load for smoke
+   tests; the server never reads them back. *@
+<div class="d-flex vh-100 overflow-hidden"
+     data-hf-readonly="@(PermissionsState.IsReadOnly ? "true" : "false")"
+     data-hf-readonly-reason="@PermissionsState.Current.Reason">
     <!-- Sidebar: full width from 1400px, an icon rail from 992px (hf-sidebar-desktop), off-canvas below -->
     <aside class="d-none d-lg-flex flex-column flex-shrink-0 hf-sidebar hf-sidebar-desktop" id="sidebar">
         <NavMenu />

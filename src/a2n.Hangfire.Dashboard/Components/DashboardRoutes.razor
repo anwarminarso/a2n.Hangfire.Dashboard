@@ -1,4 +1,8 @@
 @attribute [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+@using a2n.Hangfire.Dashboard.Security
+@using Microsoft.Extensions.Logging
+@inject DashboardPermissionsState PermissionsState
+@inject ILoggerFactory LoggerFactory
 
 <Router AppAssembly="typeof(DashboardApp).Assembly">
     <Found Context="routeData">
@@ -6,3 +10,26 @@
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>
+
+@code {
+    /// <summary>
+    /// The permissions <see cref="DashboardApp"/> evaluated from the page request. They reach the
+    /// circuit inside the protected server component descriptor; this component never evaluates
+    /// them itself.
+    /// </summary>
+    [Parameter]
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public DashboardPermissions Permissions { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Permissions is null)
+        {
+            LoggerFactory.CreateLogger(DashboardPermissionEvaluator.LoggerCategory).LogWarning(
+                "The dashboard is read-only for this circuit: it started without the permissions of its page request.");
+        }
+
+        // Runs before any page or layout below initializes, so they all see the final value.
+        PermissionsState.Initialize(Permissions ?? DashboardPermissions.FailedClosed);
+    }
+}

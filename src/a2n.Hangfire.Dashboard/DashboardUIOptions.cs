@@ -182,6 +182,14 @@ public class DashboardUIOptions
     public PollingOptions Polling { get; set; } = new PollingOptions();
 
     /// <summary>
+    /// The Hangfire <see cref="DashboardOptions"/> this instance was created from by
+    /// <see cref="FromDashboardOptions"/>, or null. Its <c>IsReadOnlyFunc</c> is evaluated once per
+    /// page load, and the same instance is handed to Hangfire authorization filters and the
+    /// read-only function through their <c>DashboardContext</c>.
+    /// </summary>
+    internal DashboardOptions HangfireOptions { get; set; }
+
+    /// <summary>
     /// Copies every configurable option value from this instance onto <paramref name="target"/>.
     /// Used to push host-supplied options onto the DI-registered singleton that Blazor components
     /// inject. Reflection over the public read/write properties means a newly added option is
@@ -202,6 +210,9 @@ public class DashboardUIOptions
             }
         }
 
+        // Internal, so the reflection pass above doesn't see it.
+        target.HangfireOptions = HangfireOptions;
+
         // These collaborators are assumed non-null throughout the dashboard; guard against a caller
         // that explicitly nulled one of them.
         target.HealthCheckThresholds ??= new HealthThresholds();
@@ -221,12 +232,14 @@ public class DashboardUIOptions
     {
         ArgumentNullException.ThrowIfNull(hangfireOptions);
 
+        // The filters get a DashboardContext carrying this exact DashboardOptions instance, the one
+        // the host configured, rather than whatever DashboardOptions DI happens to hold.
         var authorization = hangfireOptions.Authorization?
-            .Select(f => (IDashboardAuthorizationFilter)new Security.HangfireDashboardAuthorizationFilterAdapter(f))
+            .Select(f => (IDashboardAuthorizationFilter)new Security.HangfireDashboardAuthorizationFilterAdapter(f, hangfireOptions))
             .ToArray() ?? DefaultAuthorization;
 
         var asyncAuthorization = hangfireOptions.AsyncAuthorization?
-            .Select(f => (IDashboardAsyncAuthorizationFilter)new Security.HangfireDashboardAsyncAuthorizationFilterAdapter(f))
+            .Select(f => (IDashboardAsyncAuthorizationFilter)new Security.HangfireDashboardAsyncAuthorizationFilterAdapter(f, hangfireOptions))
             .ToArray() ?? [];
 
         return new DashboardUIOptions
@@ -234,8 +247,10 @@ public class DashboardUIOptions
             AppPath = hangfireOptions.AppPath,
             DashboardTitle = hangfireOptions.DashboardTitle,
             StatsPollingInterval = hangfireOptions.StatsPollingInterval,
-            // IsReadOnlyFunc requires a DashboardContext; default to false when mapping from Hangfire options.
+            // IsReadOnlyFunc needs the request, so it is evaluated once per page load
+            // (DashboardPermissionEvaluator) instead of being folded into this static flag.
             IsReadOnly = false,
+            HangfireOptions = hangfireOptions,
             DefaultRecordsPerPage = hangfireOptions.DefaultRecordsPerPage,
             DefaultTheme = hangfireOptions.DarkModeEnabled ? "auto" : "light",
             Authorization = authorization,

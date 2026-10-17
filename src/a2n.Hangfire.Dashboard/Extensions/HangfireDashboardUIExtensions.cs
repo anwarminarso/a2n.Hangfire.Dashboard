@@ -65,6 +65,10 @@ public static class HangfireDashboardUIExtensions
             sp => sp.GetRequiredService<DashboardCircuitState>());
         services.AddScoped(DashboardPolling.Create);
 
+        // Permissions of the current page load: evaluated from the HTTP request by DashboardApp and
+        // carried into the circuit as a DashboardRoutes parameter (one instance per scope).
+        services.AddScoped<DashboardPermissionsState>();
+
         // JobMethodResolver holds the attribute-based discovery cache, computed once and reused
         // for the lifetime of the dashboard. Singleton lifetime keeps that cache alive across all
         // circuits and requests instead of recomputing per scope (Req 5.6, 5.8).
