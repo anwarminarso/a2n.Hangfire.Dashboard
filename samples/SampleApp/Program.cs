@@ -216,8 +216,9 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
         QueueDepthWarn = 1000,
         FailureRatePercent = 10.0,
     },
-    // Authorization defaults to LocalRequestsOnlyAuthorizationFilter.
-    // Set Authorization = [] to allow all hosts, or see SampleAppAuth for cookie login.
+    // Authorization defaults to LocalRequestsOnlyAuthorizationFilter. An empty list also means
+    // local only; to open the dashboard to every host use
+    // Authorization = [new AllowAllRequestsAuthorizationFilter()], or see SampleAppAuth for cookie login.
 });
 
 // Seed endpoints for the load-test harness on storages it can't write directly (InMemory). Off unless
