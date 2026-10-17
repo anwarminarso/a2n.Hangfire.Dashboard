@@ -158,6 +158,14 @@ public class HealthCheckService
         Timestamp = DateTime.UtcNow,
     };
 
+    /// <summary>
+    /// The description of a probe that threw: the exception type only. The message can carry host
+    /// names, addresses and connection details, so it goes to the server log (logged by the caller
+    /// with the exception), never into a report.
+    /// </summary>
+    internal static string ProbeFailed(string probe, Exception ex)
+        => $"{probe} probe failed: {ex.GetType().Name}. Details are in the server log.";
+
     private static HealthCheckResult Skipped() => new()
     {
         Status = HealthStatus.Unhealthy,
@@ -262,7 +270,7 @@ public class HealthCheckService
         {
             _logger?.LogWarning(ex, "Health check: storage probe failed");
             result.Status = HealthStatus.Unhealthy;
-            result.Description = $"Storage probe failed: {ex.GetType().Name}: {ex.Message}";
+            result.Description = ProbeFailed("Storage", ex);
             result.Data["error"] = ex.GetType().FullName;
             return new StorageProbe(result, Reachable: false);
         }
@@ -302,7 +310,7 @@ public class HealthCheckService
             return new HealthCheckResult
             {
                 Status = HealthStatus.Degraded,
-                Description = $"Server probe failed: {ex.GetType().Name}: {ex.Message}",
+                Description = ProbeFailed("Server", ex),
                 Data = new(),
             };
         }
@@ -365,7 +373,7 @@ public class HealthCheckService
         {
             _logger?.LogWarning(ex, "Health check: server probe failed");
             result.Status = HealthStatus.Degraded;
-            result.Description = $"Server probe failed: {ex.GetType().Name}: {ex.Message}";
+            result.Description = ProbeFailed("Server", ex);
         }
 
         return result;
@@ -423,7 +431,7 @@ public class HealthCheckService
         {
             _logger?.LogWarning(ex, "Health check: queue depth probe failed");
             result.Status = HealthStatus.Degraded;
-            result.Description = $"Queue depth probe failed: {ex.GetType().Name}: {ex.Message}";
+            result.Description = ProbeFailed("Queue depth", ex);
         }
 
         return result;
@@ -500,7 +508,7 @@ public class HealthCheckService
         {
             _logger?.LogWarning(ex, "Health check: stuck processing probe failed");
             result.Status = HealthStatus.Degraded;
-            result.Description = $"Stuck-processing probe failed: {ex.GetType().Name}: {ex.Message}";
+            result.Description = ProbeFailed("Stuck-processing", ex);
         }
 
         return result;
@@ -573,7 +581,7 @@ public class HealthCheckService
         {
             _logger?.LogWarning(ex, "Health check: failure rate probe failed");
             result.Status = HealthStatus.Degraded;
-            result.Description = $"Failure-rate probe failed: {ex.GetType().Name}: {ex.Message}";
+            result.Description = ProbeFailed("Failure-rate", ex);
         }
 
         return result;
@@ -639,7 +647,7 @@ public class HealthCheckService
         {
             _logger?.LogWarning(ex, "Health check: recurring probe failed");
             result.Status = HealthStatus.Degraded;
-            result.Description = $"Recurring probe failed: {ex.GetType().Name}: {ex.Message}";
+            result.Description = ProbeFailed("Recurring", ex);
         }
 
         return result;

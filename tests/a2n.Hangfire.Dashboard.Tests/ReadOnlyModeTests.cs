@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using a2n.Hangfire.Dashboard;
+using a2n.Hangfire.Dashboard.Security;
 using a2n.Hangfire.Dashboard.Services;
 using AwaitingPage = a2n.Hangfire.Dashboard.Components.Pages.Jobs.Awaiting;
 using DeletedPage = a2n.Hangfire.Dashboard.Components.Pages.Jobs.Deleted;
@@ -200,7 +201,31 @@ public sealed class ReadOnlyModeTests : IDisposable
         where TPage : IComponent
     {
         _options.IsReadOnly = readOnly;
-        var cut = parameters is null ? _ctx.Render<TPage>() : _ctx.Render<TPage>(parameters);
+        AssertRenderedActions(readOnly, ready, parameters, hasCheckboxes, cascaded: null);
+    }
+
+    /// <summary>
+    /// Renders <typeparamref name="TPage"/> with <paramref name="cascaded"/> as the permissions of the
+    /// page load (what DashboardRoutes cascades) while <see cref="DashboardUIOptions.IsReadOnly"/> stays off.
+    /// </summary>
+    private void AssertActionsUnder<TPage>(DashboardPermissions cascaded, Func<IRenderedComponent<TPage>, bool> ready,
+        Action<ComponentParameterCollectionBuilder<TPage>> parameters = null, bool hasCheckboxes = true)
+        where TPage : IComponent
+    {
+        _options.IsReadOnly = false;
+        AssertRenderedActions(cascaded.IsReadOnly, ready, parameters, hasCheckboxes, cascaded);
+    }
+
+    private void AssertRenderedActions<TPage>(bool readOnly, Func<IRenderedComponent<TPage>, bool> ready,
+        Action<ComponentParameterCollectionBuilder<TPage>> parameters, bool hasCheckboxes, DashboardPermissions cascaded)
+        where TPage : IComponent
+    {
+        var cut = _ctx.Render<TPage>(p =>
+        {
+            parameters?.Invoke(p);
+            if (cascaded is not null)
+                p.AddCascadingValue(cascaded);
+        });
         cut.WaitForState(() => ready(cut), TestTimeouts.RenderWait);
 
         // Sort buttons in the column headers aren't actions (Scheduled has an "Enqueue" column).
@@ -332,6 +357,67 @@ public sealed class ReadOnlyModeTests : IDisposable
         Assert.Empty(cut.FindAll("a[href^='recurring/edit/']"));
         Assert.Empty(cut.FindAll("button[title='Stop this recurring job']"));
         Assert.Empty(cut.FindAll("th.hf-cell-actions"));
+    }
+
+    // ── Per-page-load permissions (DashboardOptions.IsReadOnlyFunc), cascaded by DashboardRoutes ──
+
+    public static TheoryData<ReadOnlyReason> CascadedReadOnlyReasons => new()
+    {
+        ReadOnlyReason.IsReadOnlyFunc, ReadOnlyReason.EvaluationFailed,
+    };
+
+    [Theory]
+    [MemberData(nameof(CascadedReadOnlyReasons))]
+    public void JobListPages_HideActions_WhenThePageLoadIsReadOnly(ReadOnlyReason reason)
+    {
+        var permissions = new DashboardPermissions(true, reason);
+        Create(new SucceededState(null, 0, 0));
+        Create(new FailedState(new InvalidOperationException("boom")));
+        var retry = Create(new ScheduledState(TimeSpan.FromHours(1)));
+        AddToSet("retries", retry);
+
+        AssertActionsUnder<SucceededPage>(permissions, HasRows);
+        AssertActionsUnder<FailedPage>(permissions, HasRows);
+        AssertActionsUnder<ScheduledPage>(permissions, HasRows);
+        AssertActionsUnder<RetriesPage>(permissions, HasRows);
+    }
+
+    [Fact]
+    public void JobListPages_ShowActions_WhenThePageLoadIsWritable()
+    {
+        Create(new FailedState(new InvalidOperationException("boom")));
+        AssertActionsUnder<FailedPage>(DashboardPermissions.Writable, HasRows);
+    }
+
+    [Fact]
+    public void DetailsPage_HidesActions_WhenThePageLoadIsReadOnly()
+    {
+        var id = Create(new FailedState(new InvalidOperationException("boom")));
+        AssertActionsUnder<DetailsPage>(new DashboardPermissions(true, ReadOnlyReason.IsReadOnlyFunc),
+            cut => cut.Markup.Contains("State History"), p => p.Add(c => c.JobId, id), hasCheckboxes: false);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RecurringPage_ActionsFollowThePageLoad(bool readOnly)
+    {
+        SeedRecurring("nightly");
+        SeedRecurring("stopped");
+        _monitor.StopRecurringJob("stopped");
+        var permissions = readOnly
+            ? new DashboardPermissions(true, ReadOnlyReason.IsReadOnlyFunc)
+            : DashboardPermissions.Writable;
+
+        AssertActionsUnder<RecurringPage>(permissions, cut => cut.Markup.Contains("Stopped Jobs") && HasRows(cut));
+    }
+
+    [Fact]
+    public void TheOptionWins_OverWritablePageLoadPermissions()
+    {
+        Create(new FailedState(new InvalidOperationException("boom")));
+        _options.IsReadOnly = true;
+        AssertRenderedActions<FailedPage>(true, HasRows, null, hasCheckboxes: true, DashboardPermissions.Writable);
     }
 
     /// <summary>Processing, as <c>ProcessingState</c> serializes it (its constructor is internal).</summary>

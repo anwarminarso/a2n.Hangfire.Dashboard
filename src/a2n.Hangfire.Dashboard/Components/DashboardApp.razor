@@ -1,6 +1,10 @@
 @attribute [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+@using a2n.Hangfire.Dashboard.Security
+@using Microsoft.Extensions.Logging
 @inject IHttpContextAccessor HttpContextAccessor
 @inject DashboardUIOptions Options
+@inject DashboardPermissionsState PermissionsState
+@inject ILoggerFactory LoggerFactory
 
 <!DOCTYPE html>
 <html lang="en">
@@ -31,7 +35,7 @@
     <script src="_content/js/analyticsCharts.js?v=@V"></script>
     <script src="_content/js/heatmap.js?v=@V"></script>
     <script src="_content/js/search-presets.js?v=@V"></script>
-    <DashboardRoutes @rendermode="PageRenderMode" />
+    <DashboardRoutes Permissions="_permissions" @rendermode="PageRenderMode" />
     <script src="_content/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
@@ -51,6 +55,23 @@
 
     private IComponentRenderMode PageRenderMode =>
         Options.EnablePrerendering ? InteractiveServer : InteractiveServerNoPrerender;
+
+    /// <summary>The request that renders this page. Set during the static render only.</summary>
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
+    private DashboardPermissions _permissions;
+
+    protected override void OnInitialized()
+    {
+        // The one place the permissions are evaluated: once per page load, from the request.
+        // The prerender pass shares this scope; the circuit gets them as a DashboardRoutes parameter.
+        _permissions = DashboardPermissionEvaluator.Evaluate(
+            HttpContext ?? HttpContextAccessor?.HttpContext,
+            Options,
+            LoggerFactory.CreateLogger(DashboardPermissionEvaluator.LoggerCategory));
+        PermissionsState.Initialize(_permissions);
+    }
 
     private string GetBaseHref()
     {

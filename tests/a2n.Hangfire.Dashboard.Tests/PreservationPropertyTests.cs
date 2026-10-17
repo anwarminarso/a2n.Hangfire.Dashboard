@@ -581,5 +581,6 @@ public class PreservationPropertyTests
         ctx.Services.AddSingleton<DashboardSubscriptionTracker>();
         ctx.Services.AddSingleton<DashboardMetricsFeed>();
         ctx.Services.AddDashboardPolling();
+        ctx.Services.AddScoped<DashboardPermissionsState>();
     }
 }

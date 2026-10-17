@@ -205,17 +205,20 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
     // Health endpoints exposed inside the dashboard branch:
     //   GET /hangfire/healthz       — liveness  (storage probe only)
     //   GET /hangfire/healthz/ready — readiness (storage + servers)
-    //   GET /hangfire/healthz/full  — full report (used by the Home page hero card)
-    // Default = AllowAnonymous so K8s / load balancer probes work without auth.
-    HealthCheckAuthorizationMode = HealthCheckAuthorization.AllowAnonymous,
+    //   GET /hangfire/healthz/full  — full report (the Home page hero card shows the same data)
+    // Default = AnonymousProbes: K8s / load balancer probes work without auth, the full report
+    // needs the dashboard's authorization. Callers who aren't dashboard users only ever see
+    // statuses and check names.
+    HealthCheckAuthorizationMode = HealthCheckAuthorization.AnonymousProbes,
     HealthCheckThresholds = new HealthThresholds
     {
         StuckProcessingMinutes = 30,
         QueueDepthWarn = 1000,
         FailureRatePercent = 10.0,
     },
-    // Authorization defaults to LocalRequestsOnlyAuthorizationFilter.
-    // Set Authorization = [] to allow all hosts, or see SampleAppAuth for cookie login.
+    // Authorization defaults to LocalRequestsOnlyAuthorizationFilter. An empty list also means
+    // local only; to open the dashboard to every host use
+    // Authorization = [new AllowAllRequestsAuthorizationFilter()], or see SampleAppAuth for cookie login.
 });
 
 // Seed endpoints for the load-test harness on storages it can't write directly (InMemory). Off unless

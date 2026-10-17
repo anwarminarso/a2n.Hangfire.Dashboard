@@ -6,7 +6,11 @@
 @inject a2n.Hangfire.Dashboard.Services.AuditActorAccessor ActorAccessor
 @implements IDisposable
 
-<div class="d-flex vh-100 overflow-hidden">
+@* data-hf-readonly / data-hf-readonly-reason expose the permissions of this page load for smoke
+   tests; the server never reads them back. *@
+<div class="d-flex vh-100 overflow-hidden"
+     data-hf-readonly="@(CurrentPermissions.IsReadOnly ? "true" : "false")"
+     data-hf-readonly-reason="@CurrentPermissions.Reason">
     <!-- Sidebar: full width from 1400px, an icon rail from 992px (hf-sidebar-desktop), off-canvas below -->
     <aside class="d-none d-lg-flex flex-column flex-shrink-0 hf-sidebar hf-sidebar-desktop" id="sidebar">
         <NavMenu />
@@ -48,6 +52,17 @@
                         <i class="bi bi-search"></i>
                     </a>
                 }
+                @if (CurrentPermissions.IsReadOnly)
+                {
+                    @* The reason is in the tooltip and, for screen readers, in visually hidden text: an
+                       aria-label on a span without a role isn't reliably announced. *@
+                    <span class="badge text-bg-secondary d-inline-flex align-items-center hf-readonly-badge"
+                          title="@CurrentPermissions.Describe()" data-hf-readonly-badge>
+                        <i class="bi bi-lock-fill" aria-hidden="true"></i>
+                        <span class="d-none d-md-inline ms-1" aria-hidden="true">Read-only</span>
+                        <span class="visually-hidden">Read-only. @CurrentPermissions.Describe()</span>
+                    </span>
+                }
                 @if (Options.AppPath is not null)
                 {
                     <a href="@Options.AppPath" class="btn btn-sm btn-outline-secondary">
@@ -60,6 +75,16 @@
         </header>
 
         <main class="flex-grow-1 overflow-auto hf-main">
+            @if (DashboardAuthorization.AllowsEveryone(Options))
+            {
+                @* Persistent, like the read-only badge: an operator should never miss that the
+                   dashboard itself checks nobody. *@
+                <div class="alert alert-warning rounded-0 border-start-0 border-end-0 mb-0 py-2 small" data-hf-open-access-banner>
+                    <i class="bi bi-unlock-fill me-1" aria-hidden="true"></i>
+                    This dashboard can be accessed without authentication (AllowAllRequestsAuthorizationFilter).
+                    Make sure access is restricted upstream.
+                </div>
+            }
             <MaintenanceBanner />
             @Body
         </main>
@@ -69,6 +94,10 @@
 </div>
 
 @code {
+    // DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes cascades (absent in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private DashboardPermissions CurrentPermissions => DashboardPermissions.Resolve(Permissions, Options);
+
     private string _pageTitle = "Dashboard";
     private bool _isSearchPage;
 

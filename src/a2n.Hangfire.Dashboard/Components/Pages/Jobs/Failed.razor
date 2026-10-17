@@ -52,7 +52,7 @@ else
 {
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div class="d-flex flex-wrap gap-2">
-            @if (!Options.IsReadOnly)
+            @if (!IsReadOnly)
             {
                 <button class="btn btn-primary btn-sm" disabled="@(!_selectedJobs.Any() || GroupActionBusy)" @onclick="RequeueSelected">
                     <i class="bi bi-arrow-repeat"></i> Requeue
@@ -280,7 +280,7 @@ else
                         <table class="table table-hover table-sm mb-0 hf-stack">
                             <thead>
                                 <tr>
-                                    @if (!Options.IsReadOnly)
+                                    @if (!IsReadOnly)
                                     {
                                         <th style="width: 40px;">
                                             <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
@@ -296,7 +296,7 @@ else
                                 {
                                     var job = row.Summary;
                                     <tr class="@(IsSelected(job.JobId) ? "table-active" : "")">
-                                        @if (!Options.IsReadOnly)
+                                        @if (!IsReadOnly)
                                         {
                                             <td class="hf-cell-select">
                                                 <input type="checkbox" class="form-check-input" checked="@IsSelected(job.JobId)"
@@ -322,7 +322,7 @@ else
                                     @if (job.ExceptionMessage is not null)
                                     {
                                         <tr class="hf-row-detail @(IsSelected(job.JobId) ? "table-active" : "")">
-                                            @if (!Options.IsReadOnly)
+                                            @if (!IsReadOnly)
                                             {
                                                 <td></td>
                                             }
@@ -350,7 +350,7 @@ else
                     <table class="table table-hover table-sm mb-0 hf-stack">
                         <thead>
                             <tr>
-                                @if (!Options.IsReadOnly)
+                                @if (!IsReadOnly)
                                 {
                                     <th style="width: 40px;">
                                         <input type="checkbox" class="form-check-input" checked="@_selectAll" @onchange="ToggleAll" aria-label="Select all" />
@@ -366,7 +366,7 @@ else
                             @foreach (var job in _jobs)
                             {
                                 <tr class="@(IsSelected(job.Key) ? "table-active" : "")">
-                                    @if (!Options.IsReadOnly)
+                                    @if (!IsReadOnly)
                                     {
                                         <td class="hf-cell-select">
                                             <input type="checkbox" class="form-check-input" checked="@IsSelected(job.Key)"
@@ -391,7 +391,7 @@ else
                                 @if (job.Value?.ExceptionMessage is not null)
                                 {
                                     <tr class="hf-row-detail @(IsSelected(job.Key) ? "table-active" : "")">
-                                        @if (!Options.IsReadOnly)
+                                        @if (!IsReadOnly)
                                         {
                                             <td></td>
                                         }
@@ -434,6 +434,11 @@ else
 }
 
 @code {
+    // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
+    // cascades (absent only when a component is rendered on its own, as in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
+
     /// <summary>
     /// The exception group to show (<c>?exception=…</c>), so a group view can be linked. A value that
     /// isn't a current exception key is ignored and the page shows all failed jobs.
@@ -497,7 +502,7 @@ else
     private string _groupActionMessageClass;
     private bool _disposed;
 
-    private bool ShowGroupActions => InGroupView && !Options.IsReadOnly;
+    private bool ShowGroupActions => InGroupView && !IsReadOnly;
     private bool GroupActionBusy => _snapshotCts is not null || _runningAction is not null;
 
     private IEnumerable<FailureGroupDto> LabeledGroups => _groups.Groups.Where(g => g.IsLabeled);

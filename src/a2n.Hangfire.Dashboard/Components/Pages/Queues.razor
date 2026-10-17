@@ -28,7 +28,7 @@
         </p>
     </div>
 
-    @if (!Options.IsReadOnly && Options.QueueOperations.Enabled)
+    @if (!IsReadOnly && Options.QueueOperations.Enabled)
     {
         @if (_state?.MaintenanceMode == true)
         {
@@ -206,7 +206,7 @@ else
                         }
                     </span>
 
-                    @if (!Options.IsReadOnly && Options.QueueOperations.Enabled && !maintenance)
+                    @if (!IsReadOnly && Options.QueueOperations.Enabled && !maintenance)
                     {
                         @if (paused)
                         {
@@ -270,6 +270,11 @@ else
 </div>
 
 @code {
+    // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
+    // cascades (absent only when a component is rendered on its own, as in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
+
     private QueueOperationsState _state;
     private List<QueueRow> _rows;
     private DashboardPoller _poller;

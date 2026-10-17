@@ -8,14 +8,15 @@ namespace a2n.Hangfire.Dashboard;
 public enum HealthCheckAuthorization
 {
     /// <summary>
-    /// Allow any caller. Sensible default for Kubernetes liveness/readiness probes which
-    /// originate from the kubelet inside the cluster network without auth headers.
+    /// Allow any caller on every health endpoint, including the full report. Callers who don't
+    /// pass the dashboard's authorization still get only statuses and check names.
     /// </summary>
     AllowAnonymous = 0,
 
     /// <summary>
-    /// Allow only requests originating from a loopback address. Use behind a reverse proxy where
-    /// you intend the probe to come from the local node only.
+    /// Allow only local requests: from a loopback address, or from the server's own address. A
+    /// request without a remote address (a Unix socket behind a reverse proxy, an in-memory test
+    /// server) is not local, matching <c>LocalRequestsOnlyAuthorizationFilter</c>.
     /// </summary>
     LocalOnly = 1,
 
@@ -25,6 +26,15 @@ public enum HealthCheckAuthorization
     /// should be visible only to authenticated dashboard users.
     /// </summary>
     RequireDashboardAuth = 2,
+
+    /// <summary>
+    /// The default. Liveness and readiness (<c>/healthz</c>, <c>/healthz/live</c>,
+    /// <c>/healthz/ready</c>) allow any caller, so Kubernetes and load balancer probes work without
+    /// credentials; the full report (<c>/healthz/full</c>) requires the dashboard's authorization,
+    /// like <see cref="RequireDashboardAuth"/>. Set <see cref="AllowAnonymous"/> to open the full
+    /// report too.
+    /// </summary>
+    AnonymousProbes = 3,
 }
 
 /// <summary>

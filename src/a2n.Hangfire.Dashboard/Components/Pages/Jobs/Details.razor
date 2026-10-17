@@ -74,7 +74,7 @@
         }
 
         @* Actions — aligned right; none in read-only mode (issue #73) *@
-        @if (!Options.IsReadOnly)
+        @if (!IsReadOnly)
         {
             <div class="d-flex gap-2 mb-3 justify-content-end">
                 <button class="btn btn-outline-secondary btn-sm" @onclick="Requeue" disabled="@_actionInProgress">
@@ -272,6 +272,11 @@
               OnCancel="CancelDelete" />
 
 @code {
+    // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
+    // cascades (absent only when a component is rendered on its own, as in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
+
     [Parameter] public string JobId { get; set; } = "";
 
     private JobDetailsDto _job;
