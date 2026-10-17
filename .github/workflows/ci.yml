@@ -37,6 +37,23 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # The SQL Server suite skips itself when no server is reachable; this container makes the
+      # SQL Server adapter covered too. The sa password is a throwaway for this container only, not
+      # a secret. The image ships sqlcmd under /opt/mssql-tools18 (the runner may not have one).
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "HangfireTest_12345"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P HangfireTest_12345 -Q 'SELECT 1' -b -o /dev/null"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+          --health-start-period 20s
+
     steps:
       - uses: actions/checkout@v4
 
@@ -54,10 +71,19 @@ jobs:
       - name: Build
         run: dotnet build "src/Hangfire Dashboard.slnx" -c Release --no-restore
 
+      # Hangfire.SqlServer doesn't create the database; the suite creates its own schema inside it.
+      - name: Create the SQL Server test database
+        run: >
+          docker exec ${{ job.services.sqlserver.id }}
+          /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P HangfireTest_12345 -b
+          -Q "IF DB_ID('HangfireTest') IS NULL CREATE DATABASE HangfireTest"
+
       # Covers the six test projects in the solution, each across all three target frameworks.
-      # PostgreSQL runs against the service container above. The SQL Server suite skips itself, since
-      # no SQL Server is provided here; both adapter suites use SkippableFact.
+      # PostgreSQL and SQL Server run against the service containers above; both adapter suites use
+      # SkippableFact, so they would only skip if a container were missing.
       - name: Test
+        env:
+          ConnectionStrings__SqlServer: "Server=localhost,1433;Database=HangfireTest;User Id=sa;Password=HangfireTest_12345;TrustServerCertificate=true;"
         run: >
           dotnet test "src/Hangfire Dashboard.slnx" -c Release --no-build
           --logger "trx;LogFileName=test-results.trx"
