@@ -146,10 +146,12 @@ public class DashboardUIOptions
 
     /// <summary>
     /// Authorization mode for the health check endpoint (<c>/healthz</c>, <c>/healthz/ready</c>,
-    /// <c>/healthz/full</c>). Defaults to <see cref="HealthCheckAuthorization.AllowAnonymous"/> so
-    /// Kubernetes liveness/readiness probes work without configuring authentication on the prober.
+    /// <c>/healthz/full</c>). Defaults to <see cref="HealthCheckAuthorization.AnonymousProbes"/>:
+    /// Kubernetes liveness/readiness probes work without authentication on the prober, and the full
+    /// report requires the dashboard's authorization. Whatever the mode, callers who don't pass the
+    /// dashboard's authorization only see statuses and check names.
     /// </summary>
-    public HealthCheckAuthorization HealthCheckAuthorizationMode { get; set; } = HealthCheckAuthorization.AllowAnonymous;
+    public HealthCheckAuthorization HealthCheckAuthorizationMode { get; set; } = HealthCheckAuthorization.AnonymousProbes;
 
     /// <summary>
     /// Whether the ASP.NET Core health check registered by <c>AddHangfireDashboard()</c> passes the

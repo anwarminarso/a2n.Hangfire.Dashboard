@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -125,6 +126,8 @@ public class HealthCheckLeakTests
     {
         var options = new DashboardUIOptions
         {
+            // Open, so an anonymous caller reaches the failure path too.
+            HealthCheckAuthorizationMode = HealthCheckAuthorization.AllowAnonymous,
             Authorization = new IDashboardAuthorizationFilter[] { new FixedFilter(dashboardUser) },
         };
         var logs = new CapturingLoggerProvider();
@@ -149,13 +152,76 @@ public class HealthCheckLeakTests
     {
         var options = new DashboardUIOptions
         {
+            HealthCheckAuthorizationMode = HealthCheckAuthorization.AllowAnonymous,
             Authorization = new IDashboardAuthorizationFilter[] { new ThrowingFilter() },
         };
         using var provider = Provider(options, Monitor(storageFails: false));
 
-        var (_, body) = await GetAsync(provider, options, "/healthz/full");
+        var (status, body) = await GetAsync(provider, options, "/healthz/full");
 
+        Assert.NotEqual(StatusCodes.Status401Unauthorized, status);
         Assert.DoesNotContain("\"description\"", body);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Who may call which endpoint (HealthCheckAuthorizationMode)
+    // ---------------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("/healthz", false, StatusCodes.Status200OK)]
+    [InlineData("/healthz/live", false, StatusCodes.Status200OK)]
+    [InlineData("/healthz/ready", false, StatusCodes.Status200OK)]
+    [InlineData("/healthz/full", false, StatusCodes.Status401Unauthorized)]
+    [InlineData("/healthz/full", true, StatusCodes.Status200OK)]
+    public async Task Default_ProbesAreOpen_TheFullReportNeedsTheDashboardsAuthorization(
+        string path, bool dashboardUser, int expected)
+    {
+        var options = new DashboardUIOptions
+        {
+            Authorization = new IDashboardAuthorizationFilter[] { new FixedFilter(dashboardUser) },
+        };
+        Assert.Equal(HealthCheckAuthorization.AnonymousProbes, options.HealthCheckAuthorizationMode);
+        using var provider = Provider(options, HealthyMonitor());
+
+        var (status, _) = await GetAsync(provider, options, path);
+
+        Assert.Equal(expected, status);
+    }
+
+    [Fact]
+    public async Task AllowAnonymous_OpensTheFullReport_Redacted()
+    {
+        var options = new DashboardUIOptions
+        {
+            HealthCheckAuthorizationMode = HealthCheckAuthorization.AllowAnonymous,
+            Authorization = new IDashboardAuthorizationFilter[] { new FixedFilter(false) },
+        };
+        using var provider = Provider(options, HealthyMonitor());
+
+        var (status, body) = await GetAsync(provider, options, "/healthz/full");
+
+        Assert.Equal(StatusCodes.Status200OK, status);
+        Assert.DoesNotContain("\"description\"", body);
+    }
+
+    [Theory]
+    [InlineData(null, StatusCodes.Status401Unauthorized)]
+    [InlineData("10.0.0.5", StatusCodes.Status401Unauthorized)]
+    [InlineData("127.0.0.1", StatusCodes.Status200OK)]
+    [InlineData("10.0.0.1", StatusCodes.Status200OK)] // the server's own address
+    public async Task LocalOnly_TreatsAMissingRemoteAddressAsRemote(string remote, int expected)
+    {
+        var options = new DashboardUIOptions
+        {
+            HealthCheckAuthorizationMode = HealthCheckAuthorization.LocalOnly,
+            Authorization = new IDashboardAuthorizationFilter[] { new FixedFilter(false) },
+        };
+        using var provider = Provider(options, HealthyMonitor());
+
+        var (status, _) = await GetAsync(provider, options, "/healthz",
+            remote is null ? null : IPAddress.Parse(remote), remoteIsMissing: remote is null);
+
+        Assert.Equal(expected, status);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -269,10 +335,35 @@ public class HealthCheckLeakTests
         return new HealthReportCache(services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), options);
     }
 
-    private static async Task<(int Status, string Body)> GetAsync(IServiceProvider provider, DashboardUIOptions options, string path)
+    /// <summary>A monitor whose storage answers every probe with an empty, healthy picture.</summary>
+    private static HangfireMonitorService HealthyMonitor()
+    {
+        var api = new Mock<IMonitoringApi>();
+        api.Setup(m => m.GetStatistics()).Returns(new StatisticsDto());
+        api.Setup(m => m.Servers()).Returns(new List<ServerDto> { new() { Name = "srv", Heartbeat = DateTime.UtcNow } });
+        api.Setup(m => m.Queues()).Returns(new List<QueueWithTopEnqueuedJobsDto>());
+        api.Setup(m => m.ProcessingJobs(It.IsAny<int>(), It.IsAny<int>()))
+            .Returns(new JobList<ProcessingJobDto>(new List<KeyValuePair<string, ProcessingJobDto>>()));
+        api.Setup(m => m.HourlySucceededJobs()).Returns(new Dictionary<DateTime, long>());
+        api.Setup(m => m.HourlyFailedJobs()).Returns(new Dictionary<DateTime, long>());
+
+        var storage = new Mock<JobStorage>();
+        storage.Setup(s => s.GetMonitoringApi()).Returns(api.Object);
+        return new HangfireMonitorService(storage.Object);
+    }
+
+    private static readonly IPAddress ServerAddress = IPAddress.Parse("10.0.0.1");
+
+    /// <param name="remote">The caller's address. Set explicitly (loopback by default) rather than
+    /// left null, since a missing address counts as remote.</param>
+    /// <param name="remoteIsMissing">Leave the remote address null on purpose.</param>
+    private static async Task<(int Status, string Body)> GetAsync(IServiceProvider provider, DashboardUIOptions options,
+        string path, IPAddress remote = null, bool remoteIsMissing = false)
     {
         var context = new DefaultHttpContext { RequestServices = provider };
         context.Request.Path = path;
+        context.Connection.LocalIpAddress = ServerAddress;
+        context.Connection.RemoteIpAddress = remoteIsMissing ? null : remote ?? IPAddress.Loopback;
         context.Response.Body = new MemoryStream();
 
         Assert.True(await HealthCheckEndpoint.TryHandleAsync(context, options));

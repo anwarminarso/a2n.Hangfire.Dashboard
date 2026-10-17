@@ -49,11 +49,18 @@ internal static class HealthCheckEndpoint
         if (!isLive && !isReady && !isFull)
             return false;
 
-        // Authorization gate. Default for the health endpoint: AllowAnonymous (so K8s probes work
-        // out of the box without configuring auth on the prober). Hosts that need auth can set
-        // HealthCheckAuthorizationMode = RequireDashboardAuth.
+        // Authorization gate. Default (AnonymousProbes): liveness and readiness are open so K8s
+        // probes work without auth on the prober, the full report needs the dashboard's
+        // authorization. RequireDashboardAuth closes all three; AllowAnonymous opens all three.
         bool dashboardAuthorized;
-        if (options.HealthCheckAuthorizationMode == HealthCheckAuthorization.RequireDashboardAuth)
+        var requiresDashboardAuth = options.HealthCheckAuthorizationMode switch
+        {
+            HealthCheckAuthorization.RequireDashboardAuth => true,
+            // The probes stay open for Kubernetes / load balancers; the full report doesn't.
+            HealthCheckAuthorization.AnonymousProbes => isFull,
+            _ => false,
+        };
+        if (requiresDashboardAuth)
         {
             dashboardAuthorized = await IsDashboardAuthorizedAsync(context, options);
             if (!dashboardAuthorized)
@@ -159,11 +166,9 @@ internal static class HealthCheckEndpoint
         }
     }
 
-    private static bool IsLocalRequest(HttpContext context)
-    {
-        var conn = context.Connection;
-        if (conn.RemoteIpAddress is null) return true;
-        if (conn.LocalIpAddress is null) return System.Net.IPAddress.IsLoopback(conn.RemoteIpAddress);
-        return conn.RemoteIpAddress.Equals(conn.LocalIpAddress) || System.Net.IPAddress.IsLoopback(conn.RemoteIpAddress);
-    }
+    // The same rule as the dashboard's default filter: a request without a remote address (a Unix
+    // socket behind a reverse proxy, an in-memory test server) is not local.
+    private static readonly Security.LocalRequestsOnlyAuthorizationFilter LocalRule = new();
+
+    private static bool IsLocalRequest(HttpContext context) => LocalRule.Authorize(context);
 }
