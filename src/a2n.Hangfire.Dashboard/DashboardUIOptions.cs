@@ -133,7 +133,9 @@ public class DashboardUIOptions
 
     /// <summary>
     /// Authorization filters for the dashboard. Defaults to <see cref="LocalRequestsOnlyAuthorizationFilter"/>
-    /// (same as Hangfire's built-in dashboard). Set to an empty array to allow all requests.
+    /// (same as Hangfire's built-in dashboard). Every filter here and in <see cref="AsyncAuthorization"/>
+    /// must pass. When both lists are null or empty the dashboard accepts local requests only (and
+    /// logs a warning); to allow every request, add <see cref="AllowAllRequestsAuthorizationFilter"/>.
     /// </summary>
     public IEnumerable<IDashboardAuthorizationFilter> Authorization { get; set; } = DefaultAuthorization;
 

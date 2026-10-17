@@ -75,6 +75,16 @@
         </header>
 
         <main class="flex-grow-1 overflow-auto hf-main">
+            @if (DashboardAuthorization.AllowsEveryone(Options))
+            {
+                @* Persistent, like the read-only badge: an operator should never miss that the
+                   dashboard itself checks nobody. *@
+                <div class="alert alert-warning rounded-0 border-start-0 border-end-0 mb-0 py-2 small" data-hf-open-access-banner>
+                    <i class="bi bi-unlock-fill me-1" aria-hidden="true"></i>
+                    This dashboard can be accessed without authentication (AllowAllRequestsAuthorizationFilter).
+                    Make sure access is restricted upstream.
+                </div>
+            }
             <MaintenanceBanner />
             @Body
         </main>

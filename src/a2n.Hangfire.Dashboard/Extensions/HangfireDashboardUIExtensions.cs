@@ -263,6 +263,9 @@ public static class HangfireDashboardUIExtensions
             options.ApplyTo(registered);
         }
 
+        a2n.Hangfire.Dashboard.Security.DashboardAuthorization.LogStartupWarnings(options,
+            app.ApplicationServices.GetService<ILoggerFactory>()?.CreateLogger("a2n.Hangfire.Dashboard.Authorization"));
+
         // Normalize pathMatch to ensure it starts with / and has no trailing slash
         pathMatch = "/" + pathMatch.Trim('/');
 
