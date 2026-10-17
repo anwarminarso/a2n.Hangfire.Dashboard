@@ -285,6 +285,25 @@ public class FailureGroupingTests
     }
 
     [Fact]
+    public async Task GenericProvider_AJobCreatedFirstThatFailedLast_IsTheGroupsNewest()
+    {
+        // The same order as the SQL Server and PostgreSQL adapters (#71): by when a job failed.
+        var (_, client, provider) = InMemory();
+        var failedLast = client.Create(OrderJob, new ScheduledState(TimeSpan.FromHours(1)));
+        var first = client.Create(OrderJob, Fail(new InvalidOperationException("Order 1 is locked")));
+        var second = client.Create(OrderJob, Fail(new InvalidOperationException("Order 2 is locked")));
+        client.ChangeState(failedLast, Fail(new InvalidOperationException("Order 3 is locked")));
+
+        var group = Assert.Single((await provider.GetFailureGroupsAsync(FailureGroupsResult.DefaultLabelCount, CancellationToken.None)).Groups);
+
+        var failedLastFirst = new[] { failedLast, second, first };
+        Assert.Equal(failedLast, group.NewestJobId);
+        Assert.Equal(failedLastFirst, group.ComputedJobIds);
+        Assert.Equal(failedLastFirst, (await provider.GetFailureGroupJobsAsync(group, 10, CancellationToken.None)).Select(j => j.JobId));
+        Assert.Equal(failedLastFirst, await provider.GetFailureGroupJobIdsAsync(group, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task ProviderWithoutGrouping_ReportsItUnsupported()
     {
         IStorageQueryProvider provider = new Mock<IStorageQueryProvider> { CallBase = true }.Object;
@@ -374,6 +393,62 @@ public class FailureGroupingTests
     }
 
     [Fact]
+    public async Task Build_AStoredJobThatFailedLast_IsTheNewest_AndIsLoadedByItsId()
+    {
+        // Job 9 was created before job 40 but failed after it: its sequence (the adapters' state id)
+        // is higher, though its id is lower.
+        var failedAt = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
+        var computed = Computed(40, "Order is locked");
+        var stored = new[] { new StoredFailureGroup(computed.Result.Fingerprint, 2, NewestJobId: 9) { NewestSequence = 100 } };
+        var loads = new List<IReadOnlyList<long>>();
+
+        var result = await FailureGrouping.BuildAsync(
+            stored, 1, new[] { computed }, labelCount: 1,
+            (ids, _) =>
+            {
+                loads.Add(ids);
+                return Task.FromResult<IReadOnlyList<ComputedFailure>>(
+                    new[] { new ComputedFailure("9", 100, computed.Result, failedAt) });
+            },
+            CancellationToken.None);
+
+        var group = Assert.Single(result.Groups);
+        Assert.Equal("9", group.NewestJobId);
+        Assert.Equal(new long[] { 9 }, Assert.Single(loads));
+        Assert.Equal(failedAt, group.LastFailedAt);
+    }
+
+    [Fact]
+    public async Task Build_AComputedJobThatFailedLast_IsTheNewest_WithoutLoadingAnything()
+    {
+        var failedAt = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc);
+        var computed = new ComputedFailure("4", 150, FailureFingerprint.Compute("System.InvalidOperationException", "Order is locked", ""), failedAt);
+        var stored = new[] { new StoredFailureGroup(computed.Result.Fingerprint, 2, NewestJobId: 9) { NewestSequence = 100 } };
+        var loads = 0;
+
+        var result = await FailureGrouping.BuildAsync(
+            stored, 1, new[] { computed }, labelCount: 1,
+            (_, _) =>
+            {
+                loads++;
+                return Task.FromResult<IReadOnlyList<ComputedFailure>>(Array.Empty<ComputedFailure>());
+            },
+            CancellationToken.None);
+
+        var group = Assert.Single(result.Groups);
+        Assert.Equal("4", group.NewestJobId);
+        Assert.Equal(0, loads);
+        Assert.Equal(failedAt, group.LastFailedAt);
+    }
+
+    [Fact]
+    public void StoredFailureGroup_NewestSequence_DefaultsToTheJobId()
+    {
+        // So an adapter built against the three-argument constructor keeps ordering by job id.
+        Assert.Equal(9, new StoredFailureGroup("v1:0123456789abcdef", 1, NewestJobId: 9).NewestSequence);
+    }
+
+    [Fact]
     public async Task Build_FewerJobsReadThanUnfingerprinted_IsPartial()
     {
         var result = await FailureGrouping.BuildAsync(
@@ -425,5 +500,15 @@ public class FailureGroupingTests
         Assert.True(FailureFingerprint.IsCurrentVersion(computed.Result.Fingerprint));
         Assert.Equal(FailureFingerprint.Compute(null, null, null).Fingerprint, computed.Result.Fingerprint);
         Assert.Equal(new DateTime(2026, 9, 1), computed.FailedAt);
+    }
+
+    [Fact]
+    public void Compute_OrdersARowByItsStateId_OrByItsIdWithoutOne()
+    {
+        var row = new FailedJobRow { Id = 7, StateId = 120 };
+        Assert.Equal(120, FailureGrouping.Compute(row).Sequence);
+
+        row.StateId = null;
+        Assert.Equal(7, FailureGrouping.Compute(row).Sequence);
     }
 }

@@ -267,9 +267,16 @@ ORDER BY CAST(JSON_VALUE(s.[Data], '$.PerformanceDuration') AS BIGINT) DESC;";
     // GetFailureGroupsAsync / GetFailureGroupJobsAsync
     // ═══════════════════════════════════════════════════════════════════════════
 
+    // The job's current state, for the failed-job columns below. State's clustered key is
+    // (JobId, Id), so both are given: on Id alone SQL Server can't seek it and reads the whole State
+    // table, which holds every state of every job, however few rows the query returns.
+    private static string CurrentStateJoin(string stateTable)
+        => $"LEFT JOIN {stateTable} s ON s.JobId = j.Id AND s.Id = j.StateId";
+
     // The failed-job columns FailureGrouping reads, named after FailedJobRow's properties.
     private const string FailedJobRowColumns = @"
 j.Id AS Id,
+j.StateId AS StateId,
 j.InvocationData AS InvocationData,
 j.Arguments AS Arguments,
 j.CreatedAt AS CreatedAt,
@@ -297,15 +304,21 @@ s.[Data] AS StateData";
         var stateTable = SqlHelper.Table(_schema, "State");
         var paramTable = SqlHelper.Table(_schema, "JobParameter");
 
-        // Stored fingerprints are counted from the Job and JobParameter indexes alone; State.Data is
+        // Stored fingerprints are counted from the Job and JobParameter tables alone; State.Data is
         // only read for the fallback and the labels below. Value is nvarchar(max), which can't be
         // grouped on efficiently, hence the cast (a current fingerprint is far shorter).
         //
         // The parameter is sought per failed job rather than joined: as a join the optimizer tends to
         // scan JobParameter, which holds every job's parameters (several per succeeded job), and
         // comparing its nvarchar(max) values costs CPU in proportion to that whole table.
+        //
+        // A group's newest job is the one that failed last, the highest StateId. SQL Server has no
+        // arg-max aggregate, so each job's StateId and Id are put side by side as big-endian bytes:
+        // their binary MAX belongs to the job with the highest StateId, whose Id is the last 8 bytes.
         var storedSql = $@"
-SELECT CAST(p.[Value] AS NVARCHAR(64)) AS Fingerprint, COUNT_BIG(*) AS [Count], MAX(j.Id) AS NewestJobId
+SELECT CAST(p.[Value] AS NVARCHAR(64)) AS Fingerprint, COUNT_BIG(*) AS [Count],
+       CAST(SUBSTRING(MAX(CAST(ISNULL(j.StateId, 0) AS BINARY(8)) + CAST(j.Id AS BINARY(8))), 9, 8) AS BIGINT) AS NewestJobId,
+       MAX(ISNULL(j.StateId, 0)) AS NewestStateId
 FROM {jobTable} j
 CROSS APPLY (
     SELECT TOP (1) p.[Value] FROM {paramTable} p
@@ -324,17 +337,26 @@ SELECT COUNT_BIG(*)
 FROM {jobTable} j
 WHERE j.StateName = 'Failed';";
 
+        // The ones that failed last. No index orders jobs by StateId, so every failed job without a
+        // stored fingerprint is read rather than stopping at @Limit, as walking the primary key did.
+        // Only their Id and StateId are sorted, though: the @Limit picked are then joined to the wide
+        // columns and their state, as a group's page is, rather than carrying them through the sort.
         var fallbackSql = $@"
-SELECT TOP (@Limit) {FailedJobRowColumns}
-FROM {jobTable} j
-LEFT JOIN {stateTable} s ON s.Id = j.StateId
-WHERE {withoutStoredFingerprint}
-ORDER BY j.Id DESC;";
+SELECT {FailedJobRowColumns}
+FROM (
+    SELECT TOP (@Limit) j.Id, j.StateId
+    FROM {jobTable} j
+    WHERE {withoutStoredFingerprint}
+    ORDER BY j.StateId DESC, j.Id DESC
+) m
+INNER JOIN {jobTable} j ON j.Id = m.Id
+{CurrentStateJoin(stateTable)}
+ORDER BY m.StateId DESC, m.Id DESC;";
 
         var samplesSql = $@"
 SELECT {FailedJobRowColumns}
 FROM {jobTable} j
-LEFT JOIN {stateTable} s ON s.Id = j.StateId
+{CurrentStateJoin(stateTable)}
 WHERE j.Id IN @Ids AND j.StateName = 'Failed';";
 
         var parameters = new
@@ -347,8 +369,10 @@ WHERE j.Id IN @Ids AND j.StateName = 'Failed';";
         using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(ct);
 
-        var stored = (await connection.QueryAsync<StoredFailureGroup>(
-            new CommandDefinition(storedSql, parameters, cancellationToken: ct))).ToList();
+        var stored = (await connection.QueryAsync<(string Fingerprint, long Count, long NewestJobId, long NewestStateId)>(
+                new CommandDefinition(storedSql, parameters, cancellationToken: ct)))
+            .Select(g => new StoredFailureGroup(g.Fingerprint, g.Count, g.NewestJobId) { NewestSequence = g.NewestStateId })
+            .ToList();
         // Counted as the failed jobs minus the stored ones, both from indexes, rather than with an
         // anti-join against JobParameter. Jobs that change state between the two queries can make the
         // difference slightly off, never negative.
@@ -386,19 +410,19 @@ WHERE j.Id IN @Ids AND j.StateName = 'Failed';";
         var stateTable = SqlHelper.Table(_schema, "State");
         var paramTable = SqlHelper.Table(_schema, "JobParameter");
 
-        // The group's members are collected first, and only the newest @Count of them are joined to
-        // their state. Filtering while walking the Job table newest-first instead reads the whole table
-        // when the group's jobs are old.
+        // The group's members are collected first, and only the @Count that failed last are joined to
+        // their state. They are ordered by StateId, which no index provides, so every member is read
+        // before the first row is returned.
         var sql = $@"
 SELECT {FailedJobRowColumns}
 FROM (
-    SELECT TOP (@Count) m.Id
+    SELECT TOP (@Count) m.Id, m.StateId
     FROM ({FailureGroupMembersSql(jobTable, paramTable)}) m
-    ORDER BY m.Id DESC
+    ORDER BY m.StateId DESC, m.Id DESC
 ) m
 INNER JOIN {jobTable} j ON j.Id = m.Id
-LEFT JOIN {stateTable} s ON s.Id = j.StateId
-ORDER BY j.Id DESC;";
+{CurrentStateJoin(stateTable)}
+ORDER BY m.StateId DESC, m.Id DESC;";
 
         using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(ct);
@@ -424,12 +448,12 @@ ORDER BY j.Id DESC;";
         var jobTable = SqlHelper.Table(_schema, "Job");
         var paramTable = SqlHelper.Table(_schema, "JobParameter");
 
-        // Job and JobParameter only: a group action needs the ids, not the state, so State.Data is
-        // never read however large the group is.
+        // Job and JobParameter only: a group action needs the ids, not the state, so State is never
+        // read however large the group is. The order comes from Job.StateId.
         var sql = $@"
 SELECT m.Id
 FROM ({FailureGroupMembersSql(jobTable, paramTable)}) m
-ORDER BY m.Id DESC;";
+ORDER BY m.StateId DESC, m.Id DESC;";
 
         using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(ct);
@@ -445,15 +469,15 @@ ORDER BY m.Id DESC;";
         return ids.Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
     }
 
-    // The ids of a group's jobs that are still failed: its stored members, sought per failed job as
-    // in the grouping query, plus the fallback members it carries (@ComputedIds), minus any the filter
-    // has fingerprinted since (it failed again). Takes @ParameterName, @Fingerprint, @StoredPattern
-    // and @ComputedIds.
+    // The ids of a group's jobs that are still failed, with their StateId to order them by: its stored
+    // members, sought per failed job as in the grouping query, plus the fallback members it carries
+    // (@ComputedIds), minus any the filter has fingerprinted since (it failed again). Takes
+    // @ParameterName, @Fingerprint, @StoredPattern and @ComputedIds.
     //
     // A binary = ignores trailing spaces, so the length is compared too; the key itself is a current
     // fingerprint, so this is the same exact match as StoredFingerprintMatch, only cheaper.
     private static string FailureGroupMembersSql(string jobTable, string paramTable) => $@"
-        SELECT j.Id
+        SELECT j.Id, j.StateId
         FROM {jobTable} j
         CROSS APPLY (
             SELECT TOP (1) p.[Value] FROM {paramTable} p
@@ -462,7 +486,7 @@ ORDER BY m.Id DESC;";
           AND p.[Value] COLLATE Latin1_General_BIN2 = @Fingerprint
           AND DATALENGTH(p.[Value]) = DATALENGTH(@Fingerprint)
         UNION
-        SELECT j.Id
+        SELECT j.Id, j.StateId
         FROM {jobTable} j
         WHERE j.Id IN @ComputedIds
           AND j.StateName = 'Failed'

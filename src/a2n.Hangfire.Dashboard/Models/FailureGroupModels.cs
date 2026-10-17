@@ -30,7 +30,7 @@ public class FailureGroupDto
     public long ComputedCount { get; set; }
 
     /// <summary>
-    /// Ids of the jobs counted in <see cref="ComputedCount"/>, newest first. Carried so the group's
+    /// Ids of the jobs counted in <see cref="ComputedCount"/>, the most recently failed first. Carried so the group's
     /// jobs can be listed without reading the fallback jobs again (see
     /// <see cref="IStorageQueryProvider.GetFailureGroupJobsAsync"/>); there are at most
     /// <see cref="JobFilterCriteria.CountLimit"/> across all groups.
@@ -38,8 +38,7 @@ public class FailureGroupDto
     public IReadOnlyList<string> ComputedJobIds { get; set; } = Array.Empty<string>();
 
     /// <summary>
-    /// Id of the group's newest job: the most recently created one on storages with numeric ids, the
-    /// most recently failed one on the generic provider.
+    /// Id of the group's newest job: the one that failed last, on every provider.
     /// </summary>
     public string NewestJobId { get; set; }
 
@@ -107,7 +106,7 @@ public class FailureGroupsResult
 
     /// <summary>
     /// How many of the <see cref="UnfingerprintedCount"/> jobs were read and fingerprinted on the fly:
-    /// the newest ones, up to <see cref="JobFilterCriteria.CountLimit"/>.
+    /// the ones that failed most recently, up to <see cref="JobFilterCriteria.CountLimit"/>.
     /// </summary>
     public long FallbackCount { get; set; }
 

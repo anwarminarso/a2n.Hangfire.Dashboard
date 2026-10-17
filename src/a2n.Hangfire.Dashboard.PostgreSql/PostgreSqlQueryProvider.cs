@@ -290,6 +290,7 @@ LIMIT @Count";
     // columns (text on older schemas) are read as text.
     private const string FailedJobRowColumns = @"
 j.id AS ""Id"",
+j.stateid AS ""StateId"",
 j.invocationdata::text AS ""InvocationData"",
 j.arguments::text AS ""Arguments"",
 j.createdat AS ""CreatedAt"",
@@ -306,15 +307,20 @@ s.data::text AS ""StateData""";
         "^" + System.Text.RegularExpressions.Regex.Escape(FailureFingerprint.VersionPrefix)
         + "[0-9a-f]{" + FailureFingerprint.HashHexLength + "}$";
 
-    // Stored fingerprints are counted from the job and jobparameter indexes alone; state.data is only
+    // Stored fingerprints are counted from the job and jobparameter tables alone; state.data is only
     // read for the fallback and the labels. Takes @ParameterName and @StoredPattern.
     //
     // The parameter is looked up per failed job, rather than joined: as a join, the planner prefers to
     // scan the whole jobparameter table, which holds every job's parameters (several per succeeded
     // job), once there are a few thousand failed jobs. The LIMIT keeps the lookup from being flattened
     // back into a join, and counts a job once should an old schema hold a duplicate parameter.
+    //
+    // A group's newest job is the one that failed last, the highest stateid. Arrays compare element by
+    // element, so the largest (stateid, id) pair belongs to that job, and [2] is its id.
     internal string StoredFingerprintGroupsSql => $@"
-SELECT p.value AS ""Fingerprint"", COUNT(*) AS ""Count"", MAX(j.id) AS ""NewestJobId""
+SELECT p.value AS ""Fingerprint"", COUNT(*) AS ""Count"",
+       (MAX(ARRAY[COALESCE(j.stateid, 0), j.id]))[2] AS ""NewestJobId"",
+       MAX(COALESCE(j.stateid, 0)) AS ""NewestStateId""
 FROM {_jobTable} j
 CROSS JOIN LATERAL (
     SELECT p.value FROM {_jobParameterTable} p
@@ -341,13 +347,21 @@ SELECT COUNT(*)
 FROM {_jobTable} j
 WHERE j.statename = 'Failed'";
 
+        // The ones that failed last. No index orders jobs by stateid, so every failed job without a
+        // stored fingerprint is read rather than stopping at @Limit, as walking the primary key did.
+        // Only their id and stateid are sorted, though: the @Limit picked are then joined to the wide
+        // columns and their state, as a group's page is, rather than carrying them through the sort.
         var fallbackSql = $@"
 SELECT {FailedJobRowColumns}
-FROM {_jobTable} j
+FROM (
+    SELECT j.id, j.stateid
+    FROM {_jobTable} j
+    WHERE {withoutStoredFingerprint}
+    ORDER BY j.stateid DESC NULLS LAST, j.id DESC
+    LIMIT @Limit) m
+INNER JOIN {_jobTable} j ON j.id = m.id
 LEFT JOIN {_stateTable} s ON s.id = j.stateid
-WHERE {withoutStoredFingerprint}
-ORDER BY j.id DESC
-LIMIT @Limit";
+ORDER BY m.stateid DESC NULLS LAST, m.id DESC";
 
         var samplesSql = $@"
 SELECT {FailedJobRowColumns}
@@ -365,8 +379,10 @@ WHERE j.id = ANY(@Ids) AND j.statename = 'Failed'";
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
 
-        var stored = (await connection.QueryAsync<StoredFailureGroup>(
-            new CommandDefinition(StoredFingerprintGroupsSql, parameters, cancellationToken: ct))).ToList();
+        var stored = (await connection.QueryAsync<(string Fingerprint, long Count, long NewestJobId, long NewestStateId)>(
+                new CommandDefinition(StoredFingerprintGroupsSql, parameters, cancellationToken: ct)))
+            .Select(g => new StoredFailureGroup(g.Fingerprint, g.Count, g.NewestJobId) { NewestSequence = g.NewestStateId })
+            .ToList();
         // Counted as the failed jobs minus the stored ones rather than with NOT EXISTS, which the
         // planner turns into an anti-join over the whole jobparameter table. Jobs that change state
         // between the two queries can make the difference slightly off, never negative.
@@ -400,18 +416,17 @@ WHERE j.id = ANY(@Ids) AND j.statename = 'Failed'";
         if (group == null || !FailureFingerprint.IsCurrentVersion(group.Fingerprint) || count <= 0)
             return Array.Empty<JobSummaryDto>();
 
-        // The group's members are collected first, and only the newest @Count of them are joined to
-        // their state. Filtering while walking the job table newest-first instead reads the whole table
-        // when the group's jobs are old. The LIMIT also keeps the planner from flattening the subquery.
+        // The group's members are collected first, and only the @Count that failed last are joined to
+        // their state. The LIMIT also keeps the planner from flattening the subquery.
         var sql = $@"
 SELECT {FailedJobRowColumns}
 FROM (
     {FailureGroupMembersSql}
-    ORDER BY 1 DESC
+    ORDER BY stateid DESC NULLS LAST, id DESC
     LIMIT @Count) m
 INNER JOIN {_jobTable} j ON j.id = m.id
 LEFT JOIN {_stateTable} s ON s.id = j.stateid
-ORDER BY j.id DESC";
+ORDER BY m.stateid DESC NULLS LAST, m.id DESC";
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
@@ -434,11 +449,11 @@ ORDER BY j.id DESC";
         if (group == null || !FailureFingerprint.IsCurrentVersion(group.Fingerprint))
             return Array.Empty<string>();
 
-        // job and jobparameter only: a group action needs the ids, not the state, so state.data is
-        // never read however large the group is.
+        // job and jobparameter only: a group action needs the ids, not the state, so state is never
+        // read however large the group is. The order comes from job.stateid.
         var sql = $@"
 {FailureGroupMembersSql}
-ORDER BY 1 DESC";
+ORDER BY stateid DESC NULLS LAST, id DESC";
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
@@ -454,13 +469,13 @@ ORDER BY 1 DESC";
         return ids.Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
     }
 
-    // The ids of a group's jobs that are still failed: its stored members, looked up per failed job as
-    // in StoredFingerprintGroupsSql, plus the fallback members it carries (@ComputedIds), minus any the
-    // filter has fingerprinted since (it failed again). Takes @ParameterName, @Fingerprint,
-    // @StoredPattern and @ComputedIds. The key is a current fingerprint, so = is the same exact match
-    // as StoredFingerprintMatch.
+    // The ids of a group's jobs that are still failed, with their stateid to order them by: its stored
+    // members, looked up per failed job as in StoredFingerprintGroupsSql, plus the fallback members it
+    // carries (@ComputedIds), minus any the filter has fingerprinted since (it failed again). Takes
+    // @ParameterName, @Fingerprint, @StoredPattern and @ComputedIds. The key is a current fingerprint,
+    // so = is the same exact match as StoredFingerprintMatch.
     internal string FailureGroupMembersSql => $@"
-    SELECT f.id
+    SELECT f.id, f.stateid
     FROM {_jobTable} f
     CROSS JOIN LATERAL (
         SELECT p.value FROM {_jobParameterTable} p
@@ -468,7 +483,7 @@ ORDER BY 1 DESC";
         LIMIT 1) p
     WHERE f.statename = 'Failed' AND p.value = @Fingerprint
     UNION
-    SELECT f.id
+    SELECT f.id, f.stateid
     FROM {_jobTable} f
     WHERE f.id = ANY(@ComputedIds)
       AND f.statename = 'Failed'
