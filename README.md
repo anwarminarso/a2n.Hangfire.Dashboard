@@ -31,88 +31,21 @@ Navigate to `/hangfire`. Done.
 
 ---
 
-## 🚀 What's New in 2.5 — Recurring Schedule Heatmap
+## 🚀 What's New in 2.6.0 — Per-user Read-only, Safer Defaults, Slow-storage Resilience
 
-Plan controllable cron jobs around **real on-demand load**. The new **Schedule Heatmap** projects your recurring jobs — and actual ad-hoc demand — onto a **queue × day × hour** grid so you can spot collisions, find the quietest window to schedule, and rebalance load. See the [showcase below](#-recurring-schedule-heatmap).
-
-> **2.5.7 (patch)** — The dashboard fits every screen, from a phone to an ultrawide monitor. List tables hide their least important columns first as they get narrower, and on phones each row becomes a card that still shows every value; between 992px and 1399px the sidebar becomes an icon rail, and wide screens centre the content. Long job names wrap onto up to three lines instead of being cut off ([#55](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/55)). New opt-in `UseDashboardFailureFingerprintFilter()` records a versioned fingerprint on every failed job, the first step toward grouping failures by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53), [#54](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/54)) — see [Failure fingerprints](#failure-fingerprints). See the [changelog](CHANGELOG.md).
-
-> **2.5.6 (patch)** — On PostgreSQL, the Failed Jobs page no longer returns HTTP 500 when a failed job's state payload omits `FailedAt`. `Hangfire.PostgreSql` throws `KeyNotFoundException` for that row and one such job took down the whole page, plus the demand and execution rollup polls that use the same API. The PostgreSQL adapter now reads the page itself: missing exception fields stay empty, and the state row's `createdat` is shown when `FailedAt` is absent. Other storages are unchanged. See the [changelog](CHANGELOG.md).
-
-> **2.5.5 (patch)** — Job arguments are shown on Job Details and under the job name in every list, and you can search them with `args:value` ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42)). The hardcoded 5-second search timeout is now `DashboardUIOptions.SearchTimeoutSeconds` (default 30; `0` defers to the storage command timeout) and a running search can be cancelled ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)). The Recurring Jobs grid and the other in-memory tables sort by column ([#41](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/41)); the per-state job lists get a newest/oldest toggle. Search counts at most 1,000 matches and pages newest-first by primary key ([#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45)). See the [changelog](CHANGELOG.md).
-
-> **2.5.4 (patch)** — Recurring Jobs fixes: the **Items per page** selector now actually paginates ([#37](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/37)) — it previously changed only its own value while every job stayed rendered; the job **Id** and **Last Execution** cells link to the latest execution's details ([#38](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/38)); and the editor no longer drops `Dictionary<K,V>` / `List<T>` arguments when switching JSON ▸ Form ([#39](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/39)) — they were mapped to a reflection-driven nested sub-form that could not represent their entries. Also, a blank required parameter no longer blocks the JSON ▸ Form toggle; required-ness is enforced when you save, not when you switch views. See the [changelog](CHANGELOG.md).
-
-> **2.5.3 (patch)** — a **Throttling** page ([#30](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/30), [#31](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/31)) for teams using [Hangfire.Throttling](https://docs.hangfire.io/en/latest/background-processing/throttling.html): semaphores with live occupancy and holders, held mutexes, rate-limit windows, and orphaned-holder detection. It auto-detects, so hosts without the package see no change. Also fixes a DST off-by-one-hour that silently dropped heatmap cells, and unguarded use of Hangfire's *optional* storage API that could take down the whole dashboard shell on third-party storages. See the [changelog](CHANGELOG.md).
-
-> **2.5.2 (patch)** — the rollup collector no longer drops executions beyond its per-poll cap ([#29](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/29)). It scans at most 2 000 jobs per poll but used to advance its watermark past everything it had not reached, so on non-SQL storages a burst above ~2 000 completions per minute was sampled rather than aggregated. It now tracks the range it has covered and drains the backlog across later polls, counting each execution exactly once. See the [changelog](CHANGELOG.md).
-
-> **2.5.1 (patch)** — Redis / rollup analytics fixes: the heatmap's estimated duration was stuck at `1m` ([#27](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/27)); the Duration, Queue latency, and Average state timing panels were empty ([#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26)); Analytics ▸ Recurring never finished loading on large deployments and the last-results strip stayed blank ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25)). Also the sidebar nav group no longer tears down the Blazor circuit on a fresh session ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)). See the [changelog](CHANGELOG.md).
+> **This release fixes security issues, and some fixes change defaults.** Read [Upgrading](CHANGELOG.md#upgrading) in the changelog before deploying.
 
 | | Feature | What you get |
 |---|---------|--------------|
-| 🗺️ | **Seven views** | Planner (cron over ad-hoc demand with low-load "safe windows"), Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, and stagger Recommendations. |
-| 🔀 | **Projected + Historical** | A storage-agnostic **Projected** source (from cron expressions) on any storage; a **Historical** source and ad-hoc demand overlay on SQL Server / PostgreSQL — or on any storage via the new rollup adapters. Degrades gracefully where unavailable. |
-| 🧰 | **Rollup metrics for non-SQL storage** ([#21](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/21)) | New `a2n.Hangfire.Dashboard.Rollup` / `a2n.Hangfire.Dashboard.Redis` packages bring Analytics, heatmap Historical, and realistic **estimated durations** to Redis, in-memory, and other NoSQL storages — no SQL required. |
-| 🔎 | **Drill-down & a11y** | Click any cell to inspect the jobs scheduled in that slot. Honors per-job & viewer time zones, light/dark theme, and is keyboard / screen-reader accessible. |
+| 🔐 | **Per-user read-only** | `IsReadOnlyFunc` is honored with the `DashboardOptions` overload and evaluated on every page load. Write actions are hidden and refused by the services, and the header shows a **Read-only** badge with the reason. `IsReadOnly` now blocks every action that changes jobs, recurring jobs or queues ([#73](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/73)). [→](#authorization) |
+| 🛡️ | **Safer authorization defaults** | No filter at all now means local requests only. `AllowAllRequestsAuthorizationFilter` opens the dashboard explicitly and shows a banner on every page. Hangfire filters receive the `DashboardOptions` you configured. [→](#authorization) |
+| 🩺 | **Safer health endpoints** | Health responses report exception types, never messages. `/healthz/full` requires the dashboard's authorization by default, while `/healthz` and `/healthz/ready` stay open for probes. [→](#who-sees-what) |
+| 🐢 | **Slow-storage resilience** | A dashboard-wide limit on concurrent storage reads, refresh loops that never overlap and back off while storage is failing, and bounded async health checks, so a slow storage can't starve the host's thread pool ([#64](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/64)). [→](#polling-and-slow-storage) |
+| ⚡ | **In-process realtime feed** | Components get broadcasts in-process instead of opening SignalR connections to the server's own URL, which failed behind cookie authentication. One storage read per interval, however many tabs are open ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)). |
+| 🧯 | **Failed jobs grouped by exception** | An Exception filter on the Failed page groups failures by fingerprint, with counts, labels and linkable groups ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53)). [→](#grouping-on-the-failed-page) |
+| 🧩 | **Fixes** | .NET 10 hosts without Blazor components of their own get `blazor.web.js` ([→](#the-blazor-script-_frameworkblazorwebjs)); on SQL Server, search and the job lists seek each job's current state instead of scanning `State` ([#84](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/84)); confirmation dialogs work from the keyboard and with screen readers ([#74](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/74)). |
 
-See the [changelog](CHANGELOG.md) for the full list.
-
----
-
-## 🚀 What's New in 2.4 — Job Builder
-
-Create and schedule jobs **with their arguments** directly from the dashboard — no code change, no redeploy. This closes a long-standing gap: the recurring editor previously built jobs with empty arguments, so parameterized methods couldn't be scheduled correctly ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)).
-
-> **2.4.3 (patch)** — UI/UX fixes: the Failed Jobs table no longer hides the "Failed" column behind a horizontal scrollbar when an exception is long ([#17](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/17)); the Create Job method dropdown keeps its Contract/Implementation pill aligned for long names ([#18](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/18)); the Recurring Jobs search no longer drops characters when typing quickly ([#19](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/19)); and the dark theme now persists across navigation and new sessions ([#20](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/20)). See the [changelog](CHANGELOG.md).
-
-> **2.4.2 (patch)** — recurring jobs now accept mixed-case/dotted ids and editable never-fire cron expressions ([#11](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/11)); a client-side filter on the Recurring Jobs page ([#13](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/13)); long job names no longer break the table layout ([#12](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/12)); a duplicate-id guard when creating; and the Audit Log page gains an items-per-page selector and paged navigation. See the [changelog](CHANGELOG.md).
-
-> **2.4.1 (patch)** — searchable method picker; contract-aware resolution so interface/abstract targets keep their class-level `[Tag]`/`[Queue]` and display names; fixed editing a recurring job whose method takes an injected parameter ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)); consistent solid-red Delete buttons across all job pages. See the [changelog](CHANGELOG.md).
-
-| | Feature | What you get |
-|---|---------|--------------|
-| 🧩 | **Guided parameter form** | A type-aware form generated from the method signature — text, numbers, dates, GUIDs, enums, booleans, arrays, and nested objects — with a live **JSON mirror** and a Form ⇄ JSON toggle. [→](#job-builder) |
-| 🔎 | **Method discovery** | Pick from methods discovered across loaded assemblies (decorated with `JobDisplayName`, `Tag`, or `Queue`) via a **searchable picker** that badges each entry as Contract or Implementation, with **overload-safe** resolution. Hand-typed arbitrary methods are opt-in via `AllowArbitraryMethodInvocation`. [→](#job-builder) |
-| 🕑 | **Visual cron builder** | Build a cron schedule field-by-field (every / specific / range / step) with a human-readable description and **next-run preview** in the selected time zone — or type a cron string manually. [→](#job-builder) |
-| ➕ | **Enqueue page** | A new `/jobs/enqueue` page reuses the same builder to fire one-off jobs, not just recurring ones. [→](#job-builder) |
-| ✏️ | **Typed args + edit pre-fill** | Values are converted to the method's declared types (`["report", 42]` → `string`, `int`); injected parameters (`PerformContext`, `CancellationToken`) are skipped; existing argument values are pre-filled when editing. [→](#job-builder) |
-
-```csharp
-app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
-{
-    EnableJobManagement           = true,   // show the recurring create/edit builder and Enqueue page
-    AllowArbitraryMethodInvocation = false, // opt-in: allow hand-typed type+method (default false)
-});
-```
-
-See [Job Builder](#job-builder) for the full feature description.
-
----
-
-## 🚀 What's New in 2.3.0 — Operational Visibility & Controls
-
-The biggest operations-focused release yet. The dashboard goes from a **viewer you open when something breaks** to a **first-class operational tool**.
-
-| | Feature | What you get |
-|---|---------|--------------|
-| 🩺 | **Health checks** | `/healthz` · `/healthz/ready` · `/healthz/full` endpoints for Kubernetes & load balancers, an ASP.NET Core `IHealthCheck` adapter, and a traffic-light **hero card** on the Home page. [→](#health-checks) |
-| ⏸️ | **Queue pause / resume** | Pause a single queue from the new card-based `/queues` page. Workers reschedule jobs instead of running them — **no data loss**. [→](#operations) |
-| 🚧 | **Maintenance mode** | One global toggle pauses every queue, with a persistent banner on every page. [→](#operations) |
-| 📋 | **Audit log** | Every admin action recorded — who, when, what — on a new `/audit` page, attributed to the real signed-in user. [→](#operations) |
-| 🔗 | **Enhanced Job Details** | Continuation **dependency graph**, a **retry summary banner**, and clickable **stack-trace source links** (GitHub/GitLab/Azure DevOps/Bitbucket/local IDE). [→](#job-dependency-graph) |
-
-```csharp
-// Liveness/readiness probes + queue-pause enforcement in one place:
-builder.Services.AddHangfire(config => config
-    .UseSqlServerStorage(connStr)
-    .UseDashboardQueuePauseFilter());        // honour pause toggles on running servers
-
-builder.Services.AddHealthChecks()
-    .AddHangfireDashboard(tags: new[] { "ready" });   // unified /health endpoint
-```
-
-See the full [2.3.0 changelog](CHANGELOG.md) for every option and detail.
+**Earlier releases:** 2.5 added the [Recurring Schedule Heatmap](#-recurring-schedule-heatmap) and rollup metrics for non-SQL storages, 2.4 the [Job Builder](#job-builder), and 2.3 [health checks](#health-checks), queue pause and the audit log ([Operations](#operations)). Every release, including the patch releases, is described in the [changelog](CHANGELOG.md).
 
 ---
 
@@ -130,27 +63,28 @@ Hangfire ships a capable monitoring UI out of the box. Many teams extend it with
 |---------|-------------|
 | Job monitoring | Job state pages, batch operations, servers, retries |
 | Recurring jobs | Create, edit, start, and stop recurring jobs from the UI, with a client-side id/name filter |
-| Schedule Heatmap | 🆕 Visualize recurring-job density by queue × day × hour and plan cron around real demand — Planner, Punchcard, Calendar, Concurrency, Recommendations, and more (see [Schedule Heatmap](#-recurring-schedule-heatmap)) |
-| Job Builder | 🆕 Create & schedule jobs **with typed arguments** — guided parameter form (+ JSON), method discovery, overload-safe resolution, and one-off enqueue at `/jobs/enqueue` — see [Job Builder](#job-builder) |
-| Visual cron builder | 🆕 Build cron schedules field-by-field with a human-readable description and next-run preview |
+| Schedule Heatmap | Visualize recurring-job density by queue × day × hour and plan cron around real demand — Planner, Punchcard, Calendar, Concurrency, Recommendations, and more (see [Schedule Heatmap](#-recurring-schedule-heatmap)) |
+| Job Builder | Create & schedule jobs **with typed arguments** — guided parameter form (+ JSON), method discovery, overload-safe resolution, and one-off enqueue at `/jobs/enqueue` — see [Job Builder](#job-builder) |
+| Visual cron builder | Build cron schedules field-by-field with a human-readable description and next-run preview |
 | Console output | Logs, progress bars, and colors (Hangfire.Console-compatible API) |
 | Job tags | Tagging and tag cloud (Hangfire.Tags-compatible storage) |
-| Throttling | 🆕 Semaphore occupancy, held mutexes, and rate-limit windows with orphaned-holder detection — appears automatically when the host uses [Hangfire.Throttling](https://docs.hangfire.io/en/latest/background-processing/throttling.html) |
-| Job dependency graph | 🆕 Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
-| Retry summary | 🆕 Inline banner above state history showing retry count + exception consistency |
-| Stack trace links | 🆕 File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
-| Job arguments | 🆕 Job lists show each job's arguments, and the Job Details page renders the full method call with type-aware argument formatting — including jobs whose assembly the dashboard does not reference |
+| Throttling | Semaphore occupancy, held mutexes, and rate-limit windows with orphaned-holder detection — appears automatically when the host uses [Hangfire.Throttling](https://docs.hangfire.io/en/latest/background-processing/throttling.html) |
+| Job dependency graph | Continuation pipeline visualization on the Job Details page (with "Load more" expansion) |
+| Retry summary | Inline banner above state history showing retry count + exception consistency |
+| Stack trace links | File references in stack traces become clickable links to GitHub/GitLab/Azure DevOps/Bitbucket/local IDE |
+| Job arguments | Job lists show each job's arguments, and the Job Details page renders the full method call with type-aware argument formatting — including jobs whose assembly the dashboard does not reference |
 | Global search | Search by job ID, name, queue, tag, exception text, or job arguments (`args:value`), and filter by exception (the Exception filter) |
 | Advanced filters | Filter by date, duration, state, server, and more |
 | Analytics | Throughput, latency, failures, queue health (requires storage adapter — see [Packages](#packages)) |
-| Health checks | 🆕 `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home — see [Health Checks](#health-checks) |
-| Queue pause / maintenance | 🆕 Pause individual queues or enable global maintenance mode — see [Operations](#operations) |
-| Audit log | 🆕 Every admin action recorded (who, when, what) — filterable, paged — see [Operations](#operations) |
-| Failure fingerprints | 🆕 Opt-in server filter that records a versioned fingerprint of each final failure (exception type, normalized message, top application frame), the basis for grouping failed jobs by exception — see [Failure fingerprints](#failure-fingerprints) |
-| Realtime updates | Live metrics via SignalR |
-| Authorization | Local-only default (same as Hangfire); optional async filters and `LoginPath` redirect |
+| Health checks | `/healthz` endpoints (liveness, readiness, full report) + at-a-glance hero card on Home. 🆕 No exception messages in responses, and the full report requires the dashboard's authorization — see [Health Checks](#health-checks) |
+| Queue pause / maintenance | Pause individual queues or enable global maintenance mode — see [Operations](#operations) |
+| Audit log | Every admin action recorded (who, when, what) — filterable, paged — see [Operations](#operations) |
+| Failure grouping | 🆕 The Failed page groups failed jobs by exception, with counts and linkable groups — see [Grouping on the Failed page](#grouping-on-the-failed-page). The opt-in fingerprint filter gives exact counts — see [Failure fingerprints](#failure-fingerprints) |
+| Realtime updates | Live metrics via SignalR, fed in-process to the dashboard's own pages |
+| Authorization | 🆕 Local-only default, also when no filter is configured; per-user read-only via `IsReadOnlyFunc`; optional async filters and `LoginPath` redirect — see [Authorization](#authorization) |
+| Slow-storage resilience | 🆕 Bounded concurrent storage reads and refresh loops that back off while storage is failing — see [Polling and Slow Storage](#polling-and-slow-storage) |
 | Theming | Dark, light, or auto |
-| Responsive layout | 🆕 Fits phones to ultrawide monitors: table columns hide by priority as the table narrows, rows become cards on phones, an icon-rail sidebar on laptops, and centred content on wide screens |
+| Responsive layout | Fits phones to ultrawide monitors: table columns hide by priority as the table narrows, rows become cards on phones, an icon-rail sidebar on laptops, and centred content on wide screens |
 | Tech | Blazor Server, Bootstrap 5, Chart.js |
 
 ---
@@ -869,33 +803,17 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 
 | Version | Status | Scope |
 |---------|--------|-------|
-| v1.0 | ✅ Done | Core dashboard pages + Console + Tags + Recurring Admin |
-| v1.1 | ✅ Done | Global search & advanced filters |
-| v1.2 | ✅ Done | Razor Class Library (NuGet-ready) |
-| v1.3–v1.6 | ✅ Done | Storage adapters (SQL Server, PostgreSQL) + Analytics dashboard |
-| v2.0 | ✅ Done | Feature-complete for current scope |
-| v2.1 | ✅ Done | Search refactor + JobDisplayName + SQL Server fixes |
-| v2.1.1 | ✅ Done | WebSocket fix for Startup-pattern host apps |
-| v2.2 | ✅ Done | Processing progress circle, Fetched page, delete confirmations, mobile nav fix |
-| v2.2.1 | ✅ Done | Security & auth hardening, default auth filter, LoginPath, SignalR/Blazor auth |
-| v2.3.0 | ✅ Done | **Operational visibility & controls** — health checks (`/healthz` + `IHealthCheck` adapter) & hero card, queue pause/resume, maintenance mode, audit log |
-| v2.3.1 | ✅ Done | Realtime analytics fixes — SQL Server `GROUP BY` (error 144) fix, fixed-cadence broadcast loop, NuGet XML docs |
-| v2.4.0 | ✅ Done | **Job Builder** — create/schedule jobs with typed arguments, guided parameter form (+ JSON), method discovery, overload-safe resolution, visual cron builder, one-off enqueue page ([#8](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/8)) |
-| v2.4.1 | ✅ Done | **Job Builder follow-up** — searchable method picker, contract-aware (interface/abstract) resolution + display names, injected-parameter edit fix ([#10](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/10)), consistent destructive-action buttons |
-| v2.5.0 | ✅ Done | **Recurring Schedule Heatmap** ([#14](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/14)) — visualize recurring-job scheduling density by queue × day × hour: Planner (cron over ad-hoc demand), Punchcard, Queue × Hour, Per-queue, Calendar, Concurrency, and stagger Recommendations; plus rollup metrics adapters (Rollup / Redis) for non-SQL storages, incl. storage-agnostic estimated durations ([#21](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/21)) |
-| v2.5.1 | ✅ Done | **Redis / rollup analytics fixes** — heatmap estimated duration stuck at `1m` ([#27](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/27)), empty Duration / Queue latency / State timing panels ([#26](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/26)), Analytics ▸ Recurring hanging on large deployments plus blank last-results strip ([#25](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/25)); also the nav group crash fix ([#23](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/23)) |
-| v2.5.2 | ✅ Done | **Rollup completeness** — the rollup collector dropped executions beyond its per-poll cap, so on non-SQL storages a burst of more than 2 000 completions per minute was sampled rather than aggregated ([#29](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/29)). It now tracks the range it has covered and drains the backlog across later polls |
-| v2.5.3 | ✅ Done | **Throttling visibility, DST-correct heatmap, storage portability** — auto-detecting Throttling pages for semaphores / mutexes / rate-limit windows with orphaned-holder detection ([#30](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/30), [#31](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/31), Detach deferred); heatmap window is now seven *local* days, fixing cells silently dropped across DST transitions; extended-storage-API guards so third-party storages no longer fail the dashboard shell; first CI workflow |
-| v2.5.4 | ✅ Done | **Recurring Jobs fixes** — page-size selector now paginates, with `Pager` on both the active and Stopped tables ([#37](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/37)); Id / Last Execution link to the latest execution's details ([#38](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/38)); `Dictionary<K,V>` / `List<T>` arguments survive the JSON ▸ Form switch instead of being dropped ([#39](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/39)); blank required parameters no longer block the view toggle |
-| v2.5.5 | ✅ Done | **Job arguments, search, and sorting** — arguments rendered on Job Details and list rows, plus `args:` search ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42)); configurable search timeout with a Cancel button ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)); sortable in-memory grids and a newest/oldest toggle on the job lists ([#41](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/41)); search badge clears its filter input ([#44](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/44)); search counts at most 1,000 matches and pages by primary key ([#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45)) |
-| v2.5.6 | ✅ Done | **Failed Jobs on PostgreSQL** — the page no longer returns HTTP 500 when a failed state's payload omits `FailedAt`; the PostgreSQL adapter reads that page itself, and the demand and execution rollups use the same reader |
-| v2.5.7 | ✅ Done | **Responsive layout, wrapping job names, failure fingerprints** — priority columns and phone cards on every list table, icon-rail sidebar on laptops, capped content on wide screens ([#59](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/59)); long job names wrap instead of being cut off ([#55](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/55)); opt-in `FailureFingerprintFilter`, step 1 of grouping failed jobs by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53), [#54](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/54)) |
-| v2.6.0 | ✅ Done | **Per-user read-only, safer defaults, slow-storage resilience** — `IsReadOnlyFunc` honored per page load with a Read-only badge; health responses without exception messages and `/healthz/full` behind dashboard authorization; no filter means local only ([Upgrading](CHANGELOG.md)); bounded storage calls and back-off for slow storage ([#64](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/64)); in-process realtime feed ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)); Failed page grouped by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53)); `IsReadOnly` enforced everywhere ([#73](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/73)) |
+| v1.0–v2.0 | ✅ Done | Core pages, Console, Tags, Recurring Admin, global search and advanced filters, Razor Class Library packaging, SQL Server and PostgreSQL adapters, Analytics |
+| v2.1–v2.2.x | ✅ Done | Search refactor, `JobDisplayName`, Fetched page, security and auth hardening (local-only default filter, `LoginPath`) |
+| v2.3.x | ✅ Done | **Operational visibility & controls**: health checks and hero card, queue pause/resume, maintenance mode, audit log |
+| v2.4.x | ✅ Done | **Job Builder**: typed arguments, method discovery, visual cron builder, one-off enqueue page |
+| v2.5.x | ✅ Done | **Recurring Schedule Heatmap**, rollup metrics for non-SQL storages (Rollup, Redis), Throttling pages, job arguments and `args:` search, responsive layout, failure fingerprints |
+| v2.6.0 | ✅ Done | **Per-user read-only, safer defaults, slow-storage resilience** — `IsReadOnlyFunc` honored per page load with a Read-only badge; health responses without exception messages and `/healthz/full` behind dashboard authorization; no filter means local only ([Upgrading](CHANGELOG.md#upgrading)); bounded storage calls and back-off for slow storage ([#64](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/64)); in-process realtime feed ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)); Failed page grouped by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53)); `IsReadOnly` enforced everywhere ([#73](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/73)) |
 | v2.7.0 | Planned | **Integrations** — Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export |
 | v2.8.0 | Planned | **Customization** — white-label theming, show/hide built-in pages, saved views |
 | v3.0 | Planned | Stretch goals & long-term backlog (notifications & alert rules, Gantt timeline, multi-instance federation, replay, etc.) |
 
-See the full [roadmap](docs/ROADMAP.md) for details.
+See the full [roadmap](docs/ROADMAP.md) for details, and the [changelog](CHANGELOG.md) for every release.
 
 ---
 
