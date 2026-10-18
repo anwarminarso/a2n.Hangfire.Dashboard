@@ -27,7 +27,7 @@ app.UseHangfireDashboardUI("/hangfire");
 
 Navigate to `/hangfire`. Done.
 
-> **Authorization:** By default, only **local requests** are allowed (same as the Hangfire dashboard). For remote access, set `Authorization = []` or add your own filters. See [CHANGELOG.md](CHANGELOG.md) and [`samples/SampleAppAuth`](samples/SampleAppAuth) for a cookie login example.
+> **Authorization:** By default, only **local requests** are allowed (same as the Hangfire dashboard). For remote access, add a filter that checks who the user is — see [Authorization](#authorization) and [`samples/SampleAppAuth`](samples/SampleAppAuth) for a cookie login example. An empty filter list does **not** open the dashboard: it falls back to local requests only.
 
 ---
 
@@ -304,6 +304,53 @@ When running from a build output (`dotnet run`, not a `dotnet publish` folder), 
 
 ---
 
+## Authorization
+
+By default only local requests are allowed (`LocalRequestsOnlyAuthorizationFilter`, the same rule as Hangfire's dashboard). For remote access, add filters that check who the user is. Every filter in `Authorization` and `AsyncAuthorization` must pass, and they cover the pages, the Blazor circuit and the SignalR hub:
+
+```csharp
+public sealed class HangfireAdminFilter : IDashboardAuthorizationFilter
+{
+    public bool Authorize(HttpContext context)
+        => context.User.Identity?.IsAuthenticated == true && context.User.IsInRole("HangfireAdmin");
+}
+
+app.UseAuthentication();
+app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
+{
+    Authorization = [new HangfireAdminFilter()],
+    LoginPath = "/login",   // optional: redirect instead of 401
+});
+```
+
+[`samples/SampleAppAuth`](samples/SampleAppAuth) is a complete cookie login example.
+
+- **No filter at all means local only.** If `Authorization` and `AsyncAuthorization` are both empty or null, the dashboard accepts local requests only and logs a warning at startup. This is a change from 2.5.x, where an empty list let everyone in.
+- **Opening the dashboard to everyone has to be explicit.** When access is enforced elsewhere (an authenticating reverse proxy, a private network), use `Authorization = [new AllowAllRequestsAuthorizationFilter()]`. The dashboard then logs a warning at startup and shows a banner on every page. The health endpoint in `RequireDashboardAuth` mode is open too, since it uses the same filters.
+- **Read-only users.** `IsReadOnly = true` makes the dashboard view-only for everyone. With the `DashboardOptions` overload, `IsReadOnlyFunc` decides per user (see [Existing DashboardOptions](#existing-dashboardoptions-still-works)). Either way, write actions are hidden, refused by the services, and the header shows a **Read-only** badge with the reason.
+- **Permissions are evaluated when a page loads.** An open tab keeps the access it had when it was loaded: if a user's role is revoked, the change applies at their next page load, not in tabs they already have open.
+
+### Behind a reverse proxy on the same host
+
+A proxy on the same machine forwards every request from `127.0.0.1`, so the default local-only filter would let **every** client in. Make ASP.NET Core use the forwarded client address before mapping the dashboard:
+
+```csharp
+using Microsoft.AspNetCore.HttpOverrides;
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Loopback proxies are trusted by default; add others with options.KnownProxies / KnownNetworks.
+});
+
+app.UseForwardedHeaders();               // before UseHangfireDashboardUI
+app.UseHangfireDashboardUI("/hangfire");
+```
+
+The proxy must set `X-Forwarded-For`. Better still, use a filter that checks the user rather than the address.
+
+---
+
 ## Using with existing Hangfire code
 
 ### Console & tags compatibility
@@ -319,6 +366,8 @@ context.WriteProgressBar();
 public void ProcessOrder() { }
 ```
 
+> **Don't reference `a2n.Hangfire.Console` together with the original `Hangfire.Console`** (or `a2n.Hangfire.Tags` with `Hangfire.Tags`). The bundled packages use the same namespaces so job code compiles unchanged, which means both packages in one project give ambiguous type errors. Pick one per project.
+
 ### Existing DashboardOptions? Still works.
 
 ```csharp
@@ -326,8 +375,12 @@ app.UseHangfireDashboardUI("/hangfire", new DashboardOptions
 {
     DashboardTitle = "My Jobs",
     Authorization = new[] { new MyAuthFilter() },
+    // Evaluated once per page load with the request's DashboardContext (since 2.6.0).
+    IsReadOnlyFunc = context => !context.GetHttpContext().User.IsInRole("HangfireAdmin"),
 });
 ```
+
+Your Hangfire authorization filters and `IsReadOnlyFunc` receive a `DashboardContext` carrying this exact `DashboardOptions` instance. `IsReadOnlyFunc` is evaluated once when a page loads; the result holds for that tab until it is reloaded. If the function throws, the page is read-only and a warning is logged.
 
 ### Data compatibility
 
@@ -566,6 +619,17 @@ The dashboard exposes a structured health endpoint suitable for Kubernetes probe
 
 HTTP status follows the K8s convention: `200` for `Healthy` or `Degraded`, `503` for `Unhealthy`.
 
+### Who sees what
+
+| `HealthCheckAuthorizationMode` | `/healthz`, `/healthz/ready` | `/healthz/full` |
+|---|---|---|
+| `AnonymousProbes` (default) | any caller | dashboard authorization required (`401` otherwise) |
+| `AllowAnonymous` | any caller | any caller |
+| `LocalOnly` | local requests only | local requests only |
+| `RequireDashboardAuth` | dashboard authorization required | dashboard authorization required |
+
+Whatever the mode, a caller who doesn't pass the dashboard's own authorization filters gets only the overall status and each check's name and status — no descriptions, data, version or timings. Exception messages never appear in a response, not even for dashboard users: a failed probe reports the exception type, and the full exception goes to the server log. `LocalOnly` treats a request without a remote address (for example over a Unix socket behind a reverse proxy) as remote. `RequireDashboardAuth` protects nothing if the dashboard itself is open (see [Authorization](#authorization)).
+
 ### Built-in checks
 
 | Key | What it covers |
@@ -603,9 +667,9 @@ HTTP status follows the K8s convention: `200` for `Healthy` or `Degraded`, `503`
 ```csharp
 app.UseHangfireDashboardUI("/hangfire", new DashboardUIOptions
 {
-    // AllowAnonymous (default) so K8s/LB probes work without auth.
-    // Use LocalOnly for loopback-only probes, or RequireDashboardAuth for the full filter chain.
-    HealthCheckAuthorizationMode = HealthCheckAuthorization.AllowAnonymous,
+    // AnonymousProbes (default): K8s/LB probes work without auth, the full report needs the
+    // dashboard's authorization. See "Who sees what" above for the other modes.
+    HealthCheckAuthorizationMode = HealthCheckAuthorization.AnonymousProbes,
 
     HealthCheckThresholds = new HealthThresholds
     {
@@ -635,7 +699,7 @@ app.MapHealthChecks("/health/ready",                               // readiness 
     new() { Predicate = c => c.Tags.Contains("ready") });
 ```
 
-The adapter reads the same cached full report as the dashboard's own endpoint and hero card, so the results match. For your own code, `HealthCheckService` offers `CheckLivenessAsync`, `CheckReadinessAsync` and `CheckFullAsync`; the synchronous `CheckLiveness()`, `CheckReadiness()` and `CheckFull()` are kept and block the calling thread until the report is ready.
+The adapter reads the same cached full report as the dashboard's own endpoint and hero card, so the results match. It never puts an exception message in its description or data. It also leaves `HealthCheckResult.Exception` empty unless you set `DashboardUIOptions.IncludeExceptionInHealthCheckResult = true`; leave that off if your `/health` endpoint is reachable by anyone who shouldn't see connection details, since response writers such as HealthChecks.UI's `UIResponseWriter` serialize `Exception.Message`. For your own code, `HealthCheckService` offers `CheckLivenessAsync`, `CheckReadinessAsync` and `CheckFullAsync`; the synchronous `CheckLiveness()`, `CheckReadiness()` and `CheckFull()` are kept and block the calling thread until the report is ready.
 
 ### Hero card
 
@@ -826,8 +890,9 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.5.5 | ✅ Done | **Job arguments, search, and sorting** — arguments rendered on Job Details and list rows, plus `args:` search ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42)); configurable search timeout with a Cancel button ([#43](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/43)); sortable in-memory grids and a newest/oldest toggle on the job lists ([#41](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/41)); search badge clears its filter input ([#44](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/44)); search counts at most 1,000 matches and pages by primary key ([#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45)) |
 | v2.5.6 | ✅ Done | **Failed Jobs on PostgreSQL** — the page no longer returns HTTP 500 when a failed state's payload omits `FailedAt`; the PostgreSQL adapter reads that page itself, and the demand and execution rollups use the same reader |
 | v2.5.7 | ✅ Done | **Responsive layout, wrapping job names, failure fingerprints** — priority columns and phone cards on every list table, icon-rail sidebar on laptops, capped content on wide screens ([#59](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/59)); long job names wrap instead of being cut off ([#55](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/55)); opt-in `FailureFingerprintFilter`, step 1 of grouping failed jobs by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53), [#54](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/54)) |
-| v2.6.0 | Planned | **Integrations** — Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export |
-| v2.7.0 | Planned | **Customization** — white-label theming, show/hide built-in pages, saved views |
+| v2.6.0 | ✅ Done | **Per-user read-only, safer defaults, slow-storage resilience** — `IsReadOnlyFunc` honored per page load with a Read-only badge; health responses without exception messages and `/healthz/full` behind dashboard authorization; no filter means local only ([Upgrading](CHANGELOG.md)); bounded storage calls and back-off for slow storage ([#64](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/64)); in-process realtime feed ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)); Failed page grouped by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53)); `IsReadOnly` enforced everywhere ([#73](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/73)) |
+| v2.7.0 | Planned | **Integrations** — Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export |
+| v2.8.0 | Planned | **Customization** — white-label theming, show/hide built-in pages, saved views |
 | v3.0 | Planned | Stretch goals & long-term backlog (notifications & alert rules, Gantt timeline, multi-instance federation, replay, etc.) |
 
 See the full [roadmap](docs/ROADMAP.md) for details.
@@ -860,7 +925,7 @@ This project builds on the excellent work of the Hangfire community:
 - [Hangfire.Console](https://github.com/pieceofsummer/Hangfire.Console) — console output for background jobs
 - [Hangfire.Tags](https://github.com/face-it/Hangfire.Tags) — job tagging
 - [Hangfire.RecurringJobAdmin](https://github.com/bamotav/Hangfire.RecurringJobAdmin) — recurring job management UI
-- [Hangfire.Community.Dashboard.Heatmap](https://github.com/brodrigz/Hangfire.Community.Dashboard.Heatmap) by Bruno Rodrigues (brodrigz) — design inspiration for the recurring schedule heatmap (clean-room Blazor implementation, no source code copied)
+- [Hangfire.Community.Dashboard.Heatmap](https://github.com/brodrigz/Hangfire.Community.Dashboard.Heatmap) by Bruno Rodrigues (brodrigz) — design inspiration for the recurring schedule heatmap (independent Blazor implementation)
 
 Community extensions are listed on the [Hangfire Extensions](https://www.hangfire.io/extensions.html) page. This project is community-maintained and is not officially supported by Hangfire OÜ.
 

@@ -290,6 +290,11 @@ else
 }
 
 @code {
+    // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
+    // cascades (absent only when a component is rendered on its own, as in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
+
     private IReadOnlyList<RecurringJobDto> _jobs;
     private List<StoppedJobInfo> _stoppedJobs = new();
     private HashSet<string> _selectedJobs = new();
@@ -304,8 +309,8 @@ else
 
     // Trigger and Delete are hidden in read-only mode; Create, Edit, Stop and Start also need job
     // management (issue #73). The service refuses them in read-only mode as well.
-    private bool CanChangeJobs => !Options.IsReadOnly;
-    private bool CanManageJobs => Options.EnableJobManagement && !Options.IsReadOnly;
+    private bool CanChangeJobs => !IsReadOnly;
+    private bool CanManageJobs => Options.EnableJobManagement && !IsReadOnly;
 
     // Client-side filter text (Issue #13). Matches job id and resolved job name, case-insensitive.
     private string _filter = "";

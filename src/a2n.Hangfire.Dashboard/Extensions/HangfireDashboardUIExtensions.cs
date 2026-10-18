@@ -65,6 +65,10 @@ public static class HangfireDashboardUIExtensions
             sp => sp.GetRequiredService<DashboardCircuitState>());
         services.AddScoped(DashboardPolling.Create);
 
+        // Permissions of the current page load: evaluated from the HTTP request by DashboardApp and
+        // carried into the circuit as a DashboardRoutes parameter (one instance per scope).
+        services.AddScoped<DashboardPermissionsState>();
+
         // JobMethodResolver holds the attribute-based discovery cache, computed once and reused
         // for the lifetime of the dashboard. Singleton lifetime keeps that cache alive across all
         // circuits and requests instead of recomputing per scope (Req 5.6, 5.8).
@@ -92,7 +96,11 @@ public static class HangfireDashboardUIExtensions
             var options = sp.GetRequiredService<DashboardUIOptions>();
             var resolver = sp.GetRequiredService<JobMethodResolver>();
             var failedJobs = sp.GetService<IFailedJobPageSource>();
-            return new HangfireMonitorService(storage, audit, options, resolver, failedJobs);
+            return new HangfireMonitorService(storage, audit, options, resolver, failedJobs)
+            {
+                // Same scope, so the same permissions the pages of this circuit render with.
+                Permissions = sp.GetService<DashboardPermissionsState>(),
+            };
         });
 
         services.AddScoped<HealthCheckService>(sp =>
@@ -128,7 +136,10 @@ public static class HangfireDashboardUIExtensions
             var audit = sp.GetRequiredService<AuditLogService>();
             var actor = sp.GetService<AuditActorAccessor>();
             var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<QueueOperationsService>();
-            return new QueueOperationsService(storage, options, audit, actor, logger);
+            return new QueueOperationsService(storage, options, audit, actor, logger)
+            {
+                Permissions = sp.GetService<DashboardPermissionsState>(),
+            };
         });
 
         // Process-wide cache so concurrent circuits (hero card) and K8s probes share a single
@@ -251,6 +262,9 @@ public static class HangfireDashboardUIExtensions
         {
             options.ApplyTo(registered);
         }
+
+        a2n.Hangfire.Dashboard.Security.DashboardAuthorization.LogStartupWarnings(options,
+            app.ApplicationServices.GetService<ILoggerFactory>()?.CreateLogger("a2n.Hangfire.Dashboard.Authorization"));
 
         // Normalize pathMatch to ensure it starts with / and has no trailing slash
         pathMatch = "/" + pathMatch.Trim('/');

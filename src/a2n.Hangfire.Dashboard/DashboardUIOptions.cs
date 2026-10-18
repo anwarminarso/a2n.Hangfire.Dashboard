@@ -133,7 +133,9 @@ public class DashboardUIOptions
 
     /// <summary>
     /// Authorization filters for the dashboard. Defaults to <see cref="LocalRequestsOnlyAuthorizationFilter"/>
-    /// (same as Hangfire's built-in dashboard). Set to an empty array to allow all requests.
+    /// (same as Hangfire's built-in dashboard). Every filter here and in <see cref="AsyncAuthorization"/>
+    /// must pass. When both lists are null or empty the dashboard accepts local requests only (and
+    /// logs a warning); to allow every request, add <see cref="AllowAllRequestsAuthorizationFilter"/>.
     /// </summary>
     public IEnumerable<IDashboardAuthorizationFilter> Authorization { get; set; } = DefaultAuthorization;
 
@@ -144,10 +146,21 @@ public class DashboardUIOptions
 
     /// <summary>
     /// Authorization mode for the health check endpoint (<c>/healthz</c>, <c>/healthz/ready</c>,
-    /// <c>/healthz/full</c>). Defaults to <see cref="HealthCheckAuthorization.AllowAnonymous"/> so
-    /// Kubernetes liveness/readiness probes work without configuring authentication on the prober.
+    /// <c>/healthz/full</c>). Defaults to <see cref="HealthCheckAuthorization.AnonymousProbes"/>:
+    /// Kubernetes liveness/readiness probes work without authentication on the prober, and the full
+    /// report requires the dashboard's authorization. Whatever the mode, callers who don't pass the
+    /// dashboard's authorization only see statuses and check names.
     /// </summary>
-    public HealthCheckAuthorization HealthCheckAuthorizationMode { get; set; } = HealthCheckAuthorization.AllowAnonymous;
+    public HealthCheckAuthorization HealthCheckAuthorizationMode { get; set; } = HealthCheckAuthorization.AnonymousProbes;
+
+    /// <summary>
+    /// Whether the ASP.NET Core health check registered by <c>AddHangfireDashboard()</c> passes the
+    /// exception to <c>HealthCheckResult.Exception</c> when the dashboard's health probe throws.
+    /// Off by default: response writers such as HealthChecks.UI's <c>UIResponseWriter</c> serialize
+    /// <c>Exception.Message</c>, which can expose database host names and connection details on the
+    /// host's own health endpoint. The exception is always written to the server log. Default: false.
+    /// </summary>
+    public bool IncludeExceptionInHealthCheckResult { get; set; } = false;
 
     /// <summary>
     /// Configurable thresholds for the dashboard's built-in health checks.
@@ -182,6 +195,14 @@ public class DashboardUIOptions
     public PollingOptions Polling { get; set; } = new PollingOptions();
 
     /// <summary>
+    /// The Hangfire <see cref="DashboardOptions"/> this instance was created from by
+    /// <see cref="FromDashboardOptions"/>, or null. Its <c>IsReadOnlyFunc</c> is evaluated once per
+    /// page load, and the same instance is handed to Hangfire authorization filters and the
+    /// read-only function through their <c>DashboardContext</c>.
+    /// </summary>
+    internal DashboardOptions HangfireOptions { get; set; }
+
+    /// <summary>
     /// Copies every configurable option value from this instance onto <paramref name="target"/>.
     /// Used to push host-supplied options onto the DI-registered singleton that Blazor components
     /// inject. Reflection over the public read/write properties means a newly added option is
@@ -202,6 +223,9 @@ public class DashboardUIOptions
             }
         }
 
+        // Internal, so the reflection pass above doesn't see it.
+        target.HangfireOptions = HangfireOptions;
+
         // These collaborators are assumed non-null throughout the dashboard; guard against a caller
         // that explicitly nulled one of them.
         target.HealthCheckThresholds ??= new HealthThresholds();
@@ -221,12 +245,14 @@ public class DashboardUIOptions
     {
         ArgumentNullException.ThrowIfNull(hangfireOptions);
 
+        // The filters get a DashboardContext carrying this exact DashboardOptions instance, the one
+        // the host configured, rather than whatever DashboardOptions DI happens to hold.
         var authorization = hangfireOptions.Authorization?
-            .Select(f => (IDashboardAuthorizationFilter)new Security.HangfireDashboardAuthorizationFilterAdapter(f))
+            .Select(f => (IDashboardAuthorizationFilter)new Security.HangfireDashboardAuthorizationFilterAdapter(f, hangfireOptions))
             .ToArray() ?? DefaultAuthorization;
 
         var asyncAuthorization = hangfireOptions.AsyncAuthorization?
-            .Select(f => (IDashboardAsyncAuthorizationFilter)new Security.HangfireDashboardAsyncAuthorizationFilterAdapter(f))
+            .Select(f => (IDashboardAsyncAuthorizationFilter)new Security.HangfireDashboardAsyncAuthorizationFilterAdapter(f, hangfireOptions))
             .ToArray() ?? [];
 
         return new DashboardUIOptions
@@ -234,8 +260,10 @@ public class DashboardUIOptions
             AppPath = hangfireOptions.AppPath,
             DashboardTitle = hangfireOptions.DashboardTitle,
             StatsPollingInterval = hangfireOptions.StatsPollingInterval,
-            // IsReadOnlyFunc requires a DashboardContext; default to false when mapping from Hangfire options.
+            // IsReadOnlyFunc needs the request, so it is evaluated once per page load
+            // (DashboardPermissionEvaluator) instead of being folded into this static flag.
             IsReadOnly = false,
+            HangfireOptions = hangfireOptions,
             DefaultRecordsPerPage = hangfireOptions.DefaultRecordsPerPage,
             DefaultTheme = hangfireOptions.DarkModeEnabled ? "auto" : "light",
             Authorization = authorization,

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Hangfire;
 using Hangfire.Storage;
+using a2n.Hangfire.Dashboard.Security;
 using Microsoft.Extensions.Logging;
 
 namespace a2n.Hangfire.Dashboard.Services;
@@ -44,6 +45,13 @@ public class QueueOperationsService
         _actor = actor;
         _logger = logger;
     }
+
+    /// <summary>
+    /// The permissions of the scope this service belongs to (the circuit or request), set by the DI
+    /// factory. Null when the service is constructed directly, in which case only
+    /// <see cref="DashboardUIOptions.IsReadOnly"/> applies.
+    /// </summary>
+    internal DashboardPermissionsState Permissions { get; init; }
 
     /// <summary>Returns the current pause / maintenance state.</summary>
     public QueueOperationsState GetState()
@@ -205,12 +213,13 @@ public class QueueOperationsService
 
     private void EnsureEnabled()
     {
-        // The pages already hide pause, resume and maintenance in read-only mode; this makes the
-        // option hold for any other caller too (issue #73).
-        if (_options.IsReadOnly)
+        // The pages already hide pause, resume and maintenance in read-only mode; this makes it hold
+        // for any other caller too (issue #73). Read at call time: the option, or the permissions of
+        // this scope (for example DashboardOptions.IsReadOnlyFunc for the signed-in user).
+        var permissions = DashboardPermissions.Resolve(Permissions?.Current, _options);
+        if (permissions.IsReadOnly)
         {
-            throw new InvalidOperationException(
-                "The dashboard is read-only (DashboardUIOptions.IsReadOnly is set.)");
+            throw new InvalidOperationException($"The dashboard is read-only. ({permissions.Describe()})");
         }
 
         if (!_options.QueueOperations.Enabled)

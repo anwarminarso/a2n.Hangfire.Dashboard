@@ -31,7 +31,7 @@
                 All workers are skipping job execution and rescheduling jobs back into the queue.
             </div>
         </div>
-        @if (!Options.IsReadOnly && Options.QueueOperations.Enabled)
+        @if (!IsReadOnly && Options.QueueOperations.Enabled)
         {
             <a href="queues" class="btn btn-sm btn-warning hf-maintenance-banner-action">
                 Manage →
@@ -41,6 +41,11 @@
 }
 
 @code {
+    // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
+    // cascades (absent only when a component is rendered on its own, as in tests).
+    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
+
     private QueueOperationsState _state;
     private DashboardPoller _poller;
 

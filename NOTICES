@@ -72,8 +72,10 @@ Copyright (c) 2016 pieceofsummer
 Licensed under the MIT License
 https://github.com/pieceofsummer/Hangfire.Console/blob/master/LICENSE
 
-Note: The a2n.Hangfire.Console package is a clean-room reimplementation that
-provides API compatibility. It does not copy source code from the original.
+Note: The a2n.Hangfire.Console package is a compatible reimplementation,
+written with reference to the MIT-licensed original. It keeps the original's
+API, storage format and namespaces so existing job code works unchanged; do not
+reference both packages in the same project.
 
 ================================================================================
 
@@ -82,8 +84,10 @@ Copyright (c) 2019 face-it
 Licensed under the MIT License
 https://github.com/face-it/Hangfire.Tags/blob/master/LICENSE
 
-Note: The a2n.Hangfire.Tags package is a clean-room reimplementation that
-provides API compatibility. It does not copy source code from the original.
+Note: The a2n.Hangfire.Tags package is a compatible reimplementation, written
+with reference to the MIT-licensed original. It keeps the original's API,
+storage format and namespaces so existing job code works unchanged; do not
+reference both packages in the same project.
 
 ================================================================================
 
@@ -92,7 +96,7 @@ Copyright (c) 2019 nickvdyck
 Licensed under the MIT License
 https://github.com/nickvdyck/Hangfire.RecurringJobAdmin/blob/master/LICENSE
 
-Note: The recurring job admin functionality is a clean-room reimplementation
+Note: The recurring job admin functionality is an independent reimplementation
 inspired by the original project's feature set.
 
 ================================================================================
@@ -102,7 +106,6 @@ Copyright (c) Bruno Rodrigues (brodrigz)
 Licensed under the MIT License
 https://github.com/brodrigz/Hangfire.Community.Dashboard.Heatmap/blob/master/LICENSE.md
 
-Note: The Recurring Schedule Heatmap feature in a2n.Hangfire.Dashboard is a
-clean-room implementation for the Blazor stack, inspired by this project's
-concept of visualizing recurring-job scheduling density. It does not copy
-source code from the original.
+Note: The Recurring Schedule Heatmap feature in a2n.Hangfire.Dashboard is an
+independent implementation for the Blazor stack, inspired by this project's
+concept of visualizing recurring-job scheduling density.

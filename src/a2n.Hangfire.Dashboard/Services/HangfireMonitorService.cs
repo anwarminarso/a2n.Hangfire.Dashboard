@@ -5,6 +5,7 @@ using Hangfire.Storage;
 using Hangfire.Storage.Monitoring;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Internal;
+using a2n.Hangfire.Dashboard.Security;
 using a2n.Hangfire.Dashboard.Storage;
 
 namespace a2n.Hangfire.Dashboard.Services;
@@ -152,13 +153,29 @@ public class HangfireMonitorService
     /// <summary>Why a mutation was refused in read-only mode (issue #73).</summary>
     internal const string ReadOnlyMessage = "The dashboard is read-only.";
 
+    /// <summary>
+    /// The permissions of the scope this service belongs to (the circuit or request), set by the DI
+    /// factory. Null when the service is constructed directly, in which case only
+    /// <see cref="DashboardUIOptions.IsReadOnly"/> applies.
+    /// </summary>
+    internal DashboardPermissionsState Permissions { get; init; }
+
+    /// <summary>
+    /// Read at call time: the option, or the permissions of this scope (for example
+    /// <c>DashboardOptions.IsReadOnlyFunc</c> for the signed-in user).
+    /// </summary>
+    private DashboardPermissions CurrentPermissions => DashboardPermissions.Resolve(Permissions?.Current, _options);
+
+    private bool IsReadOnly => CurrentPermissions.IsReadOnly;
+
     // Every method that changes jobs or recurring jobs calls this first, so a page (or a future one)
-    // that still shows an action can't bypass DashboardUIOptions.IsReadOnly (issue #73). The methods
-    // returning a JobOperationResult report it in the result instead.
+    // that still shows an action can't bypass read-only mode (issue #73). The methods returning a
+    // JobOperationResult report it in the result instead.
     private void ThrowIfReadOnly()
     {
-        if (_options.IsReadOnly)
-            throw new InvalidOperationException($"{ReadOnlyMessage} (DashboardUIOptions.IsReadOnly is set.)");
+        var permissions = CurrentPermissions;
+        if (permissions.IsReadOnly)
+            throw new InvalidOperationException($"{ReadOnlyMessage} ({permissions.Describe()})");
     }
 
     /// <summary>
@@ -418,8 +435,8 @@ public class HangfireMonitorService
         // --- Gates first: reject before any resolution, conversion, or storage access. ---
 
         // Read-only mode disallows all mutating actions (Req 4.6).
-        if (_options.IsReadOnly)
-            return new JobOperationResult(false, request.JobId, "The dashboard is read-only.", null);
+        if (IsReadOnly)
+            return new JobOperationResult(false, request.JobId, ReadOnlyMessage, null);
 
         // Job management must be enabled (Req 4.7).
         if (!_options.EnableJobManagement)
@@ -532,8 +549,8 @@ public class HangfireMonitorService
         // --- Gates first: reject before any resolution, conversion, or storage access. ---
 
         // Read-only mode disallows all mutating actions (Req 4.6).
-        if (_options.IsReadOnly)
-            return new JobOperationResult(false, null, "The dashboard is read-only.", null);
+        if (IsReadOnly)
+            return new JobOperationResult(false, null, ReadOnlyMessage, null);
 
         // Arbitrary method invocation is an explicit opt-in (Req 4.8). The job-management gate is
         // intentionally NOT applied here — it governs recurring jobs only.
