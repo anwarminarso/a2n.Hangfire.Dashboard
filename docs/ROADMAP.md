@@ -441,7 +441,21 @@ The rollup adapter shipped in v2.5.0 read back several of its own aggregates inc
 
 ---
 
-## v2.6 — Integrations (Planned)
+## v2.6.0 — Per-user read-only, safer defaults, slow-storage resilience ✅
+
+**Goal**: Make the dashboard safe to adopt from Hangfire's built-in dashboard and keep it responsive when storage is slow. See [CHANGELOG.md](../CHANGELOG.md) for the details and the upgrade notes.
+
+- ✅ `DashboardOptions.IsReadOnlyFunc` evaluated per page load and enforced in pages and services, with a Read-only badge
+- ✅ Health responses never carry exception messages; `/healthz/full` requires dashboard authorization by default
+- ✅ No authorization filter means local only; `AllowAllRequestsAuthorizationFilter` opens the dashboard explicitly
+- ✅ Bounded storage calls, non-overlapping refresh loops and back-off ([#64](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/64)); in-process realtime feed ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61))
+- ✅ Failed page grouped by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53)); `IsReadOnly` enforced for every action ([#73](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/73))
+
+The Integrations and Customization milestones move to v2.7 and v2.8. Notes elsewhere in this file that say "v2.6 Prometheus" refer to the Integrations milestone.
+
+---
+
+## v2.7 — Integrations (Planned)
 
 **Goal**: Plug the dashboard into the modern observability and automation stack.
 
@@ -452,7 +466,7 @@ The rollup adapter shipped in v2.5.0 read back several of its own aggregates inc
 
 ---
 
-## v2.7 — Customization (Planned)
+## v2.8 — Customization (Planned)
 
 **Goal**: Make the dashboard fit each team's branding and tenancy needs.
 
@@ -471,7 +485,7 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 - [ ] **Job Execution Timeline (Gantt)** — visually impressive but adoption is estimated to be low for typical small/medium deployments. Reconsider after v2.3 ships and based on demand.
 - [ ] **Multi-instance federation** — dashboard switcher for dev/staging/prod or sharded Hangfire deployments. Storage adapter is already modular, so the architecture is ready when demand appears.
 - [ ] **Replay with modified arguments** — failed-job rerun with edited arguments (powerful but easy to misuse without RBAC; gate behind the audit log shipped in v2.3 Operations).
-- [x] **Failure clustering / fingerprint** — group Failed page by exception fingerprint (Sentry-style). Significant debug-experience improvement. ✅ **Done on `main`, unreleased**: contributor-built by [@hnalpha323](https://github.com/hnalpha323), designed in [#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53) and delivered in four PRs. Step 1 shipped in v2.5.7 ([#54](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/54)): the opt-in `FailureFingerprintFilter` stores a versioned `v1:` fingerprint job parameter on every final failure. Steps 2–4 are merged for the next release: grouping on the Failed page, read-only, with a fallback bounded to 1,000 jobs for failures without a stored fingerprint ([#60](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/60)); Requeue all and Delete all per group, in audited batches of 500 that only change jobs still in Failed ([#62](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/62)); and an Exception filter in Search that finds a group's jobs in any state, linked from each group on the Failed page ([#63](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/63)). Left open and tracked separately: on the generic provider, search skips jobs whose type the dashboard can't load, so a group's search can come back empty ([#70](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/70)), lists a job twice while it is still in a queue ([#68](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/68)), and bypasses `IFailedJobPageSource` ([#69](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/69)); what "newest" means for a group on the SQL adapters, creation order or failure time ([#71](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/71)); the SQL Server test fixture skipping the suite when frameworks run in parallel ([#72](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/72)); `IsReadOnly` not blocking the existing requeue, delete and trigger actions ([#73](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/73)); and `ConfirmModal` focus handling ([#74](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/74)).
+- [x] **Failure clustering / fingerprint** — group Failed page by exception fingerprint (Sentry-style). Significant debug-experience improvement. ✅ **Done in v2.6.0**: contributor-built by [@hnalpha323](https://github.com/hnalpha323), designed in [#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53) and delivered in four PRs. Step 1 shipped in v2.5.7 ([#54](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/54)): the opt-in `FailureFingerprintFilter` stores a versioned `v1:` fingerprint job parameter on every final failure. Steps 2–4 are merged for the next release: grouping on the Failed page, read-only, with a fallback bounded to 1,000 jobs for failures without a stored fingerprint ([#60](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/60)); Requeue all and Delete all per group, in audited batches of 500 that only change jobs still in Failed ([#62](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/62)); and an Exception filter in Search that finds a group's jobs in any state, linked from each group on the Failed page ([#63](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/63)). Left open and tracked separately: on the generic provider, search skips jobs whose type the dashboard can't load, so a group's search can come back empty ([#70](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/70)), lists a job twice while it is still in a queue ([#68](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/68)), and bypasses `IFailedJobPageSource` ([#69](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/69)); what "newest" means for a group on the SQL adapters, creation order or failure time ([#71](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/71)); the SQL Server test fixture skipping the suite when frameworks run in parallel ([#72](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/72)); `IsReadOnly` not blocking the existing requeue, delete and trigger actions ([#73](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/73)); and `ConfirmModal` focus handling ([#74](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/74)).
 - [x] **Search by job argument value** — index `Job.Arguments` for support-case lookups (`customerId == "C-12345"`). Requires storage adapter changes per provider. ✅ **Done in v2.5.5** ([#42](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/pull/42) — `args:` search and an Arguments filter, matched against the stored argument payload in the SQL Server and PostgreSQL adapters with a generic-provider fallback; argument values also shown on Job Details and list rows). There is no index by default; [#45](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/45) caps the count at 1,000 and documents an optional PostgreSQL `pg_trgm` index.
 - [x] **Visual cron builder** — interactive recurring-job editor instead of plain cron string input. ✅ **Done in v2.4** (`ScheduleBuilder` — field-by-field Every/Specific/Range/Step + manual input with human-readable description and next-run preview).
 - [ ] **Dynamic job chaining / visual chain builder** ([#15](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/15)) — operator-managed continuation/fan-out so downstream jobs can be added without a redeploy. **Out of scope** for the dashboard: building, persisting, and resolving chain definitions at runtime is a Hangfire core concern that sits below the dashboard layer. Recorded as a discussion item only.
