@@ -25,11 +25,10 @@
 
         @* Job Status Banner *@
         var topState = _job.History.FirstOrDefault()?.StateName;
-        var expiryInfo = GetExpiryInfo();
-        if (!string.IsNullOrEmpty(expiryInfo))
+        if (GetExpireAt() is { } expireAt)
         {
             <div class="alert @GetBannerAlertClass(topState) d-flex align-items-center" role="alert">
-                <strong>The job is @(topState?.ToLowerInvariant()).</strong>&nbsp;@expiryInfo
+                <strong>The job is @(topState?.ToLowerInvariant()).</strong>&nbsp;<span title="@expireAt.ToString("yyyy-MM-dd HH:mm:ss") UTC">@FormatExpiry(expireAt)</span>
             </div>
         }
 
@@ -353,36 +352,48 @@
     private string RenderMethodCall()
         => Helpers.JobArgumentsRenderer.RenderMethodCall(_job?.Job, _job?.InvocationData, JobId);
 
-    private string GetExpiryInfo()
+    /// <summary>
+    /// When the storage will remove the job (UTC), or <c>null</c> when it has no expiration.
+    /// Storages keep it in the job record and expose it as <see cref="JobDetailsDto.ExpireAt"/>
+    /// (issue #97); an "ExpireAt" job parameter is only read as a fallback.
+    /// </summary>
+    private DateTime? GetExpireAt()
     {
-        if (_job?.Properties is null) return null;
+        if (_job is null) return null;
 
-        if (_job.Properties.TryGetValue("ExpireAt", out var expireAtStr) && !string.IsNullOrEmpty(expireAtStr))
+        if (_job.ExpireAt is { } expireAt)
+            return expireAt.Kind == DateTimeKind.Local ? expireAt.ToUniversalTime() : expireAt;
+
+        if (_job.Properties is not null
+            && _job.Properties.TryGetValue("ExpireAt", out var expireAtStr)
+            && !string.IsNullOrEmpty(expireAtStr))
         {
-            try
-            {
-                var expireAt = global::Hangfire.Common.JobHelper.DeserializeDateTime(expireAtStr);
-                var remaining = expireAt - DateTime.UtcNow;
-                if (remaining.TotalSeconds > 0)
-                {
-                    if (remaining.TotalHours >= 1)
-                        return $"It will be removed automatically in {(int)remaining.TotalHours} hours.";
-                    if (remaining.TotalMinutes >= 1)
-                        return $"It will be removed automatically in {(int)remaining.TotalMinutes} minutes.";
-                    return "It will be removed automatically soon.";
-                }
-            }
+            try { return global::Hangfire.Common.JobHelper.DeserializeDateTime(expireAtStr); }
             catch { }
         }
 
-        var currentState = _job.History?.FirstOrDefault()?.StateName;
-        return currentState switch
-        {
-            "Succeeded" => "It will be removed automatically in 24 hours.",
-            "Deleted" => "It will be removed automatically in 24 hours.",
-            _ => null
-        };
+        return null;
     }
+
+    private static string FormatExpiry(DateTime expireAtUtc)
+    {
+        var remaining = expireAtUtc - DateTime.UtcNow;
+        if (remaining.TotalMinutes < 1) return "It will be removed automatically soon.";
+        return $"It will be removed automatically in {FormatRemaining(remaining)}.";
+    }
+
+    // Rounded to the nearest unit, so a fresh 5-day expiration reads "5 days" and not "4 days"
+    // (the banner's tooltip has the exact time). Days from 48 hours up: 36 hours reads "36 hours".
+    private static string FormatRemaining(TimeSpan remaining)
+    {
+        var minutes = (int)Math.Round(remaining.TotalMinutes);
+        if (minutes < 60) return Plural(minutes, "minute");
+        var hours = (int)Math.Round(remaining.TotalHours);
+        if (hours < 48) return Plural(hours, "hour");
+        return $"{(int)Math.Round(remaining.TotalDays)} days";
+    }
+
+    private static string Plural(int count, string unit) => count == 1 ? $"1 {unit}" : $"{count} {unit}s";
 
     private static string GetBannerAlertClass(string stateName) => stateName switch
     {
