@@ -483,7 +483,9 @@ else
         foreach (var id in stoppedIds)
         {
             var config = Monitor.GetStoppedJobConfig(id);
-            if (config is null || config.ContainsKey("_deleted")) continue;
+            // The set says which jobs are stopped. A "_deleted" field is ignored: versions before
+            // issue #98 left it in the hash on Start, and a second Stop kept it, hiding the job.
+            if (config is null || config.Count == 0) continue;
 
             DateTime? stoppedAt = null;
             if (config.TryGetValue("StoppedAt", out var stoppedAtStr) &&
