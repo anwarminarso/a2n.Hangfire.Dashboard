@@ -763,6 +763,9 @@ public class HangfireMonitorService
             data[StoppedJobPayloadField] = jobPayload;
 
         using var transaction = connection.CreateWriteTransaction();
+        // SetRangeInHash only upserts fields, so clear what an earlier Stop/Start left first: versions
+        // before issue #98 marked a started job's hash with "_deleted" instead of removing it.
+        transaction.RemoveHash(hashKey);
         transaction.SetRangeInHash(hashKey, data.Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value)));
         transaction.AddToSet(StoppedJobsSet, recurringJobId);
         transaction.Commit();
@@ -807,8 +810,7 @@ public class HangfireMonitorService
         // Clean up the stopped state
         using var transaction = connection.CreateWriteTransaction();
         transaction.RemoveFromSet(StoppedJobsSet, recurringJobId);
-        // Mark the hash as deleted by overwriting with a flag
-        transaction.SetRangeInHash(hashKey, [new KeyValuePair<string, string>("_deleted", "true")]);
+        transaction.RemoveHash(hashKey);
         transaction.Commit();
 
         _audit?.Log(AuditAction.RecurringStarted, target: recurringJobId);
