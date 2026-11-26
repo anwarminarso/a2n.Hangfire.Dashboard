@@ -455,6 +455,15 @@ The Integrations and Customization milestones move to v2.7 and v2.8. Notes elsew
 
 ---
 
+## v2.6.1 — Job Details expiration banner, re-stopped recurring jobs ✅
+
+**Goal**: Fix two bugs reported after 2.6.0. No migration.
+
+- ✅ Job Details banner reads the expiration stored on the job record instead of assuming 24 hours ([#97](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/97))
+- ✅ Stop, Start, Stop keeps a recurring job in the Stopped Jobs list ([#98](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/98))
+
+---
+
 ## v2.7 — Integrations (Planned)
 
 **Goal**: Plug the dashboard into the modern observability and automation stack.
@@ -531,8 +540,10 @@ Items considered but explicitly **not prioritized**. Will be reconsidered when 5
 | v2.5.5 | **Job arguments, search, and sorting**: arguments on Job Details and list rows plus `args:` search (#42); configurable search timeout with Cancel (#43); sortable in-memory grids and a newest/oldest toggle on the job lists (#41); search badge clears its filter input (#44); search counts at most 1,000 matches and pages by primary key (#45) | ✅ Done |
 | v2.5.6 | **Failed Jobs on PostgreSQL**: the page no longer returns HTTP 500 when a failed state's payload omits `FailedAt`; the adapter reads that page itself, and the demand and execution rollups use the same reader | ✅ Done |
 | v2.5.7 | **Responsive layout, wrapping job names, failure fingerprints**: priority columns and phone cards on every list table, icon-rail sidebar on laptops, capped content on wide screens (#59); long job names wrap (#55); opt-in `FailureFingerprintFilter`, step 1 of grouping failed jobs by exception (#53, #54) | ✅ Done |
-| v2.6.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
-| v2.7.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
+| v2.6.0 | **Per-user read-only, safer defaults, slow-storage resilience**: `IsReadOnlyFunc` per page load, health responses without exception messages, local-only without a filter, bounded storage calls and back-off (#64), in-process realtime feed (#61), Failed page grouped by exception (#53), `IsReadOnly` enforced everywhere (#73) | ✅ Done |
+| v2.6.1 | **Patch**: Job Details banner shows the job's real expiration (#97); a re-stopped recurring job stays in the Stopped Jobs list (#98) | ✅ Done |
+| v2.7.0 | **Integrations**: Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export | Planned |
+| v2.8.0 | **Customization**: white-label theming, show/hide built-in pages, saved views | Planned |
 | v3.0 | Stretch goals & long-term backlog (timeline, federation, replay, ...) | Planned |
 
 ---

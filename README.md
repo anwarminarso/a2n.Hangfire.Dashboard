@@ -33,6 +33,8 @@ Navigate to `/hangfire`. Done.
 
 ## 🚀 What's New in 2.6.0 — Per-user Read-only, Safer Defaults, Slow-storage Resilience
 
+> **2.6.1 (patch)** — The Job Details banner shows when the storage will actually remove a job, instead of "in 24 hours" for every Succeeded or Deleted job ([#97](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/97)). A recurring job that is stopped, started and stopped again stays in the Stopped Jobs list and can be started again ([#98](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/98)). See the [changelog](CHANGELOG.md).
+
 > **This release fixes security issues, and some fixes change defaults.** Read [Upgrading](CHANGELOG.md#upgrading) in the changelog before deploying.
 
 | | Feature | What you get |
@@ -809,6 +811,7 @@ For authentication with a login page, run `samples/SampleAppAuth` instead.
 | v2.4.x | ✅ Done | **Job Builder**: typed arguments, method discovery, visual cron builder, one-off enqueue page |
 | v2.5.x | ✅ Done | **Recurring Schedule Heatmap**, rollup metrics for non-SQL storages (Rollup, Redis), Throttling pages, job arguments and `args:` search, responsive layout, failure fingerprints |
 | v2.6.0 | ✅ Done | **Per-user read-only, safer defaults, slow-storage resilience** — `IsReadOnlyFunc` honored per page load with a Read-only badge; health responses without exception messages and `/healthz/full` behind dashboard authorization; no filter means local only ([Upgrading](CHANGELOG.md#upgrading)); bounded storage calls and back-off for slow storage ([#64](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/64)); in-process realtime feed ([#61](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/61)); Failed page grouped by exception ([#53](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/53)); `IsReadOnly` enforced everywhere ([#73](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/73)) |
+| v2.6.1 | ✅ Done | **Patch** — Job Details banner shows the job's real expiration ([#97](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/97)); a re-stopped recurring job stays in the Stopped Jobs list ([#98](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/98)) |
 | v2.7.0 | Planned | **Integrations** — Prometheus `/metrics`, OpenTelemetry trace links, read-only REST API, CSV/JSON export |
 | v2.8.0 | Planned | **Customization** — white-label theming, show/hide built-in pages, saved views |
 | v3.0 | Planned | Stretch goals & long-term backlog (notifications & alert rules, Gantt timeline, multi-instance federation, replay, etc.) |
