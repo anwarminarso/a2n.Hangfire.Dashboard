@@ -15,7 +15,7 @@ Core principles (from `docs/ROADMAP.md`):
    (`Hangfire.Console`, `Hangfire.Tags`) and replace, not coexist with, the original packages.
 4. **Modern stack** — Blazor Server, Bootstrap 5, Chart.js, SignalR, .NET 8/9/10.
 
-- **Version:** single source of truth is `<Version>` in `Directory.Build.props` (currently 2.6.0).
+- **Version:** single source of truth is `<Version>` in `Directory.Build.props` (currently 2.6.1).
 - **License:** LGPL-3.0-or-later. Third-party notices in `NOTICES`.
 - **Targets:** `net8.0;net9.0;net10.0` for every library and test project. Code must compile on all three
   (watch for per-TFM `PackageReference` conditions and APIs that only exist on newer frameworks).
