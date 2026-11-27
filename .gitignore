@@ -45,3 +45,10 @@ msbuild.wrn
 
 # playwright MCP Testing
 .playwright-mcp/
+
+# Claude Code (shared settings in .claude/settings.json are committed)
+.claude/settings.local.json
+
+# Superpowers skills: local worktrees and working specs/plans
+.worktrees/
+docs/superpowers/
