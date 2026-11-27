@@ -40,27 +40,19 @@ public partial class Failed
     // ── Exception groups ──
     // Loaded the first time the Exception filter gets focus, or when the page opens on a group, so
     // the default view costs no more than it did before grouping existed.
-    private enum LoadStatus { NotLoaded, Loading, Loaded, TimedOut, Failed }
-
     private sealed record GroupRow(JobSummaryDto Summary, Job? Job);
 
     private IStorageQueryProvider? _queryProvider;
     private FailureGroupsResult _groups = new();
-    private LoadStatus _groupsStatus = LoadStatus.NotLoaded;
+    private FailureGroupLoadStatus _groupsStatus = FailureGroupLoadStatus.NotLoaded;
     private CancellationTokenSource? _groupsCts;
     private bool _menuOpen;
-
-    // The option the arrow keys have moved to, by fingerprint (null is "All exceptions"), so it stays on
-    // the same group if a refresh reorders the list. Its index is the fallback when that group is gone.
-    private string? _activeFingerprint;
-    private int _activeIndex;
-    private bool _scrollActiveOption;
 
     private string? _selectedFingerprint;
     private FailureGroupDto? _selectedGroup;
     private int _groupSize = 10;
     private List<GroupRow> _groupRows = new();
-    private LoadStatus _groupJobsStatus = LoadStatus.NotLoaded;
+    private FailureGroupLoadStatus _groupJobsStatus = FailureGroupLoadStatus.NotLoaded;
     private CancellationTokenSource? _groupJobsCts;
 
     private bool ShowExceptionFilter => _queryProvider is { SupportsFailureGrouping: true } && _groups.IsSupported;
@@ -96,30 +88,11 @@ public partial class Failed
         get
         {
             var options = new List<FailureGroupDto?> { null };
-            if (_groupsStatus == LoadStatus.Loaded)
+            if (_groupsStatus == FailureGroupLoadStatus.Loaded)
                 options.AddRange(LabeledGroups);
             return options;
         }
     }
-
-    private static string OptionId(int index) => $"exception-option-{index}";
-
-    private int ActiveOptionIn(List<FailureGroupDto?> options)
-    {
-        var index = options.FindIndex(g => g?.Fingerprint == _activeFingerprint);
-        // The group has gone in a refresh: stay at the same position, inside the list.
-        return index >= 0 ? index : Math.Clamp(_activeIndex, 0, options.Count - 1);
-    }
-
-    private bool HasMenuStatus => _groupsStatus is LoadStatus.Loading or LoadStatus.TimedOut or LoadStatus.Failed
-        || (_groupsStatus == LoadStatus.Loaded && UnlabeledGroupCount > 0);
-
-    private string? MenuStatusClass => !HasMenuStatus ? null : "px-3 py-2 border-top " + _groupsStatus switch
-    {
-        LoadStatus.TimedOut => "text-warning-emphasis",
-        LoadStatus.Failed => "text-danger",
-        _ => "text-muted",
-    };
 
     private string SelectedLabel => !InGroupView
         ? "All exceptions"
@@ -199,108 +172,18 @@ public partial class Failed
 
     private async Task EnsureGroupsLoaded()
     {
-        if (_groupsStatus == LoadStatus.NotLoaded)
+        if (_groupsStatus == FailureGroupLoadStatus.NotLoaded)
             await LoadGroupsAndSelection();
     }
 
     private void MarkGroupsStale()
     {
-        if (_groupsStatus == LoadStatus.NotLoaded)
+        if (_groupsStatus == FailureGroupLoadStatus.NotLoaded)
             return;
         // Dropping the source makes a load still in flight discard its result.
         _groupsCts?.Cancel();
         _groupsCts = null;
-        _groupsStatus = LoadStatus.NotLoaded;
-    }
-
-    private async Task ToggleMenu()
-    {
-        if (_menuOpen)
-            CloseMenu();
-        else
-            await OpenMenu();
-    }
-
-    private async Task OpenMenu()
-    {
-        _menuOpen = true;
-        _activeFingerprint = _selectedFingerprint;
-        _activeIndex = 0;
-        _scrollActiveOption = true;
-        await EnsureGroupsLoaded();
-    }
-
-    private void CloseMenu() => _menuOpen = false;
-
-    // The select-only combobox keys (WAI-ARIA APG). nav.js cancels the browser's own handling of the
-    // keys used here, apart from Escape and Tab: Tab leaves the combobox, and focusout closes the list.
-    private async Task HandleFilterKeyDown(KeyboardEventArgs e)
-    {
-        if (e.AltKey || e.CtrlKey || e.MetaKey)
-            return;
-
-        if (!_menuOpen)
-        {
-            if (e.Key is "ArrowDown" or "ArrowUp" or "Enter" or " " or "Home" or "End")
-            {
-                await OpenMenu();
-                // After OpenMenu, which loads the groups the first time, so End can reach the last one.
-                if (e.Key is "Home" or "End")
-                {
-                    var loaded = MenuOptions;
-                    MoveActiveOption(loaded, e.Key == "Home" ? 0 : loaded.Count - 1);
-                }
-            }
-            return;
-        }
-
-        var options = MenuOptions;
-        var active = ActiveOptionIn(options);
-        var last = options.Count - 1;
-        switch (e.Key)
-        {
-            case "ArrowDown":
-                MoveActiveOption(options, Math.Min(active + 1, last));
-                break;
-            case "ArrowUp":
-                MoveActiveOption(options, Math.Max(active - 1, 0));
-                break;
-            case "Home":
-                MoveActiveOption(options, 0);
-                break;
-            case "End":
-                MoveActiveOption(options, last);
-                break;
-            case "Enter":
-            case " ":
-                await SelectGroup(options[active]?.Fingerprint);
-                break;
-            case "Escape":
-                CloseMenu();
-                break;
-        }
-    }
-
-    private void MoveActiveOption(List<FailureGroupDto?> options, int index)
-    {
-        _activeFingerprint = options[index]?.Fingerprint;
-        _activeIndex = index;
-        _scrollActiveOption = true;
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!_scrollActiveOption || !_menuOpen)
-            return;
-        _scrollActiveOption = false;
-        try
-        {
-            await JS.InvokeVoidAsync("hfListbox.scrollIntoView", OptionId(ActiveOptionIn(MenuOptions)));
-        }
-        catch (Exception)
-        {
-            // Only keeps the option in view; the list still works without it.
-        }
+        _groupsStatus = FailureGroupLoadStatus.NotLoaded;
     }
 
     private async Task SelectGroup(string? fingerprint)
@@ -334,7 +217,7 @@ public partial class Failed
         _selectedFingerprint = null;
         _selectedGroup = null;
         _groupRows = new();
-        _groupJobsStatus = LoadStatus.NotLoaded;
+        _groupJobsStatus = FailureGroupLoadStatus.NotLoaded;
         ClearJobSelection();
     }
 
@@ -358,14 +241,14 @@ public partial class Failed
         _groupsCts = cts;
 
         // A refresh keeps the current list on screen until the new one arrives.
-        if (_groupsStatus != LoadStatus.Loaded)
+        if (_groupsStatus != FailureGroupLoadStatus.Loaded)
         {
-            _groupsStatus = LoadStatus.Loading;
+            _groupsStatus = FailureGroupLoadStatus.Loading;
             StateHasChanged();
         }
 
         FailureGroupsResult? result = null;
-        var status = LoadStatus.Loaded;
+        var status = FailureGroupLoadStatus.Loaded;
         try
         {
             // Off the render thread: a provider may do its work before its first await.
@@ -375,7 +258,7 @@ public partial class Failed
         {
             // SqlClient reports a cancelled command as a SqlException, so the token tells a timeout
             // apart from a real error.
-            status = cts.IsCancellationRequested ? LoadStatus.TimedOut : LoadStatus.Failed;
+            status = cts.IsCancellationRequested ? FailureGroupLoadStatus.TimedOut : FailureGroupLoadStatus.Failed;
         }
 
         // A newer load, or disposal, has taken over.
@@ -383,7 +266,7 @@ public partial class Failed
             return;
         _groupsCts = null;
 
-        if (status == LoadStatus.Loaded)
+        if (status == FailureGroupLoadStatus.Loaded)
             _groups = result ?? FailureGroupsResult.Unsupported();
         _groupsStatus = status;
         if (!_groups.IsSupported)
@@ -398,17 +281,17 @@ public partial class Failed
         if (group is null || !ShowExceptionFilter)
         {
             _groupRows = new();
-            _groupJobsStatus = LoadStatus.Loaded;
+            _groupJobsStatus = FailureGroupLoadStatus.Loaded;
             return;
         }
 
         using var cts = NewTimeoutSource();
         _groupJobsCts = cts;
-        _groupJobsStatus = LoadStatus.Loading;
+        _groupJobsStatus = FailureGroupLoadStatus.Loading;
         StateHasChanged();
 
         List<GroupRow>? rows = null;
-        var status = LoadStatus.Loaded;
+        var status = FailureGroupLoadStatus.Loaded;
         try
         {
             var size = _groupSize;
@@ -422,7 +305,7 @@ public partial class Failed
         }
         catch (Exception)
         {
-            status = cts.IsCancellationRequested ? LoadStatus.TimedOut : LoadStatus.Failed;
+            status = cts.IsCancellationRequested ? FailureGroupLoadStatus.TimedOut : FailureGroupLoadStatus.Failed;
         }
 
         if (!ReferenceEquals(_groupJobsCts, cts))
@@ -468,8 +351,6 @@ public partial class Failed
     private static string FullTypeName(FailureGroupDto group) => FailureGroupLabels.FullTypeName(group);
 
     private string CountText(FailureGroupDto group) => FailureGroupLabels.CountText(group, _groups.IsPartial);
-
-    private static string Truncate(string text, int length) => FailureGroupLabels.Truncate(text, length);
 
     private async Task ToggleOrder()
     {
