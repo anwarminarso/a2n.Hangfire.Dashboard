@@ -2,6 +2,7 @@ using Dapper;
 using Npgsql;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
+using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.PostgreSql.Internal;
 
 namespace a2n.Hangfire.Dashboard.PostgreSql;
@@ -64,34 +65,7 @@ public partial class PostgreSqlMetricsProvider : IStorageMetricsProvider
         var rows = await connection.QueryAsync<CounterRow>(
             new CommandDefinition(sql, cancellationToken: ct));
 
-        var dataPoints = new Dictionary<DateTimeOffset, ThroughputDataPoint>();
-
-        foreach (var row in rows)
-        {
-            var parsed = ParseCounterKey(row.Key);
-            if (parsed == null) continue;
-
-            var (category, timestamp) = parsed.Value;
-            if (timestamp < from || timestamp >= to) continue;
-
-            var bucket = TruncateToInterval(timestamp, interval);
-
-            if (!dataPoints.TryGetValue(bucket, out var dp))
-            {
-                dp = new ThroughputDataPoint { Timestamp = bucket };
-                dataPoints[bucket] = dp;
-            }
-
-            var value = (long)row.Value;
-            switch (category)
-            {
-                case "succeeded": dp.Succeeded += value; break;
-                case "failed": dp.Failed += value; break;
-                case "deleted": dp.Deleted += value; break;
-            }
-        }
-
-        return dataPoints.Values.OrderBy(d => d.Timestamp).ToList();
+        return StorageMetricsHelpers.AggregateThroughput(rows.Select(r => (r.Key, (long)r.Value)), from, to, interval);
     }
 
     /// <inheritdoc />
@@ -115,29 +89,7 @@ public partial class PostgreSqlMetricsProvider : IStorageMetricsProvider
         var rows = await connection.QueryAsync<StateTransitionRow>(
             new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct));
 
-        var dataPoints = new Dictionary<DateTimeOffset, StateTransitionDataPoint>();
-
-        foreach (var row in rows)
-        {
-            var bucket = new DateTimeOffset(DateTime.SpecifyKind(row.Bucket, DateTimeKind.Utc), TimeSpan.Zero);
-            if (!dataPoints.TryGetValue(bucket, out var dp))
-            {
-                dp = new StateTransitionDataPoint { Timestamp = bucket };
-                dataPoints[bucket] = dp;
-            }
-
-            switch (row.StateName)
-            {
-                case "Enqueued": dp.Enqueued += row.Count; break;
-                case "Processing": dp.Processing += row.Count; break;
-                case "Succeeded": dp.Succeeded += row.Count; break;
-                case "Failed": dp.Failed += row.Count; break;
-                case "Deleted": dp.Deleted += row.Count; break;
-                case "Scheduled": dp.Scheduled += row.Count; break;
-            }
-        }
-
-        return dataPoints.Values.OrderBy(d => d.Timestamp).ToList();
+        return StorageMetricsHelpers.BuildStateTransitions(rows.Select(r => (r.Bucket, r.StateName, r.Count)));
     }
 
     /// <inheritdoc />
@@ -364,7 +316,7 @@ public partial class PostgreSqlMetricsProvider : IStorageMetricsProvider
         var results = new List<ServerUtilizationDto>();
         foreach (var server in servers)
         {
-            var totalWorkers = ParseWorkerCount(server.Data);
+            var totalWorkers = StorageMetricsHelpers.ParseWorkerCount(server.Data);
             var busy = busyWorkers.GetValueOrDefault(server.ServerName ?? "", 0);
             var cappedBusy = totalWorkers > 0 ? Math.Min(busy, totalWorkers) : busy;
             var utilization = totalWorkers > 0
