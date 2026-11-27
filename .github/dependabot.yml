@@ -1,0 +1,35 @@
+version: 2
+updates:
+  # NuGet: versions are defined centrally in Directory.Packages.props.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # One PR per week for all minor/patch updates; majors still come as separate PRs.
+      nuget-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # These packages follow the target framework's major version (net8 -> 8.x, net9 -> 9.x,
+      # net10 -> 10.x) through conditional PackageVersion items; a major bump would break that mapping.
+      - dependency-name: "Microsoft.AspNetCore.SignalR.Client"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.AspNetCore.TestHost"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]
