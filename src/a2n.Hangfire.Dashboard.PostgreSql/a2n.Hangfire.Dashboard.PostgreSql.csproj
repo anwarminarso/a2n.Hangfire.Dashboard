@@ -8,8 +8,8 @@
     <PackageTags>hangfire;dashboard;postgresql;dapper;storage;query;analytics;aspnetcore;dotnet</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.*" />
-    <PackageReference Include="Npgsql" Version="8.0.*" />
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
