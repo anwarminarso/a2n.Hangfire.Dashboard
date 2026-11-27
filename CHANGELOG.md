@@ -4,6 +4,8 @@
 
 ### Changed
 
+- **Package versions are pinned with Central Package Management ([#105](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/105)).** All versions now live in `Directory.Packages.props`, with no floating (`*`) versions, so two builds of the same commit restore the same dependencies. The pins are the versions the floating ranges resolved to when they were introduced. Per-framework packages (`Microsoft.AspNetCore.SignalR.Client`, `Microsoft.AspNetCore.TestHost`, `Microsoft.Extensions.DependencyInjection`) use conditional `PackageVersion` items.
+- **Dependabot and CodeQL ([#105](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/105)).** `.github/dependabot.yml` proposes NuGet and GitHub Actions updates weekly, with minor and patch updates grouped into one PR. A CodeQL workflow analyzes the C# libraries on pushes to `main`, on pull requests and weekly.
 - **The README is a landing page; the deep-dives moved to `docs/` ([#107](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/107)).** The README keeps install, setup, authorization, packages and a one-line-per-feature table, and links to `docs/features/` (heatmap, Job Builder, dependency graph, stack trace links, health checks, operations, feature overview) and `docs/guides/` (existing Hangfire code, polling and slow storage, search on large instances, reverse proxy, the Blazor script). Links in the README are absolute so they also work on nuget.org. No content was dropped.
 
 ## 2.6.1 — Job Details expiration banner, re-stopped recurring jobs

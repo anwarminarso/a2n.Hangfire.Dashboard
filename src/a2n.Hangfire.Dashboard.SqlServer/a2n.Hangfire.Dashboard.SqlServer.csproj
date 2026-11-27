@@ -9,8 +9,8 @@
     <PackageTags>hangfire;dashboard;sqlserver;dapper;storage;query;analytics;aspnetcore;dotnet</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.*" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.*" />
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\a2n.Hangfire.Dashboard\a2n.Hangfire.Dashboard.csproj" />
