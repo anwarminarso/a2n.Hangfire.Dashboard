@@ -1,0 +1,45 @@
+@* The four summary cards above the Schedule Heatmap toolbars. The last two open the Concurrency and
+   Recommendations views. *@
+
+<div class="row row-cols-2 row-cols-lg-4 g-2 mt-3" aria-label="Heatmap insights">
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-body py-2">
+                <div class="small text-body-secondary">Best window to schedule</div>
+                <div class="fw-semibold text-success">@(BestWindow ?? "—")</div>
+                <div class="small text-body-secondary">lowest combined load</div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-body py-2">
+                <div class="small text-body-secondary">Ad-hoc demand peak</div>
+                <div class="fw-semibold">@(AdhocPeak ?? "—")</div>
+                <div class="small text-body-secondary">@(AdhocWhen ?? (DemandAvailable ? "no demand collected yet" : "needs a metrics provider"))</div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card h-100 @(PeakOver ? "border-danger" : null)" role="button" tabindex="0"
+             style="cursor: pointer;" title="View the concurrency analysis"
+             @onclick='() => OnViewRequested.InvokeAsync("conc")'>
+            <div class="card-body py-2">
+                <div class="small text-body-secondary">Peak combined concurrency</div>
+                <div class="fw-semibold @(PeakOver ? "text-danger" : null)">@PeakConcurrency</div>
+                <div class="small text-body-secondary">@(PeakWhen ?? "—") · cap @Capacity</div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card h-100 @(HasHighSeverityRecommendation ? "border-danger" : null)"
+             role="button" tabindex="0" style="cursor: pointer;" title="View the overlap recommendations"
+             @onclick='() => OnViewRequested.InvokeAsync("rec")'>
+            <div class="card-body py-2">
+                <div class="small text-body-secondary">Overlap suggestions</div>
+                <div class="fw-semibold">@RecommendationCount</div>
+                <div class="small text-body-secondary">@(RecommendationCount > 0 ? "click to view" : "all clear")</div>
+            </div>
+        </div>
+    </div>
+</div>
