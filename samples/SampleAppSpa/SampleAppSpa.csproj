@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+    <PackageReference Include="Hangfire.InMemory" />
   </ItemGroup>
 
   <ItemGroup>

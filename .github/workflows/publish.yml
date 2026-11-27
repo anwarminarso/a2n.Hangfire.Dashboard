@@ -5,7 +5,16 @@ on:
     types: [published]
 
 jobs:
+  # The full build-and-test workflow (PostgreSQL and SQL Server containers, net8/9/10) runs on the
+  # release commit first; the packages are only published when it passes.
+  test:
+    name: Build & test
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     environment: nuget
     permissions:
@@ -14,6 +23,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # The tag must match <Version> in Directory.Build.props (an optional leading "v" is allowed),
+      # otherwise the release would publish packages with a different version than its name.
+      - name: Check release tag against version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n 1)
+          if [ "${TAG#v}" != "$version" ]; then
+            echo "::error::Release tag '$TAG' does not match <Version>$version</Version> in Directory.Build.props."
+            exit 1
+          fi
+          echo "Publishing version $version"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
@@ -29,15 +51,14 @@ jobs:
       - name: Build
         run: dotnet build "src/Hangfire Dashboard.slnx" -c Release --no-restore
 
+      # Packs every project under src/ (each one is a shipped package), so a new package can't be
+      # forgotten here.
       - name: Pack
         run: |
-          dotnet pack src/a2n.Hangfire.Dashboard/a2n.Hangfire.Dashboard.csproj -c Release --no-build -o ./nupkgs
-          dotnet pack src/a2n.Hangfire.Console/a2n.Hangfire.Console.csproj -c Release --no-build -o ./nupkgs
-          dotnet pack src/a2n.Hangfire.Tags/a2n.Hangfire.Tags.csproj -c Release --no-build -o ./nupkgs
-          dotnet pack src/a2n.Hangfire.Dashboard.SqlServer/a2n.Hangfire.Dashboard.SqlServer.csproj -c Release --no-build -o ./nupkgs
-          dotnet pack src/a2n.Hangfire.Dashboard.PostgreSql/a2n.Hangfire.Dashboard.PostgreSql.csproj -c Release --no-build -o ./nupkgs
-          dotnet pack src/a2n.Hangfire.Dashboard.Rollup/a2n.Hangfire.Dashboard.Rollup.csproj -c Release --no-build -o ./nupkgs
-          dotnet pack src/a2n.Hangfire.Dashboard.Redis/a2n.Hangfire.Dashboard.Redis.csproj -c Release --no-build -o ./nupkgs
+          for proj in src/*/*.csproj; do
+            dotnet pack "$proj" -c Release --no-build -o ./nupkgs
+          done
+          ls -1 ./nupkgs
 
       - name: NuGet Login (Trusted Publishing)
         uses: NuGet/login@v1

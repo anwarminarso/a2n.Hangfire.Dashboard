@@ -18,7 +18,10 @@ Core principles (from `docs/ROADMAP.md`):
 - **Version:** single source of truth is `<Version>` in `Directory.Build.props` (currently 2.6.1).
 - **License:** LGPL-3.0-or-later. Third-party notices in `NOTICES`.
 - **Targets:** `net8.0;net9.0;net10.0` for every library and test project. Code must compile on all three
-  (watch for per-TFM `PackageReference` conditions and APIs that only exist on newer frameworks).
+  (watch for per-TFM package versions and APIs that only exist on newer frameworks).
+- **Package versions:** Central Package Management. Every version is pinned in `Directory.Packages.props`
+  (per-TFM versions use conditional `PackageVersion` items); `.csproj` files use `<PackageReference Include="…" />`
+  without `Version`. Don't use floating (`*`) versions. Dependabot proposes updates weekly.
 - **Compiler settings:** `src/Directory.Build.props` enables nullable reference types for every package and
   treats warnings as errors in Release. `a2n.Hangfire.Dashboard` still sets `<Nullable>disable</Nullable>` until its
   migration is done; new code elsewhere must be nullable-clean. `.editorconfig` holds the code style and the
@@ -53,7 +56,7 @@ Solution file: `src/Hangfire Dashboard.slnx` (note the space — quote the path)
 | `tests/load/` | Python harness: e2e (Playwright), load/stress, DB seeding, `release-check` |
 | `tests/reverse-proxy/` | Docker compose stack (nginx, TLS, path prefix, cookie auth) for hosting tests |
 | `samples/` | Host apps: SampleApp, SampleAppAuth, SampleAppBlazor, SampleAppMvc, SampleAppRazor, SampleAppSpa, SampleAppOrig; shared jobs in `SampleApp.SharedJobs` |
-| `docs/` | ROADMAP, proposals, load-test reports, mockups, screenshots |
+| `docs/` | Feature pages (`features/`), guides (`guides/`), ROADMAP, proposals, load-test reports, mockups, screenshots. The README is a landing page that links here |
 
 `src/a2n.Hangfire.Dashboard.OpenTelemetry/`, `src/a2n.Hangfire.Dashboard.RestApi/` and their test folders are
 untracked local leftovers, not part of the solution — don't add them to the solution or commit them unless asked.
@@ -158,6 +161,29 @@ Config: copy `config.example.toml` → `config.toml` (git-ignored, may hold secr
   feature branch (e.g. `feature/…`, `fix/…`, `docs/…`).
 - Work on the current branch. If the current branch is `main`, ask the user before creating a new branch.
 - Keep PRs focused (one feature/fix), reference issues (`Closes #42`).
+
+## Agent skills (Superpowers)
+
+The repository enables the [Superpowers](https://github.com/obra/superpowers) skills plugin for Claude Code
+through `.claude/settings.json`. It is pinned to the **v7.0.2** commit
+(`22f0b463e7a5e579904dd6211a520321035526f7`) on purpose: this library ships on NuGet, so plugin updates are a
+supply-chain change. To upgrade, review the upstream diff and release notes, then bump the commit id in a
+dedicated PR. Other agents may use the same skills, but the rules below apply to every agent.
+
+**This repository's rules override any skill workflow.** In particular:
+
+- **Commits and pushes:** skills such as `executing-plans`, `subagent-driven-development` and
+  `finishing-a-development-branch` commit after each task and offer to merge or push. Here, every commit and
+  push still needs the user's confirmation first (show the conventional-commit title + body), and commits
+  are GPG-signed. Batch plan steps into reviewable commits instead of committing silently.
+- **Merging:** never merge locally into `main` and never push to `main`. The only way to land work is a
+  pull request from a feature branch — pick the "push and create a PR" path, never "merge locally".
+- **Worktrees:** create a git worktree only when the user agrees. Worktrees go in `.worktrees/`
+  (git-ignored).
+- **Specs and plans:** `brainstorming` / `writing-plans` write to `docs/superpowers/` (git-ignored). Treat
+  them as working notes. If a design is worth keeping, move it to `docs/proposals/` in English when asked.
+- **Tests:** TDD is welcome, but the build must stay at 0 warnings / 0 errors on `net8.0;net9.0;net10.0`,
+  and stress/release checks stay manual (see "Python tooling").
 
 ## Workspace scope (multi-root)
 
