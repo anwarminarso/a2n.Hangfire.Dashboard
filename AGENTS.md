@@ -52,7 +52,7 @@ Solution file: `src/Hangfire Dashboard.slnx` (note the space — quote the path)
 | `tests/load/` | Python harness: e2e (Playwright), load/stress, DB seeding, `release-check` |
 | `tests/reverse-proxy/` | Docker compose stack (nginx, TLS, path prefix, cookie auth) for hosting tests |
 | `samples/` | Host apps: SampleApp, SampleAppAuth, SampleAppBlazor, SampleAppMvc, SampleAppRazor, SampleAppSpa, SampleAppOrig; shared jobs in `SampleApp.SharedJobs` |
-| `docs/` | ROADMAP, proposals, load-test reports, mockups, screenshots |
+| `docs/` | Feature pages (`features/`), guides (`guides/`), ROADMAP, proposals, load-test reports, mockups, screenshots. The README is a landing page that links here |
 
 `src/a2n.Hangfire.Dashboard.OpenTelemetry/`, `src/a2n.Hangfire.Dashboard.RestApi/` and their test folders are
 untracked local leftovers, not part of the solution — don't add them to the solution or commit them unless asked.

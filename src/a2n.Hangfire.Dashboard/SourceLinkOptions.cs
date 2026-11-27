@@ -111,7 +111,7 @@ public class SourceLinkOptions
     /// <list type="bullet">
     ///   <item><c>"vscode-insiders"</c> — VS Code Insiders</item>
     ///   <item><c>"cursor"</c> — Cursor editor</item>
-    ///   <item><c>"vs"</c> — Visual Studio (requires a third-party protocol handler such as VsHandler; see README)</item>
+    ///   <item><c>"vs"</c> — Visual Studio (requires a third-party protocol handler such as VsHandler; see docs/features/stack-trace-links.md)</item>
     /// </list>
     /// </param>
     /// <remarks>
