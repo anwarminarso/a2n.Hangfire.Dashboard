@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Package versions are pinned with Central Package Management ([#105](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/105)).** All versions now live in `Directory.Packages.props`, with no floating (`*`) versions, so two builds of the same commit restore the same dependencies. The pins are the versions the floating ranges resolved to when they were introduced. Per-framework packages (`Microsoft.AspNetCore.SignalR.Client`, `Microsoft.AspNetCore.TestHost`, `Microsoft.Extensions.DependencyInjection`) use conditional `PackageVersion` items.
+- **Dependabot and CodeQL ([#105](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/105)).** `.github/dependabot.yml` proposes NuGet and GitHub Actions updates weekly, with minor and patch updates grouped into one PR. A CodeQL workflow analyzes the C# libraries on pushes to `main`, on pull requests and weekly.
+
 ## 2.6.1 — Job Details expiration banner, re-stopped recurring jobs
 
 > **Patch release.** The Job Details banner shows when the storage will actually remove a job, instead of "in 24 hours" for every Succeeded or Deleted job ([#97](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/97)). A recurring job that is stopped, started and stopped again stays in the **Stopped Jobs** list and can be started again ([#98](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/98)). No public API changes; no migration.

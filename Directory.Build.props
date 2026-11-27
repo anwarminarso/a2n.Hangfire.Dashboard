@@ -12,7 +12,7 @@
   <NoWarn>$(NoWarn);1591</NoWarn>
 </PropertyGroup>
   <ItemGroup>
-    <!-- Force Newtonsoft.Json to a non-vulnerable version (transitive from Hangfire.Core) -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.*" />
+    <!-- Force Newtonsoft.Json to a non-vulnerable version (transitive from Hangfire.Core); version in Directory.Packages.props -->
+    <PackageReference Include="Newtonsoft.Json" />
   </ItemGroup>
 </Project>
