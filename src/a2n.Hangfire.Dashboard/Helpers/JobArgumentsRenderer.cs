@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Collections;
 using System.Net;
 using System.Reflection;
@@ -55,7 +53,7 @@ public static class JobArgumentsRenderer
     /// <param name="invocationData">Raw invocation data; used for the original argument payload and
     /// as the fallback source when <paramref name="job"/> is <c>null</c>.</param>
     /// <param name="jobId">The job identifier, rendered as a leading comment.</param>
-    public static string RenderMethodCall(Job job, InvocationData invocationData, string jobId)
+    public static string RenderMethodCall(Job? job, InvocationData? invocationData, string jobId)
     {
         var builder = new StringBuilder();
 
@@ -131,7 +129,7 @@ public static class JobArgumentsRenderer
 
     // ─── Rendering: resolved job ───────────────────────────────────────────────
 
-    private static void AppendResolvedCall(StringBuilder builder, Job job, InvocationData invocationData)
+    private static void AppendResolvedCall(StringBuilder builder, Job job, InvocationData? invocationData)
     {
         if (!string.IsNullOrEmpty(job.Type.Namespace))
         {
@@ -191,7 +189,7 @@ public static class JobArgumentsRenderer
     /// when the stored payload has fewer arguments than the method has parameters.
     /// </summary>
     private static List<string> RenderArgumentValues(
-        Job job, InvocationData invocationData, ParameterInfo[] parameters, out int totalLength)
+        Job job, InvocationData? invocationData, ParameterInfo[] parameters, out int totalLength)
     {
         var arguments = GetRawArguments(job, invocationData);
         var rendered = new List<string>(parameters.Length);
@@ -274,7 +272,7 @@ public static class JobArgumentsRenderer
     /// not be resolved. Parameter names are unavailable, so the declared parameter types are used as
     /// tooltips instead.
     /// </summary>
-    private static void AppendUnresolvedCall(StringBuilder builder, InvocationData invocationData)
+    private static void AppendUnresolvedCall(StringBuilder builder, InvocationData? invocationData)
     {
         if (invocationData is null)
         {

@@ -31,7 +31,7 @@ public partial class Heatmap
     /// The queue filter forwarded to the concurrency / recommendation analyses; <c>null</c> when every
     /// queue is selected so the service skips filtering entirely.
     /// </summary>
-    private IReadOnlyList<string> QueueFilterList() =>
+    private IReadOnlyList<string>? QueueFilterList() =>
         _selectedQueues.Count > 0 && _selectedQueues.Count < _availableQueues.Count
             ? SelectedQueuesList()
             : null;
@@ -92,7 +92,7 @@ public partial class Heatmap
     }
 
     /// <summary>Returns the cron matrix restricted to the selected queues, with the ramp domain recomputed.</summary>
-    private HeatmapMatrix BuildDisplayMatrix()
+    private HeatmapMatrix? BuildDisplayMatrix()
     {
         var m = _result?.Matrix;
         if (m is null)
@@ -128,7 +128,7 @@ public partial class Heatmap
     }
 
     /// <summary>Returns the demand profile restricted to the selected queues.</summary>
-    private DemandProfile BuildDisplayDemand()
+    private DemandProfile? BuildDisplayDemand()
     {
         if (_demand is null)
         {

@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Globalization;
 using System.Text.Json;
 using a2n.Hangfire.Dashboard.Models;
@@ -152,7 +150,7 @@ public class ThrottlingDataReader
     /// <summary>
     /// Gets a single registered semaphore, or null when it does not exist.
     /// </summary>
-    public SemaphoreDto? GetSemaphore(string semaphoreId)
+    public SemaphoreDto? GetSemaphore(string? semaphoreId)
     {
         if (string.IsNullOrWhiteSpace(semaphoreId))
             return null;

@@ -79,19 +79,19 @@
     /// itself carries no per-cell failure data, so this lookup drives the failure-rate tint (Req 7.6).
     /// May be <c>null</c> or empty, in which case cells fall back to a zero failure rate.
     /// </summary>
-    [Parameter] public IReadOnlyList<HeatmapHistoricalCell> HistoricalCells { get; set; }
+    [Parameter] public IReadOnlyList<HeatmapHistoricalCell>? HistoricalCells { get; set; }
 
     /// <summary>Whether to apply logarithmic bubble-area scaling.</summary>
     [Parameter] public bool LogScale { get; set; }
 
     /// <summary>The viewer time-zone id used to locate the current day/hour marker; empty means UTC.</summary>
-    [Parameter] public string ViewerTimeZoneId { get; set; }
+    [Parameter] public string? ViewerTimeZoneId { get; set; }
 
     /// <summary>
     /// The collision-free queue → color map shared with the rest of the page so the legend swatches
     /// match the bubble tints. Falls back to the deterministic per-name color when absent.
     /// </summary>
-    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? QueueColorMap { get; set; }
 
     private string MetricLabel => Matrix?.Metric == LoadMetric.WorkerMinutes ? "worker-minutes" : "fires";
 

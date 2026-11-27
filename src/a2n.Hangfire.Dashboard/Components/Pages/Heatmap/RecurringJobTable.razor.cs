@@ -24,29 +24,29 @@ public partial class RecurringJobTable
     /// The recurring jobs backing the projection, as mapped by <c>HeatmapService</c>. May be
     /// <c>null</c> or empty when none are configured or they could not be read (Req 1.7).
     /// </summary>
-    [Parameter] public IReadOnlyList<RecurringJobSpec> Jobs { get; set; }
+    [Parameter] public IReadOnlyList<RecurringJobSpec>? Jobs { get; set; }
 
     /// <summary>
     /// The aggregated matrix for the active window, used only to count how many cells each job
     /// contributes. When <c>null</c> every job reports zero contributing cells.
     /// </summary>
-    [Parameter] public HeatmapMatrix Matrix { get; set; }
+    [Parameter] public HeatmapMatrix? Matrix { get; set; }
 
     /// <summary>
     /// The identifiers of the long-period jobs (recurrence period &gt; 7 days) from
     /// <c>HeatmapResult.LongPeriodJobIds</c>. These rows are retained and flagged even when they
     /// contribute zero cells (Req 9.7).
     /// </summary>
-    [Parameter] public IReadOnlyList<string> LongPeriodJobIds { get; set; }
+    [Parameter] public IReadOnlyList<string>? LongPeriodJobIds { get; set; }
 
     /// <summary>
     /// Optional collision-free queue → color map (the heatmap's available-queue palette). When
     /// supplied, queue badges use these colors so the table matches the chips and view legends.
     /// </summary>
-    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? QueueColorMap { get; set; }
 
     /// <summary>Resolves the badge color for a queue from the supplied map, or null to fall back.</summary>
-    private string QueueColorFor(string queue) =>
+    private string? QueueColorFor(string queue) =>
         QueueColorMap is not null && queue is not null && QueueColorMap.TryGetValue(queue, out var color)
             ? color
             : null;
@@ -208,7 +208,7 @@ public partial class RecurringJobTable
     /// <param name="IsLongPeriod">Whether the job's recurrence period exceeds seven days (Req 9.7).</param>
     private sealed record RowModel(
         string JobId,
-        string CronExpression,
+        string? CronExpression,
         string Queue,
         string TimeZoneLabel,
         TimeSpan Duration,

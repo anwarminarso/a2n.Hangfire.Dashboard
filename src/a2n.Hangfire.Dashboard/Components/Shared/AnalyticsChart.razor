@@ -33,7 +33,7 @@
 </div>
 
 @code {
-    private string _canvasId;
+    private string? _canvasId;
     private bool _chartRendered;
 
     /// <summary>
@@ -50,17 +50,17 @@
     /// Optional fixed canvas ID. If not set, a random GUID-based ID is generated.
     /// Use a fixed ID when you need to target this chart for realtime updates via JS interop.
     /// </summary>
-    [Parameter] public string ChartId { get; set; }
+    [Parameter] public string? ChartId { get; set; }
 
     /// <summary>
     /// Chart.js data object passed as-is to the JS interop render call.
     /// </summary>
-    [Parameter] public object ChartData { get; set; }
+    [Parameter] public object? ChartData { get; set; }
 
     /// <summary>
     /// Chart.js options object passed as-is to the JS interop render call.
     /// </summary>
-    [Parameter] public object ChartOptions { get; set; }
+    [Parameter] public object? ChartOptions { get; set; }
 
     /// <summary>
     /// When true, renders EmptyState instead of the chart canvas.

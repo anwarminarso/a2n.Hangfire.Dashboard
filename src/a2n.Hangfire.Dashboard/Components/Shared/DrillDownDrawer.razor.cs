@@ -42,16 +42,16 @@ public partial class DrillDownDrawer
     /// The computed drill-down result for the clicked cell: the contributing jobs (which the drawer
     /// re-sorts defensively) plus an optional error message. <c>null</c> while nothing is loaded.
     /// </summary>
-    [Parameter] public DrillDownResult Result { get; set; }
+    [Parameter] public DrillDownResult? Result { get; set; }
 
     /// <summary>An optional human-readable label for the clicked cell (e.g. "Mon · 09:00 · default").</summary>
-    [Parameter] public string CellLabel { get; set; }
+    [Parameter] public string? CellLabel { get; set; }
 
     /// <summary>
     /// The dashboard's configured display time zone used to render each job's next run (Req 10.3).
     /// Defaults to UTC when not supplied.
     /// </summary>
-    [Parameter] public TimeZoneInfo DisplayTimeZone { get; set; }
+    [Parameter] public TimeZoneInfo? DisplayTimeZone { get; set; }
 
     /// <summary>The label shown next to converted next-run times. Defaults to "UTC".</summary>
     [Parameter] public string DisplayTimeZoneLabel { get; set; } = "UTC";
@@ -69,7 +69,7 @@ public partial class DrillDownDrawer
     [Parameter] public EventCallback<ScheduleEditRequest> OnSaveSchedule { get; set; }
 
     /// <summary>The id of the job whose inline schedule editor is currently expanded, if any.</summary>
-    private string _editingJobId;
+    private string? _editingJobId;
 
     /// <summary>The latest cron/validity emitted by the inline <c>ScheduleBuilder</c>.</summary>
     private ScheduleBuilder.ScheduleState _editState = new(string.Empty, false);
@@ -88,7 +88,7 @@ public partial class DrillDownDrawer
     /// The permissions of this page load, cascaded by <c>DashboardRoutes</c>; null when rendered
     /// outside it. <see cref="DashboardUIOptions.IsReadOnly"/> applies either way.
     /// </summary>
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
 
     /// <summary>Edit actions are only offered when job management is enabled and not read-only (Req 10.4, 10.5).</summary>
     private bool CanEdit => Options.EnableJobManagement && !DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;

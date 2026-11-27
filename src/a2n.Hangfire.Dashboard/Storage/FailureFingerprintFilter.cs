@@ -1,5 +1,3 @@
-#nullable enable
-
 using a2n.Hangfire.Dashboard.Helpers;
 using Hangfire;
 using Hangfire.Logging;

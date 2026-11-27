@@ -1,5 +1,3 @@
-#nullable enable
-
 using Cronos;
 
 namespace a2n.Hangfire.Dashboard.Internal;

@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Reflection;
 using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.Security;

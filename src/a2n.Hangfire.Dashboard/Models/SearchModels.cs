@@ -1,5 +1,3 @@
-#nullable enable
-
 namespace a2n.Hangfire.Dashboard.Models;
 
 public class SearchRequest
@@ -60,7 +58,7 @@ public class SearchResult
 
 public class SearchResultItem
 {
-    public string? JobId { get; set; }
+    public string JobId { get; set; } = null!;
     public string? JobName { get; set; }
     public string? State { get; set; }
     public string? Queue { get; set; }

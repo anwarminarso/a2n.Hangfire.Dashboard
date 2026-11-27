@@ -65,7 +65,7 @@
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="state-@state"
                                        checked="@_selectedStates.Contains(state)"
-                                       @onchange="e => HandleStateChanged(state, (bool)e.Value)" />
+                                       @onchange="e => HandleStateChanged(state, (bool)e.Value!)" />
                                 <label class="form-check-label small" for="state-@state">@state</label>
                             </div>
                         }
@@ -192,7 +192,7 @@
                                                 <label class="dropdown-item d-flex align-items-center gap-2 py-1">
                                                     <input type="checkbox" class="form-check-input m-0"
                                                            checked="@_selectedTags.Contains(tag)"
-                                                           @onchange="e => HandleTagChanged(tag, (bool)e.Value)" />
+                                                           @onchange="e => HandleTagChanged(tag, (bool)e.Value!)" />
                                                     <span class="small">@tag</span>
                                                 </label>
                                             }
@@ -344,13 +344,13 @@
                             <div class="form-check form-check-inline">
                                 <input class="form-check-input" type="checkbox" id="search-stacktrace"
                                        checked="@_searchStackTrace"
-                                       @onchange="e => HandleSearchScopeChanged(true, (bool)e.Value)" />
+                                       @onchange="e => HandleSearchScopeChanged(true, (bool)e.Value!)" />
                                 <label class="form-check-label small" for="search-stacktrace">Stack Trace</label>
                             </div>
                             <div class="form-check form-check-inline">
                                 <input class="form-check-input" type="checkbox" id="search-console"
                                        checked="@_searchConsoleOutput"
-                                       @onchange="e => HandleSearchScopeChanged(false, (bool)e.Value)" />
+                                       @onchange="e => HandleSearchScopeChanged(false, (bool)e.Value!)" />
                                 <label class="form-check-label small" for="search-console">Console Output</label>
                             </div>
                         </div>
@@ -384,8 +384,8 @@
 </div>
 
 @code {
-    [Parameter] public FilterOptions Options { get; set; }
-    [Parameter] public SearchRequest CurrentRequest { get; set; }
+    [Parameter] public FilterOptions? Options { get; set; }
+    [Parameter] public SearchRequest? CurrentRequest { get; set; }
     [Parameter] public EventCallback<SearchRequest> OnFilterChanged { get; set; }
     [Parameter] public bool TagsError { get; set; }
 
@@ -395,7 +395,7 @@
     // Date range
     private DateTime? _dateFrom;
     private DateTime? _dateTo;
-    private string _dateRangeError;
+    private string? _dateRangeError;
 
     // State
     private static readonly string[] _allStates = { "Enqueued", "Processing", "Scheduled", "Succeeded", "Failed", "Deleted", "Awaiting" };
@@ -407,7 +407,7 @@
     // Duration
     private int? _minDuration;
     private int? _maxDuration;
-    private string _durationError;
+    private string? _durationError;
 
     // Queue
     private string _selectedQueue = "";
@@ -430,13 +430,13 @@
     // GetFilterOptions() doesn't wait for them.
     private enum LoadStatus { NotLoaded, Loading, Loaded, TimedOut, Failed }
 
-    private string _selectedFingerprint = "";
-    private IStorageQueryProvider _queryProvider;
+    private string? _selectedFingerprint = "";
+    private IStorageQueryProvider? _queryProvider;
     private FailureGroupsResult _exceptionGroups = new();
     // The groups the select offers, worked out once per load rather than on every render.
     private List<FailureGroupDto> _exceptionEntries = new();
     private LoadStatus _exceptionGroupsStatus = LoadStatus.NotLoaded;
-    private CancellationTokenSource _exceptionGroupsCts;
+    private CancellationTokenSource? _exceptionGroupsCts;
 
     // Content Search
     private string _contentQuery = "";
@@ -448,8 +448,8 @@
     // raw input (arguments text is trimmed; content text under 3 characters is sent as null), so
     // copying it back on every render would rewrite text still being typed. A parent value that
     // differs from what was sent is an outside change, such as a cleared badge (Issue #44).
-    private string _sentArgumentsQuery;
-    private string _sentContentQuery;
+    private string? _sentArgumentsQuery;
+    private string? _sentContentQuery;
 
     protected override void OnInitialized()
     {
@@ -746,7 +746,7 @@
         _exceptionGroupsStatus = LoadStatus.Loading;
         StateHasChanged();
 
-        FailureGroupsResult result = null;
+        FailureGroupsResult? result = null;
         var status = LoadStatus.Loaded;
         try
         {

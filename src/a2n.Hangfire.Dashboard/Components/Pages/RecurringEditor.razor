@@ -43,7 +43,7 @@
 </div>
 
 @code {
-    [Parameter] public string JobId { get; set; }
+    [Parameter] public string? JobId { get; set; }
 
     private bool _isEdit => !string.IsNullOrEmpty(JobId);
 
@@ -54,7 +54,7 @@
     private string _initialCron = "";
     private string _initialQueue = "";
     private string _initialTimeZoneId = "";
-    private string _loadError;
+    private string? _loadError;
 
     protected override void OnInitialized()
     {
@@ -93,7 +93,7 @@
     /// stored Args cannot be serialized, an interpretation error is shown and an empty array is
     /// returned so the form still renders (Req 3.5).
     /// </summary>
-    private string BuildParameterJson(global::Hangfire.Common.Job job)
+    private string BuildParameterJson(global::Hangfire.Common.Job? job)
     {
         var method = job?.Method;
         if (method is null)
@@ -105,7 +105,7 @@
             // the array positionally with the operator form and keeps non-serializable injected
             // values (e.g. a default CancellationToken's IntPtr-backed WaitHandle) out of the
             // serializer entirely (Req 3.1).
-            return JobArgumentConverter.ToParameterJsonFromArgs(method, job.Args);
+            return JobArgumentConverter.ToParameterJsonFromArgs(method, job!.Args);
         }
         catch (Exception ex)
         {

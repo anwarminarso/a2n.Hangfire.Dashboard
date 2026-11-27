@@ -1,5 +1,3 @@
-#nullable enable
-
 using a2n.Hangfire.Dashboard;
 using a2n.Hangfire.Dashboard.Components;
 using a2n.Hangfire.Dashboard.Hubs;

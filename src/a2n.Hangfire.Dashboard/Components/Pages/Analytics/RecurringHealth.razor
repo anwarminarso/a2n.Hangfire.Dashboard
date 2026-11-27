@@ -178,7 +178,7 @@ else
 
 @code {
     private bool _loading = true;
-    private IReadOnlyList<RecurringJobHealthDto> _healthData;
+    private IReadOnlyList<RecurringJobHealthDto>? _healthData;
     private IReadOnlyDictionary<string, IReadOnlyList<RecurringJobExecutionDto>> _executionHistories =
         new Dictionary<string, IReadOnlyList<RecurringJobExecutionDto>>();
 

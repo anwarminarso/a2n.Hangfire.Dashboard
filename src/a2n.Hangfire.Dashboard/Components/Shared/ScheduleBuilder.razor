@@ -151,16 +151,16 @@
 
 @code {
     /// <summary>Initial cron expression to pre-populate the builder (e.g. when editing). Optional.</summary>
-    [Parameter] public string InitialCron { get; set; }
+    [Parameter] public string? InitialCron { get; set; }
 
     /// <summary>Initial time zone id. Empty/null selects UTC (Req 10.5).</summary>
-    [Parameter] public string TimeZoneId { get; set; }
+    [Parameter] public string? TimeZoneId { get; set; }
 
     /// <summary>
     /// Optional parent-owned time-zone control, rendered inside the Schedule card so the time zone
     /// sits next to the schedule it scopes and the next-occurrence preview that uses it.
     /// </summary>
-    [Parameter] public RenderFragment TimeZoneSlot { get; set; }
+    [Parameter] public RenderFragment? TimeZoneSlot { get; set; }
 
     /// <summary>Raised whenever the current cron expression or its validity changes (Req 10.8).</summary>
     [Parameter] public EventCallback<ScheduleState> OnScheduleChanged { get; set; }
@@ -241,31 +241,31 @@
         Recompute();
     }
 
-    private void SetMode(FieldEditor field, object value)
+    private void SetMode(FieldEditor field, object? value)
     {
         field.Mode = ParseMode(value);
         RebuildFromFields();
     }
 
-    private void SetValue(FieldEditor field, object value)
+    private void SetValue(FieldEditor field, object? value)
     {
         field.Value = ClampToField(field, ParseInt(value, field.Value));
         RebuildFromFields();
     }
 
-    private void SetRangeStart(FieldEditor field, object value)
+    private void SetRangeStart(FieldEditor field, object? value)
     {
         field.RangeStart = ClampToField(field, ParseInt(value, field.RangeStart));
         RebuildFromFields();
     }
 
-    private void SetRangeEnd(FieldEditor field, object value)
+    private void SetRangeEnd(FieldEditor field, object? value)
     {
         field.RangeEnd = ClampToField(field, ParseInt(value, field.RangeEnd));
         RebuildFromFields();
     }
 
-    private void SetStep(FieldEditor field, object value)
+    private void SetStep(FieldEditor field, object? value)
     {
         var n = ParseInt(value, field.Step);
         field.Step = n < 1 ? 1 : (n > field.Max ? field.Max : n);
@@ -297,7 +297,7 @@
         return value;
     }
 
-    private static int ParseInt(object value, int fallback)
+    private static int ParseInt(object? value, int fallback)
         => int.TryParse(value?.ToString(), System.Globalization.NumberStyles.Integer,
             System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : fallback;
 
@@ -342,7 +342,7 @@
     private string TimeZoneLabel =>
         string.IsNullOrWhiteSpace(_timeZoneId) ? "UTC" : _timeZoneId;
 
-    private static CronFieldMode ParseMode(object value)
+    private static CronFieldMode ParseMode(object? value)
     {
         var text = value?.ToString();
         return Enum.TryParse<CronFieldMode>(text, out var mode) ? mode : CronFieldMode.Every;

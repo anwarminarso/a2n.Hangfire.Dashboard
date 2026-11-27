@@ -34,7 +34,7 @@
     public bool DefaultExpanded { get; set; } = true;
 
     [Parameter]
-    public RenderFragment ChildContent { get; set; }
+    public RenderFragment? ChildContent { get; set; }
 
     private bool _expanded;
     private bool _storageLoaded;
@@ -82,7 +82,7 @@
         }
     }
 
-    private void OnLocationChanged(object sender, LocationChangedEventArgs e)
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         if (!IsRouteInGroup())
             return;

@@ -1,5 +1,3 @@
-#nullable enable
-
 using Microsoft.AspNetCore.Components.Server.Circuits;
 
 namespace a2n.Hangfire.Dashboard.Services;

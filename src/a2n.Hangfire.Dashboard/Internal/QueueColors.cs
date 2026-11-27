@@ -1,5 +1,3 @@
-#nullable enable
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -42,7 +40,7 @@ public static class QueueColors
     /// Returns the stable <c>#rrggbb</c> background color for a queue name. A null/empty name maps to
     /// the first palette entry. The mapping is deterministic and matches the JS renderer.
     /// </summary>
-    public static string ColorFor(string queue)
+    public static string ColorFor(string? queue)
     {
         if (string.IsNullOrEmpty(queue))
         {

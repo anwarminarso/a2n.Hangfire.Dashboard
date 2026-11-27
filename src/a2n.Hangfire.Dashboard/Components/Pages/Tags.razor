@@ -104,11 +104,11 @@ else
 }
 
 @code {
-    [Parameter] public string SearchTag { get; set; }
+    [Parameter] public string? SearchTag { get; set; }
 
     private bool _loading = true;
-    private IReadOnlyList<TagCountDto> _tagCloud;
-    private PagedResult<JobSummaryDto> _taggedJobs;
+    private IReadOnlyList<TagCountDto>? _tagCloud;
+    private PagedResult<JobSummaryDto>? _taggedJobs;
     private int _from = 0;
     private int _pageSize = 20;
 
@@ -149,12 +149,12 @@ else
         await LoadData();
     }
 
-    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+    private static string ShortenId(string? id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
 
-    private string GetTagUrl(string tag) => Navigation.ToAbsoluteUri($"tags/{tag}").PathAndQuery;
+    private string GetTagUrl(string? tag) => Navigation.ToAbsoluteUri($"tags/{tag}").PathAndQuery;
     private string GetTagsBaseUrl() => Navigation.ToAbsoluteUri("tags").PathAndQuery;
 
-    private static string GetStateBadgeClass(string state)
+    private static string GetStateBadgeClass(string? state)
     {
         return state?.ToLowerInvariant() switch
         {
@@ -168,9 +168,9 @@ else
         };
     }
 
-    private static string GetTagStyle(string tag)
+    private static string GetTagStyle(string? tag)
     {
-        var hash = (uint)tag.GetHashCode(StringComparison.OrdinalIgnoreCase);
+        var hash = (uint)tag!.GetHashCode(StringComparison.OrdinalIgnoreCase);
         var hue = hash % 360;
         return $"background-color: hsl({hue}, 55%, 82%); color: hsl({hue}, 70%, 25%); border: 1px solid hsl({hue}, 45%, 72%);";
     }
@@ -179,7 +179,7 @@ else
     /// Filters out numeric-only "tags" which are actually job IDs stored in the set table,
     /// not real user-defined tags.
     /// </summary>
-    private static bool IsNumericTag(string tag)
+    private static bool IsNumericTag(string? tag)
     {
         if (string.IsNullOrEmpty(tag)) return true;
         foreach (var c in tag)

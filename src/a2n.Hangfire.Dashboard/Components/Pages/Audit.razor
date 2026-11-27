@@ -146,7 +146,7 @@ else
 @code {
     private const int _debounceMs = 350;
 
-    private IReadOnlyList<AuditLogEntry> _entries;
+    private IReadOnlyList<AuditLogEntry>? _entries;
     private int _from;
     private int _pageSize = 20;
     private long _total;
@@ -155,7 +155,7 @@ else
     private string _userFilter = string.Empty;
     private string _targetFilter = string.Empty;
 
-    private CancellationTokenSource _debounceCts;
+    private CancellationTokenSource? _debounceCts;
 
     protected override async Task OnInitializedAsync()
     {
@@ -226,7 +226,7 @@ else
         await LoadAsync();
     }
 
-    private static string ActionBadgeClass(string action)
+    private static string ActionBadgeClass(string? action)
     {
         if (string.IsNullOrEmpty(action)) return "bg-secondary";
         if (action.StartsWith("maintenance.")) return "bg-warning text-dark";

@@ -25,22 +25,22 @@
     [Parameter] public bool ShowIcon { get; set; }
 
     /// <summary>Extra CSS classes appended to the badge (e.g. spacing utilities).</summary>
-    [Parameter] public string CssClass { get; set; }
+    [Parameter] public string? CssClass { get; set; }
 
     /// <summary>Optional tooltip override; defaults to the queue name.</summary>
-    [Parameter] public string Title { get; set; }
+    [Parameter] public string? Title { get; set; }
 
     /// <summary>
     /// Optional explicit <c>#rrggbb</c> background color. When omitted the deterministic per-name
     /// color is used; callers that have a collision-free color map (e.g. the heatmap) pass it here so
     /// the badge matches the rest of the page.
     /// </summary>
-    [Parameter] public string Color { get; set; }
+    [Parameter] public string? Color { get; set; }
 
-    private string _bg;
-    private string _fg;
-    private string _display;
-    private string _title;
+    private string? _bg;
+    private string? _fg;
+    private string? _display;
+    private string? _title;
 
     protected override void OnParametersSet()
     {

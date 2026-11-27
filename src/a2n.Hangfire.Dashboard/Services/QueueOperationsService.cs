@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Globalization;
 using Hangfire;
 using Hangfire.Storage;

@@ -1,5 +1,3 @@
-#nullable enable
-
 using a2n.Hangfire.Dashboard.Heatmap;
 using a2n.Hangfire.Dashboard.Models;
 

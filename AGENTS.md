@@ -20,8 +20,7 @@ Core principles (from `docs/ROADMAP.md`):
 - **Targets:** `net8.0;net9.0;net10.0` for every library and test project. Code must compile on all three
   (watch for per-TFM `PackageReference` conditions and APIs that only exist on newer frameworks).
 - **Compiler settings:** `src/Directory.Build.props` enables nullable reference types for every package and
-  treats warnings as errors in Release. `a2n.Hangfire.Dashboard` still sets `<Nullable>disable</Nullable>` until its
-  migration is done; new code elsewhere must be nullable-clean. `.editorconfig` holds the code style and the
+  treats warnings as errors in Release, so all new code must be nullable-clean. `.editorconfig` holds the code style and the
   enforced analyzer rules. An empty `catch` needs a comment that says why swallowing is safe.
 
 ## Tech stack

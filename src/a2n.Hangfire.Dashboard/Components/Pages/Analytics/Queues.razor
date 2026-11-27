@@ -175,17 +175,17 @@
     private bool _loading = true;
 
     // Queue throughput chart data
-    private IReadOnlyList<QueueThroughputDataPoint> _queueThroughputData;
-    private object _queueThroughputChartData;
-    private object _queueThroughputChartOptions;
+    private IReadOnlyList<QueueThroughputDataPoint>? _queueThroughputData;
+    private object? _queueThroughputChartData;
+    private object? _queueThroughputChartOptions;
 
     // Queue status table data
-    private SnapshotResult<IReadOnlyList<QueueDepthDto>> _queueDepthSnapshot;
-    private List<QueueStatusRow> _queueStatusRows;
+    private SnapshotResult<IReadOnlyList<QueueDepthDto>>? _queueDepthSnapshot;
+    private List<QueueStatusRow>? _queueStatusRows;
     private double _maxThroughput;
 
     // Server utilization data
-    private SnapshotResult<IReadOnlyList<ServerUtilizationDto>> _serverUtilizationSnapshot;
+    private SnapshotResult<IReadOnlyList<ServerUtilizationDto>>? _serverUtilizationSnapshot;
 
     private enum QueueSort { None, Name, Enqueued, Fetched, AvgWait, Throughput }
     private enum ServerSort { None, Name, Total, Busy, Utilization }
@@ -412,7 +412,7 @@
 
     private class QueueStatusRow
     {
-        public string QueueName { get; set; }
+        public string? QueueName { get; set; }
         public long EnqueuedCount { get; set; }
         public long FetchedCount { get; set; }
         public double AvgWaitMs { get; set; }

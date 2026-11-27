@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Reflection;
 using System.Text.Json;
 
@@ -210,8 +208,8 @@ public sealed record RecurringJobRequest(
     string MethodName,
     string ParameterJson,
     string Cron,
-    string Queue,
-    string TimeZoneId,
+    string? Queue,
+    string? TimeZoneId,
     bool IsCustomMethod);
 
 /// <summary>
@@ -221,7 +219,7 @@ public sealed record EnqueueJobRequest(
     string TypeName,
     string MethodName,
     string ParameterJson,
-    string Queue,
+    string? Queue,
     bool IsCustomMethod);
 
 /// <summary>

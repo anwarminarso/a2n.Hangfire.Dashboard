@@ -52,7 +52,7 @@
 }
 
 @code {
-    [Parameter] public string JobId { get; set; }
+    [Parameter] public string? JobId { get; set; }
     [Parameter] public DateTime? StartedAt { get; set; }
 
     /// <summary>
@@ -63,21 +63,21 @@
     /// <summary>
     /// Server name for this execution session.
     /// </summary>
-    [Parameter] public string ServerName { get; set; }
+    [Parameter] public string? ServerName { get; set; }
 
     /// <summary>
     /// Worker ID for this execution session.
     /// </summary>
-    [Parameter] public string WorkerId { get; set; }
+    [Parameter] public string? WorkerId { get; set; }
 
     /// <summary>
     /// Duration of the job execution in seconds (null if still running).
     /// </summary>
     [Parameter] public double? DurationSeconds { get; set; }
 
-    private IReadOnlyList<ConsoleLineDto> _lines;
-    private List<ConsoleLineDto> _displayLines;
-    private DashboardPoller _livePoller;
+    private IReadOnlyList<ConsoleLineDto>? _lines;
+    private List<ConsoleLineDto>? _displayLines;
+    private DashboardPoller? _livePoller;
     private bool _isLiveActive;
 
     protected override async Task OnParametersSetAsync()
@@ -220,12 +220,12 @@
             : $"+{ts.TotalSeconds:F1}s";
     }
 
-    private static string GetLineStyle(ConsoleLineDto line)
+    private static string? GetLineStyle(ConsoleLineDto line)
     {
         return line.TextColor is not null ? $"color: {line.TextColor}" : null;
     }
 
-    private static string GetProgressBarStyle(ConsoleLineDto line)
+    private static string? GetProgressBarStyle(ConsoleLineDto line)
     {
         // Progress bar border uses the color if specified
         if (line.TextColor is not null)
@@ -233,7 +233,7 @@
         return null;
     }
 
-    private static string GetProgressBarFillStyle(ConsoleLineDto line)
+    private static string? GetProgressBarFillStyle(ConsoleLineDto line)
     {
         // Progress bar fill uses the color if specified
         if (line.TextColor is not null)

@@ -1,5 +1,3 @@
-#nullable enable
-
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -24,7 +22,7 @@ internal static class DashboardPermissionEvaluator
     /// <c>DashboardOptions</c> instance the host configured. Hangfire's default function returns
     /// false, so an unconfigured function leaves the dashboard writable.
     /// </remarks>
-    public static DashboardPermissions Evaluate(HttpContext httpContext, DashboardUIOptions options, ILogger logger)
+    public static DashboardPermissions Evaluate(HttpContext? httpContext, DashboardUIOptions options, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(options);
 

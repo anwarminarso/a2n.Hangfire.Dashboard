@@ -1,5 +1,3 @@
-#nullable enable
-
 using a2n.Hangfire.Dashboard.Heatmap;
 using a2n.Hangfire.Dashboard.Models;
 using Microsoft.Extensions.Logging;
@@ -78,7 +76,7 @@ public partial class HeatmapService
         HeatmapQuery query,
         int dayIndex,
         int workerCapacity,
-        IReadOnlyList<int> adHocBaselinePerSlot,
+        IReadOnlyList<int>? adHocBaselinePerSlot,
         CancellationToken ct,
         IReadOnlyList<string>? queues = null)
     {
@@ -134,7 +132,7 @@ public partial class HeatmapService
     public async Task<IReadOnlyList<Recommendation>> GetRecommendationsAsync(
         HeatmapQuery query,
         int workerCapacity,
-        IReadOnlyList<int> adHocBaselinePerSlot,
+        IReadOnlyList<int>? adHocBaselinePerSlot,
         CancellationToken ct,
         IReadOnlyList<string>? queues = null)
     {

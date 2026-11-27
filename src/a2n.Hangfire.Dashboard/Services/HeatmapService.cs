@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Collections.Concurrent;
 using a2n.Hangfire.Dashboard.Heatmap;
 using a2n.Hangfire.Dashboard.Interfaces;

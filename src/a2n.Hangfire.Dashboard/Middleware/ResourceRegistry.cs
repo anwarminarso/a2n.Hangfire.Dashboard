@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Reflection;
 
 namespace a2n.Hangfire.Dashboard.Middleware;

@@ -34,7 +34,7 @@ public partial class PostgreSqlMetricsProvider
     private class QueueThroughputRow
     {
         public DateTime Bucket { get; set; }
-        public string? QueueName { get; set; }
+        public string QueueName { get; set; } = null!;
         public long SucceededCount { get; set; }
     }
 
@@ -55,7 +55,7 @@ public partial class PostgreSqlMetricsProvider
     private class RecurringExecutionBatchRow
     {
         public string RecurringJobIdStored { get; set; } = null!;
-        public string? JobId { get; set; }
+        public string JobId { get; set; } = null!;
         public DateTimeOffset ExecutedAt { get; set; }
         public double DurationMs { get; set; }
         public bool Succeeded { get; set; }

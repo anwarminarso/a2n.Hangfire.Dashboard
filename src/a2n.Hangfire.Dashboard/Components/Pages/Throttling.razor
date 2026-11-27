@@ -275,18 +275,18 @@ else
 }
 
 @code {
-    private IReadOnlyList<SemaphoreDto> _semaphores;
+    private IReadOnlyList<SemaphoreDto>? _semaphores;
     private List<MutexRow> _mutexRows = [];
     private IReadOnlyList<ThrottleWindowDto> _windows = [];
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
 
     /// <summary>How often the page re-reads the shared snapshot. Slightly longer than its TTL.</summary>
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(6);
 
     private sealed class MutexRow
     {
-        public string MutexId { get; set; }
-        public ThrottleHolderDto Holder { get; set; }
+        public string? MutexId { get; set; }
+        public ThrottleHolderDto? Holder { get; set; }
     }
 
     private enum SemaphoreSort { None, Id, Usage, Holders }
@@ -343,7 +343,7 @@ else
     {
         var snapshot = await Snapshots.GetAsync();
 
-        _semaphores = snapshot.Semaphores;
+        _semaphores = snapshot!.Semaphores;
         _windows = snapshot.Windows;
         _mutexRows = snapshot.Mutexes
             .Select(x => new MutexRow { MutexId = x.MutexId, Holder = x.Holder })
@@ -399,5 +399,5 @@ else
         return $"{seconds}s";
     }
 
-    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+    private static string ShortenId(string? id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
 }

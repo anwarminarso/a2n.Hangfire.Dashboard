@@ -1,5 +1,3 @@
-#nullable enable
-
 using Microsoft.Extensions.DependencyInjection;
 using a2n.Hangfire.Dashboard.Models;
 

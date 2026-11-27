@@ -1,5 +1,3 @@
-#nullable enable
-
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;

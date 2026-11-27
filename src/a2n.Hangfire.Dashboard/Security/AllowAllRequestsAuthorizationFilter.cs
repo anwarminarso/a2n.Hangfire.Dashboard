@@ -1,5 +1,3 @@
-#nullable enable
-
 using Microsoft.AspNetCore.Http;
 
 namespace a2n.Hangfire.Dashboard.Security;

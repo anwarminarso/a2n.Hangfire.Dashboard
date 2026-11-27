@@ -218,8 +218,8 @@ else if (_statsExpanded)
 }
 
 @code {
-    private StatisticsDto _stats;
-    private IReadOnlyList<ServerDto> _servers;
+    private StatisticsDto? _stats;
+    private IReadOnlyList<ServerDto>? _servers;
 
     private enum ServerSort { None, Name, Workers, Started, Heartbeat }
 
@@ -233,7 +233,7 @@ else if (_statsExpanded)
         ServerSort.Heartbeat => s => s.Heartbeat,
         _ => null
     }, s => s.Name);
-    private IDisposable _metricsSubscription;
+    private IDisposable? _metricsSubscription;
     private long _snapshotAtTicks;
     private long _prevSucceeded;
     private long _prevDeleted;

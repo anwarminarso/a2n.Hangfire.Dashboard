@@ -68,20 +68,20 @@ public partial class PlannerView : ComponentBase
     /// queue, and (combined with the demand) the Safe_Window / best-window classification. May be
     /// <c>null</c> (treated as no cron load), e.g. while the Job_Class is <c>Ad-hoc</c>.
     /// </summary>
-    [Parameter] public HeatmapMatrix CronMatrix { get; set; }
+    [Parameter] public HeatmapMatrix? CronMatrix { get; set; }
 
     /// <summary>
     /// The ad-hoc <c>Demand_Profile</c> supplying the background shading and the Safe_Window
     /// classification. May be <c>null</c> (treated as no demand), e.g. while the Job_Class is
     /// <c>Cron</c> or no metrics provider is registered.
     /// </summary>
-    [Parameter] public DemandProfile Demand { get; set; }
+    [Parameter] public DemandProfile? Demand { get; set; }
 
     /// <summary>The active projection window; drives the day-index ↔ day-of-week mapping and the row labels.</summary>
     [Parameter, EditorRequired] public ProjectionWindow Window { get; set; }
 
     /// <summary>The viewer time-zone id used to align the demand profile and locate the current cell; empty means UTC.</summary>
-    [Parameter] public string ViewerTimeZoneId { get; set; }
+    [Parameter] public string? ViewerTimeZoneId { get; set; }
 
     /// <summary>
     /// The active Job_Class — <c>Cron</c>, <c>Ad-hoc</c>, or <c>Combined</c> (default). Selects which
@@ -105,21 +105,21 @@ public partial class PlannerView : ComponentBase
     /// <c>day × hour</c> positions. Drives the failure-rate dot coloring under the Historical source
     /// (Req 18.2); the cron matrix itself carries no failure data. May be <c>null</c> or empty.
     /// </summary>
-    [Parameter] public IReadOnlyList<HeatmapHistoricalCell> HistoricalCells { get; set; }
+    [Parameter] public IReadOnlyList<HeatmapHistoricalCell>? HistoricalCells { get; set; }
 
     /// <summary>
     /// The queues to include, in display order. When <c>null</c>, every queue present in the cron
     /// matrix / demand profile contributes. Filtering (e.g. Top-N) is applied by the caller, matching
     /// the other heatmap views.
     /// </summary>
-    [Parameter] public IReadOnlyList<string> VisibleQueues { get; set; }
+    [Parameter] public IReadOnlyList<string>? VisibleQueues { get; set; }
 
     /// <summary>
     /// The collision-free queue → color map shared with the chips, table badges, and JS renderers so
     /// the cron dots and legend swatches match the rest of the page. Falls back to the deterministic
     /// per-name color when a queue is absent or no map is supplied.
     /// </summary>
-    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? QueueColorMap { get; set; }
 
     /// <summary>
     /// Raised when the operator clicks a populated planner cell. The cell is attributed to its
@@ -134,14 +134,14 @@ public partial class PlannerView : ComponentBase
     private bool _hasData;
     private string[] _dayLabels = WeekdayLabels;
     private PlannerCellView[][] _grid = Array.Empty<PlannerCellView[]>();
-    private PlannerCellKey _bestWindow;
+    private PlannerCellKey? _bestWindow;
 
     // Per-cell detail lookups for the rich hover tooltip (mirrors the v4 mockup): the demand broken
     // down by queue, and the contributing cron job ids, keyed by (dayIndex, hour).
     private Dictionary<(int Day, int Hour), List<(string Queue, double Value)>> _demandByCell = new();
     private Dictionary<(int Day, int Hour), List<string>> _jobsByCell = new();
-    private string _bestWindowLabel;
-    private string _caption;
+    private string? _bestWindowLabel;
+    private string? _caption;
     private IReadOnlyList<string> _legendQueues = Array.Empty<string>();
 
     private IntensityScale Scale => LogScale ? IntensityScale.Logarithmic : IntensityScale.Linear;
@@ -256,7 +256,7 @@ public partial class PlannerView : ComponentBase
 
                 // Background shade (Req 18.1): monotonic alpha over the theme background; zero demand
                 // (or shading disabled) leaves the cell at the bare background.
-                string background = null;
+                string? background = null;
                 if (_showShading && demandValue > 0d && maxDemand > 0d)
                 {
                     var t = Intensity.Normalize(demandValue, 0d, maxDemand, Scale);
@@ -271,8 +271,8 @@ public partial class PlannerView : ComponentBase
                 // (Historical) — exactly one, selected by the active source.
                 var hasDot = _showDots && cronValue > 0d && maxCron > 0d;
                 double dotSize = 0d;
-                string dotColor = null;
-                string dotStyle = null;
+                string? dotColor = null;
+                string? dotStyle = null;
                 if (hasDot)
                 {
                     var t = Intensity.Normalize(cronValue, 0d, maxCron, Scale);
@@ -296,7 +296,7 @@ public partial class PlannerView : ComponentBase
                     && _bestWindow.Hour == hour;
 
                 // Attribute a populated cell to its dominant cron queue for drill-down (Req 10.1).
-                string drillQueue = null;
+                string? drillQueue = null;
                 if (cronValue > 0d && drillDominant.TryGetValue((day, hour), out var dq))
                 {
                     drillQueue = dq;
@@ -356,7 +356,7 @@ public partial class PlannerView : ComponentBase
     /// 0 when shading is disabled or no demand is present, so a Safe_Window then requires exactly zero
     /// demand.
     /// </summary>
-    private double ComputeLowLoadThreshold(DemandProfile demand, ProjectionWindow window, TimeZoneInfo tz)
+    private double ComputeLowLoadThreshold(DemandProfile? demand, ProjectionWindow window, TimeZoneInfo tz)
     {
         if (!_showShading || demand?.Slots is null || demand.Slots.Count == 0)
         {
@@ -392,7 +392,7 @@ public partial class PlannerView : ComponentBase
     /// Returns a queue-filtered copy of the matrix, or the matrix unchanged when no filter is
     /// supplied. <c>null</c> in, <c>null</c> out.
     /// </summary>
-    private static HeatmapMatrix FilterMatrix(HeatmapMatrix matrix, IReadOnlyList<string> visibleQueues)
+    private static HeatmapMatrix? FilterMatrix(HeatmapMatrix? matrix, IReadOnlyList<string>? visibleQueues)
     {
         if (matrix is null || visibleQueues is null)
         {
@@ -417,7 +417,7 @@ public partial class PlannerView : ComponentBase
     /// Returns a queue-filtered copy of the demand profile, or the profile unchanged when no filter
     /// is supplied. <c>null</c> in, <c>null</c> out.
     /// </summary>
-    private static DemandProfile FilterDemand(DemandProfile demand, IReadOnlyList<string> visibleQueues)
+    private static DemandProfile? FilterDemand(DemandProfile? demand, IReadOnlyList<string>? visibleQueues)
     {
         if (demand is null || visibleQueues is null)
         {
@@ -505,7 +505,7 @@ public partial class PlannerView : ComponentBase
         return day >= 0 && day < HeatmapTime.WindowDays ? (day, hour) : (-1, -1);
     }
 
-    private string BuildBestWindowLabel()
+    private string? BuildBestWindowLabel()
     {
         if (_bestWindow is null || _bestWindow.DayIndex < 0 || _bestWindow.DayIndex >= _dayLabels.Length)
         {
@@ -545,7 +545,7 @@ public partial class PlannerView : ComponentBase
     /// profile, mapped from day-of-week to the window's day index) and the contributing cron job ids
     /// (from the cron matrix cells), both keyed by <c>(dayIndex, hour)</c>.
     /// </summary>
-    private void BuildTooltipLookups(HeatmapMatrix cron, DemandProfile demand, TimeZoneInfo tz)
+    private void BuildTooltipLookups(HeatmapMatrix? cron, DemandProfile? demand, TimeZoneInfo tz)
     {
         _jobsByCell = new Dictionary<(int, int), List<string>>();
         if (cron?.Cells is not null)
@@ -705,7 +705,7 @@ public partial class PlannerView : ComponentBase
     /// Maps a queue name to its color, preferring the shared collision-free <see cref="QueueColorMap"/>
     /// (so the dots match the chips/badges) and falling back to the deterministic per-name color.
     /// </summary>
-    private string QueueColorCss(string queue)
+    private string QueueColorCss(string? queue)
     {
         if (!string.IsNullOrEmpty(queue) && QueueColorMap is not null &&
             QueueColorMap.TryGetValue(queue, out var color))
@@ -769,7 +769,7 @@ public partial class PlannerView : ComponentBase
     }
 
     /// <summary>Combines a cell's background shade with a pointer cursor when it is drillable.</summary>
-    private static string CellStyle(PlannerCellView cell) =>
+    private static string? CellStyle(PlannerCellView cell) =>
         cell.DrillQueue is not null
             ? (cell.BackgroundStyle ?? string.Empty) + "cursor:pointer;"
             : cell.BackgroundStyle;
@@ -804,15 +804,15 @@ public partial class PlannerView : ComponentBase
         int Hour,
         double Demand,
         double Cron,
-        string BackgroundStyle,
+        string? BackgroundStyle,
         bool HasDot,
         double DotSize,
-        string DotColor,
-        string DotStyle,
+        string? DotColor,
+        string? DotStyle,
         bool IsSafe,
         bool IsBest,
         bool IsNow,
-        string DrillQueue,
+        string? DrillQueue,
         string AriaLabel,
         string Title);
 }

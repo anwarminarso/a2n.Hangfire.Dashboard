@@ -47,11 +47,11 @@ public partial class ConcurrencyView : ComponentBase, IAsyncDisposable
 
     private readonly string _canvasId = $"hf-heatmap-concurrency-{Guid.NewGuid():N}";
 
-    private object _model;
+    private object? _model;
     private bool _pendingRender;
     private bool _rendered;
 
-    [Inject] private IJSRuntime JS { get; set; }
+    [Inject] private IJSRuntime JS { get; set; } = default!;
 
     /// <summary>
     /// The duration-aware concurrency analysis for the analyzed day, produced by
@@ -66,21 +66,21 @@ public partial class ConcurrencyView : ComponentBase, IAsyncDisposable
     [Parameter, EditorRequired] public int Capacity { get; set; }
 
     /// <summary>The human-readable label of the day being analyzed (e.g. <c>Mon</c> or a date).</summary>
-    [Parameter] public string DayLabel { get; set; }
+    [Parameter] public string? DayLabel { get; set; }
 
     /// <summary>
     /// The queues to include, in display order. When <c>null</c>, every queue in
     /// <see cref="ConcurrencyResult.PerQueueSeries"/> contributes. Filtering (e.g. Top-N) is applied
     /// by the caller, mirroring the other heatmap views.
     /// </summary>
-    [Parameter] public IReadOnlyList<string> VisibleQueues { get; set; }
+    [Parameter] public IReadOnlyList<string>? VisibleQueues { get; set; }
 
     /// <summary>
     /// An optional per-minute ad-hoc demand baseline (1,440 slots) added beneath the cron layer
     /// before the capacity comparison. Derived by the caller from the <c>Demand_Profile</c>; only
     /// consumed when <see cref="JobClass"/> is <c>Combined</c> (Req 19.1).
     /// </summary>
-    [Parameter] public IReadOnlyList<int> AdHocBaselinePerSlot { get; set; }
+    [Parameter] public IReadOnlyList<int>? AdHocBaselinePerSlot { get; set; }
 
     /// <summary>
     /// The active job class — <c>Cron</c>, <c>Ad-hoc</c>, or <c>Combined</c>. Only in <c>Combined</c>
@@ -100,7 +100,7 @@ public partial class ConcurrencyView : ComponentBase, IAsyncDisposable
     private bool HasData => Result is { PeakConcurrency: > 0 };
 
     /// <summary>The peak concurrency time formatted as <c>HH:mm</c>, or <c>null</c> when there is no peak.</summary>
-    private string PeakTimeText =>
+    private string? PeakTimeText =>
         Result?.PeakMinuteOfDay is int minute
             ? $"{minute / MinutesPerHour:00}:{minute % MinutesPerHour:00}"
             : null;
@@ -248,7 +248,7 @@ public partial class ConcurrencyView : ComponentBase, IAsyncDisposable
             adhoc = hasAdHoc ? adhoc : Array.Empty<double>(),
             queues,
             capacity = Capacity,
-            peak = Result.PeakConcurrency,
+            peak = Result!.PeakConcurrency,
             peakMinute = Result.PeakMinuteOfDay,
             worstDayLabel = DayLabel
         };

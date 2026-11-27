@@ -1,5 +1,3 @@
-#nullable enable
-
 using System;
 using System.Collections.Generic;
 using a2n.Hangfire.Dashboard.Models;
@@ -140,8 +138,8 @@ public static class PlannerHelpers
     /// <returns>The complete planner result over the window's 7 × 24 slot grid.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="window"/> is <c>null</c>.</exception>
     public static PlannerResult BuildPlanner(
-        HeatmapMatrix cronMatrix,
-        DemandProfile demand,
+        HeatmapMatrix? cronMatrix,
+        DemandProfile? demand,
         ProjectionWindow window,
         TimeZoneInfo viewerTimeZone,
         double lowLoadThreshold)

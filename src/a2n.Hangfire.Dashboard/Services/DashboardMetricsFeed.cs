@@ -1,5 +1,3 @@
-#nullable enable
-
 using global::Hangfire.Storage.Monitoring;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -97,7 +95,7 @@ public sealed class DashboardMetricsFeed : IDisposable
     /// Stops waiting. A read that has started can't be cancelled (the storage API is synchronous);
     /// it completes in the background, and until it does no second read starts (issue #64).
     /// </param>
-    public async Task<DashboardMetricsSnapshot?> GetMetricsAsync(CancellationToken ct = default)
+    public async Task<DashboardMetricsSnapshot> GetMetricsAsync(CancellationToken ct = default)
     {
         var latest = Latest;
         if (IsFresh(latest)) return latest;
@@ -217,7 +215,7 @@ public sealed class DashboardMetricsFeed : IDisposable
         return snapshot;
     }
 
-    private bool IsFresh(DashboardMetricsSnapshot? snapshot)
+    private bool IsFresh([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] DashboardMetricsSnapshot? snapshot)
         => snapshot is not null && DateTime.UtcNow - snapshot.CapturedAtUtc < Interval;
 
     private void Dispatch<T>(Func<T, Task>[] handlers, T payload)

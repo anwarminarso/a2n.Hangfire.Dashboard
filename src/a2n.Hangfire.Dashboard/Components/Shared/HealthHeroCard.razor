@@ -73,9 +73,9 @@ else
 }
 
 @code {
-    private HealthReport _report;
+    private HealthReport? _report;
     private List<KeyValuePair<string, HealthCheckResult>> _failingChecks = new();
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
     private bool _refreshing;
 
     /// <summary>
@@ -94,7 +94,7 @@ else
         _poller = Polling.Start(nameof(HealthHeroCard), interval, async _ =>
         {
             // A failed refresh keeps the last report on screen and backs the loop off.
-            Exception error = null;
+            Exception? error = null;
             await InvokeAsync(async () => error = await RefreshCoreAsync(forceRefresh: false));
             if (error is not null)
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(error);
@@ -105,7 +105,7 @@ else
     private async Task RefreshNowAsync() => await RefreshCoreAsync(forceRefresh: true);
 
     /// <returns>The error when the report could not be read, otherwise null.</returns>
-    private async Task<Exception> RefreshCoreAsync(bool forceRefresh)
+    private async Task<Exception?> RefreshCoreAsync(bool forceRefresh)
     {
         if (_refreshing) return null;
         _refreshing = true;
@@ -190,7 +190,10 @@ else
         _ => "bi-info-circle text-info"
     };
 
-    private bool TryGetActionLink(string checkKey, out string href, out string label)
+    private bool TryGetActionLink(
+        string checkKey,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? href,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? label)
     {
         switch (checkKey)
         {

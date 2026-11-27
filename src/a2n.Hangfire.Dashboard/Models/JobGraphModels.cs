@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Collections.Generic;
 
 namespace a2n.Hangfire.Dashboard.Models;
@@ -20,7 +18,7 @@ public enum JobContinuationCondition
 /// </summary>
 public class JobGraphNode
 {
-    public string? JobId { get; set; }
+    public string JobId { get; set; } = null!;
 
     /// <summary>Resolved display name, or fallback to InvocationData when assembly unavailable.</summary>
     public string? DisplayName { get; set; }

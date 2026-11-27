@@ -56,8 +56,8 @@ else
     /// The queues to render, in display order (e.g. the Top-N selection). When <c>null</c> the
     /// matrix's full queue list is used.
     /// </summary>
-    [Parameter] public IReadOnlyList<string> Queues { get; set; }
+    [Parameter] public IReadOnlyList<string>? Queues { get; set; }
 
     /// <summary>The seven day labels used to title the active per-day mode; defaults to Mon..Sun.</summary>
-    [Parameter] public string[] DayLabels { get; set; }
+    [Parameter] public string[]? DayLabels { get; set; }
 }

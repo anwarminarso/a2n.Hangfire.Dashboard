@@ -1,5 +1,3 @@
-#nullable enable
-
 using Microsoft.Extensions.DependencyInjection;
 
 namespace a2n.Hangfire.Dashboard.Services;
@@ -38,10 +36,10 @@ public sealed class QueueOperationsStateCache : IDisposable
     /// <summary>
     /// Returns the cached state when fresh; otherwise reads it once (single-flighted) and caches it.
     /// </summary>
-    public async Task<QueueOperationsState?> GetAsync(bool forceRefresh = false, CancellationToken ct = default)
+    public async Task<QueueOperationsState> GetAsync(bool forceRefresh = false, CancellationToken ct = default)
     {
         if (!forceRefresh && IsFresh())
-            return _state;
+            return _state!;
 
         var requestedAtTicks = DateTime.UtcNow.Ticks;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -54,7 +52,7 @@ public sealed class QueueOperationsStateCache : IDisposable
             }
             else if (IsFresh())
             {
-                return _state;
+                return _state!;
             }
 
             var state = await Task.Run(() =>

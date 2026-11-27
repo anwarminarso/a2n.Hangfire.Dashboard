@@ -37,14 +37,14 @@ public partial class SqlServerMetricsProvider
 
     private class LatencyBasicRow
     {
-        public string? QueueName { get; set; }
+        public string QueueName { get; set; } = null!;
         public double AverageMs { get; set; }
         public long Cnt { get; set; }
     }
 
     private class LatencyPercentileRow
     {
-        public string? QueueName { get; set; }
+        public string QueueName { get; set; } = null!;
         public double P50Ms { get; set; }
         public double P95Ms { get; set; }
         public double P99Ms { get; set; }
@@ -81,7 +81,7 @@ public partial class SqlServerMetricsProvider
     private class QueueThroughputRow
     {
         public DateTime Bucket { get; set; }
-        public string? QueueName { get; set; }
+        public string QueueName { get; set; } = null!;
         public long SucceededCount { get; set; }
     }
 
@@ -127,7 +127,7 @@ public partial class SqlServerMetricsProvider
 
     private class ScheduleBucketRow
     {
-        public string? QueueName { get; set; }
+        public string QueueName { get; set; } = null!;
         public int DayIndex { get; set; }
         public int Hour { get; set; }
         public long FireCount { get; set; }
@@ -139,7 +139,7 @@ public partial class SqlServerMetricsProvider
 
     private class SchedulePercentileRow
     {
-        public string? QueueName { get; set; }
+        public string QueueName { get; set; } = null!;
         public int DayIndex { get; set; }
         public int Hour { get; set; }
         public double P95Ms { get; set; }

@@ -90,7 +90,7 @@
                                         <td class="hf-cell-meta hf-col-p2" data-label="State"><span class="badge bg-secondary">@(job.Value.State ?? "N/A")</span></td>
                                         <td class="hf-job-cell hf-cell-primary"><JobNameDisplay Job="@job.Value?.Job" InvocationData="@job.Value?.InvocationData" /></td>
                                         <td class="text-end hf-cell-meta hf-nowrap" data-label="Fetched">
-                                            @if (job.Value.FetchedAt.HasValue)
+                                            @if (job.Value!.FetchedAt.HasValue)
                                             {
                                                 <RelativeTime UtcTime="@job.Value.FetchedAt.Value" />
                                             }
@@ -117,19 +117,19 @@
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
     [Parameter] public string QueueName { get; set; } = "default";
 
-    private JobList<FetchedJobDto> _jobs;
+    private JobList<FetchedJobDto>? _jobs;
     private long _totalCount;
     private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -173,7 +173,7 @@
         });
     }
 
-    private JobList<FetchedJobDto> FetchPage(long total) =>
+    private JobList<FetchedJobDto>? FetchPage(long total) =>
         _order.Fetch((from, count) => Monitor.GetFetchedJobs(QueueName, from, count),
             total, _from, _pageSize, j => j.FetchedAt);
 

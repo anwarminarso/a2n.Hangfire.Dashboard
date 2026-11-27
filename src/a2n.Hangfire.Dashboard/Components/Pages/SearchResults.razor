@@ -398,7 +398,7 @@ else if (_result is not null)
 
 @code {
     [SupplyParameterFromQuery(Name = "q")]
-    public string Query { get; set; }
+    public string? Query { get; set; }
 
     [SupplyParameterFromQuery(Name = "page")]
     public int? Page { get; set; }
@@ -411,13 +411,13 @@ else if (_result is not null)
     /// value that isn't a current fingerprint is ignored.
     /// </summary>
     [SupplyParameterFromQuery(Name = "exception")]
-    public string ExceptionQuery { get; set; }
+    public string? ExceptionQuery { get; set; }
 
-    private SearchResult _result;
+    private SearchResult? _result;
     private bool _isLoading;
     private bool _hasSearched;
     private bool _searchCancelled;
-    private CancellationTokenSource _searchCts;
+    private CancellationTokenSource? _searchCts;
     private int _from;
     private int _pageSize = 20;
     private string _searchQuery = "";
@@ -593,7 +593,7 @@ else if (_result is not null)
         StateHasChanged();
 
         SearchResult result;
-        SearchRequest request = null;
+        SearchRequest? request = null;
 
         try
         {
@@ -648,14 +648,14 @@ else if (_result is not null)
             _lastSearchedQuery = _searchQuery?.Trim() ?? "";
             _lastSearchedRequest = new SearchRequest
             {
-                States = request.States?.ToList(),
+                States = request.States?.ToList()!,
                 Queue = request.Queue,
                 Server = request.Server,
                 DateFrom = request.DateFrom,
                 DateTo = request.DateTo,
                 MinDurationSeconds = request.MinDurationSeconds,
                 MaxDurationSeconds = request.MaxDurationSeconds,
-                Tags = request.Tags?.ToList(),
+                Tags = request.Tags?.ToList()!,
                 RecurringJobId = request.RecurringJobId,
                 ExceptionFingerprint = request.ExceptionFingerprint,
                 ArgumentsQuery = request.ArgumentsQuery,
@@ -808,7 +808,7 @@ else if (_result is not null)
             return $"{_currentFilterRequest.DateFrom.Value:g} – {_currentFilterRequest.DateTo.Value:g}";
         if (_currentFilterRequest.DateFrom.HasValue)
             return $"From {_currentFilterRequest.DateFrom.Value:g}";
-        return $"To {_currentFilterRequest.DateTo.Value:g}";
+        return $"To {_currentFilterRequest.DateTo!.Value:g}";
     }
 
     private string GetDurationLabel()
@@ -826,7 +826,7 @@ else if (_result is not null)
             return $"{_lastSearchedRequest.DateFrom.Value:g} – {_lastSearchedRequest.DateTo.Value:g}";
         if (_lastSearchedRequest.DateFrom.HasValue)
             return $"From {_lastSearchedRequest.DateFrom.Value:g}";
-        return $"To {_lastSearchedRequest.DateTo.Value:g}";
+        return $"To {_lastSearchedRequest.DateTo!.Value:g}";
     }
 
     private string GetLastSearchedDurationLabel()
@@ -858,9 +858,9 @@ else if (_result is not null)
         Navigation.NavigateTo(uri);
     }
 
-    private string GetJobDetailsUrl(string jobId) => $"jobs/details/{jobId}";
+    private string GetJobDetailsUrl(string? jobId) => $"jobs/details/{jobId}";
 
-    private static string ShortenJobId(string id)
+    private static string ShortenJobId(string? id)
     {
         if (string.IsNullOrEmpty(id)) return "—";
         if (Guid.TryParse(id, out _))
@@ -868,7 +868,7 @@ else if (_result is not null)
         return $"#{id}";
     }
 
-    private static string GetStateBadgeClass(string state)
+    private static string GetStateBadgeClass(string? state)
     {
         return state?.ToLowerInvariant() switch
         {

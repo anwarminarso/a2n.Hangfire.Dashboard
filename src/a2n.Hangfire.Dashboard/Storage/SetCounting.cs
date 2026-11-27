@@ -1,5 +1,3 @@
-#nullable enable
-
 using Hangfire.Storage;
 
 namespace a2n.Hangfire.Dashboard.Storage;

@@ -1,5 +1,3 @@
-#nullable enable
-
 using System;
 using System.Collections.Generic;
 
@@ -50,7 +48,7 @@ public class JobDurationStatsDto
 /// </summary>
 public class QueueLatencyStatsDto
 {
-    public string? QueueName { get; set; }
+    public string QueueName { get; set; } = null!;
     public double AverageMs { get; set; }
     public double P50Ms { get; set; }
     public double P95Ms { get; set; }
@@ -102,7 +100,7 @@ public class ServerUtilizationDto
 /// </summary>
 public class QueueDepthDto
 {
-    public string? QueueName { get; set; }
+    public string QueueName { get; set; } = null!;
     public long EnqueuedCount { get; set; }
     public long FetchedCount { get; set; }
 }
@@ -113,7 +111,7 @@ public class QueueDepthDto
 public class QueueThroughputDataPoint
 {
     public DateTimeOffset Timestamp { get; set; }
-    public string? QueueName { get; set; }
+    public string QueueName { get; set; } = null!;
     public long SucceededCount { get; set; }
 }
 
@@ -122,7 +120,7 @@ public class QueueThroughputDataPoint
 /// </summary>
 public class RecurringJobHealthDto
 {
-    public string? JobId { get; set; }
+    public string JobId { get; set; } = null!;
     public RecurringJobHealthStatus Status { get; set; }
     public DateTimeOffset? LastRunTime { get; set; }
     public double AverageDurationMs { get; set; }
@@ -145,7 +143,7 @@ public enum RecurringJobHealthStatus
 /// </summary>
 public class RecurringJobExecutionDto
 {
-    public string? JobId { get; set; }
+    public string JobId { get; set; } = null!;
     public DateTimeOffset ExecutedAt { get; set; }
     public double DurationMs { get; set; }
     public bool Succeeded { get; set; }

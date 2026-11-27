@@ -1,5 +1,3 @@
-#nullable enable
-
 using System;
 using a2n.Hangfire.Dashboard.Models;
 
@@ -27,7 +25,7 @@ public static class HeatmapTime
     /// </summary>
     /// <param name="timeZoneId">The IANA or Windows time-zone identifier; null/empty means UTC.</param>
     /// <returns>The resolved time zone, or UTC when the identifier cannot be resolved.</returns>
-    public static TimeZoneInfo ResolveTimeZone(string timeZoneId)
+    public static TimeZoneInfo ResolveTimeZone(string? timeZoneId)
     {
         return TryResolveTimeZone(timeZoneId, out var timeZone) ? timeZone : TimeZoneInfo.Utc;
     }
@@ -45,7 +43,7 @@ public static class HeatmapTime
     /// <c>true</c> when the identifier was recognized and resolved; otherwise <c>false</c> (and
     /// <paramref name="timeZone"/> is set to UTC).
     /// </returns>
-    public static bool TryResolveTimeZone(string timeZoneId, out TimeZoneInfo timeZone)
+    public static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo timeZone)
     {
         if (string.IsNullOrWhiteSpace(timeZoneId))
         {

@@ -142,7 +142,7 @@
     /// <c>RecommendationEngine.Analyze</c> (the hosting page/service computes them — Req 11.4). May be
     /// <c>null</c> or empty, in which case the empty state is shown.
     /// </summary>
-    [Parameter] public IReadOnlyList<Recommendation> Recommendations { get; set; }
+    [Parameter] public IReadOnlyList<Recommendation>? Recommendations { get; set; }
 
     /// <summary>
     /// The maximum number of recommendation cards to render. The list is ordered by descending peak
@@ -161,7 +161,7 @@
     /// The Viewer_Time_Zone id the peak/suggested times are expressed in; <c>null</c> or empty means
     /// UTC. Used only to label the times for context (Req 11.4).
     /// </summary>
-    [Parameter] public string ViewerTimeZoneId { get; set; }
+    [Parameter] public string? ViewerTimeZoneId { get; set; }
 
     private string TimeZoneLabel =>
         string.IsNullOrWhiteSpace(ViewerTimeZoneId) ? "UTC" : ViewerTimeZoneId.Trim();
@@ -176,7 +176,7 @@
     /// Optional collision-free queue → color map so the per-recommendation queue dot matches the
     /// chips, table badges, and view legends. Falls back to the per-name color when absent.
     /// </summary>
-    [Parameter] public IReadOnlyDictionary<string, string> QueueColorMap { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? QueueColorMap { get; set; }
 
     /// <summary>Resolves the dot color for a queue from the supplied map, or the deterministic color.</summary>
     private string QueueColorFor(string queue) =>

@@ -1,5 +1,3 @@
-#nullable enable
-
 using Hangfire;
 using Hangfire.Storage;
 using a2n.Hangfire.Dashboard.Storage;

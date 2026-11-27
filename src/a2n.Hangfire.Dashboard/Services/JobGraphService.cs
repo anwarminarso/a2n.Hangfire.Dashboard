@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Text.Json;
 using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.Models;
@@ -36,7 +34,7 @@ public class JobGraphService
     /// (walking up via Awaiting state's ParentId), then expanding all descendants via Continuations.
     /// Returns null when the job itself cannot be loaded.
     /// </summary>
-    public JobDependencyGraph? Build(string jobId, int maxNodes = DefaultMaxNodes, int maxDepth = DefaultMaxDepth)
+    public JobDependencyGraph? Build(string? jobId, int maxNodes = DefaultMaxNodes, int maxDepth = DefaultMaxDepth)
     {
         if (string.IsNullOrWhiteSpace(jobId)) return null;
 

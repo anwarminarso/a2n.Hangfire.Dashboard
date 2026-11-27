@@ -1,5 +1,3 @@
-#nullable enable
-
 namespace a2n.Hangfire.Dashboard.Services;
 
 /// <summary>
@@ -31,7 +29,7 @@ public sealed class AuditActorAccessor
     public bool HasActor => !string.IsNullOrEmpty(User);
 
     /// <summary>Records the actor for the current circuit. Safe to call repeatedly (e.g., on reconnect).</summary>
-    public void Set(string user, string clientIp)
+    public void Set(string user, string? clientIp)
     {
         if (!string.IsNullOrWhiteSpace(user)) User = user;
         if (!string.IsNullOrWhiteSpace(clientIp)) ClientIp = clientIp;

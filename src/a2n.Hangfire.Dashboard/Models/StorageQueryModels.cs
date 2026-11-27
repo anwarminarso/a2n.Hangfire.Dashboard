@@ -1,5 +1,3 @@
-#nullable enable
-
 using System;
 using System.Collections.Generic;
 using Hangfire.Storage;
@@ -78,7 +76,7 @@ public class JobSummaryDto
     /// <summary>
     /// The unique job identifier.
     /// </summary>
-    public string? JobId { get; set; }
+    public string JobId { get; set; } = null!;
 
     /// <summary>
     /// The display name of the job (typically the type and method name).
@@ -327,7 +325,7 @@ public class SlowestJobDto
     /// <summary>
     /// The unique job identifier.
     /// </summary>
-    public string? JobId { get; set; }
+    public string JobId { get; set; } = null!;
 
     /// <summary>
     /// The display name of the job (type and method).

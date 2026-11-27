@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Text.Json;
 using Hangfire;
 using Hangfire.States;

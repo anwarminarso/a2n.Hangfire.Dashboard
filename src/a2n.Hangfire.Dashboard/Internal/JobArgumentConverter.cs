@@ -1,5 +1,3 @@
-#nullable enable
-
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
@@ -85,7 +83,7 @@ internal static class JobArgumentConverter
     /// </summary>
     /// <param name="declaredType">The parameter's declared CLR type.</param>
     /// <returns><c>true</c> when the type is a reference type or <see cref="Nullable{T}"/>; otherwise <c>false</c>.</returns>
-    public static bool IsNullableType(Type declaredType)
+    public static bool IsNullableType(Type? declaredType)
     {
         ArgumentNullException.ThrowIfNull(declaredType);
 

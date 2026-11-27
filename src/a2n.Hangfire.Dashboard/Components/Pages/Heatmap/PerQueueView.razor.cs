@@ -34,12 +34,12 @@ public partial class PerQueueView : ComponentBase, IAsyncDisposable
 
     private readonly string _containerId = $"hf-heatmap-perqueue-{Guid.NewGuid():N}";
 
-    private object _model;
+    private object? _model;
     private bool _hasVisibleData;
     private bool _pendingRender;
     private bool _rendered;
 
-    [Inject] private IJSRuntime JS { get; set; }
+    [Inject] private IJSRuntime JS { get; set; } = default!;
 
     /// <summary>The aggregated <c>queue × day × hour</c> matrix to render small-multiples for.</summary>
     [Parameter, EditorRequired] public HeatmapMatrix Matrix { get; set; }
@@ -48,7 +48,7 @@ public partial class PerQueueView : ComponentBase, IAsyncDisposable
     /// The queues to render, in display order. When <c>null</c>, every queue in
     /// <see cref="HeatmapMatrix.Queues"/> is shown. Filtering (e.g. Top-N) is applied by the caller.
     /// </summary>
-    [Parameter] public IReadOnlyList<string> VisibleQueues { get; set; }
+    [Parameter] public IReadOnlyList<string>? VisibleQueues { get; set; }
 
     /// <summary>Whether to apply logarithmic intensity scaling across the shared ramp domain.</summary>
     [Parameter] public bool LogScale { get; set; }
@@ -102,7 +102,7 @@ public partial class PerQueueView : ComponentBase, IAsyncDisposable
     /// <c>{ queues:[{ queue, isAdHoc, queueColor, days, dayIndices, cells:[{day,hour,value}], max }],
     /// globalMin, globalMax, logScale, hours, metricLabel }</c>.
     /// </summary>
-    private object BuildModel()
+    private object? BuildModel()
     {
         if (Matrix is null)
         {
@@ -148,7 +148,7 @@ public partial class PerQueueView : ComponentBase, IAsyncDisposable
             {
                 queue,
                 isAdHoc = (bool?)null,        // Phase 1 projected/cron — no ad-hoc tag.
-                queueColor = (string)null,    // null => renderer derives a stable color from the name.
+                queueColor = (string?)null,    // null => renderer derives a stable color from the name.
                 days = dayLabels,
                 dayIndices,
                 cells = (IReadOnlyList<object>)(cells ?? new List<object>()),
