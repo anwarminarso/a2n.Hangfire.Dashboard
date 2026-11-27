@@ -12,4 +12,7 @@
   heatmap, or release/stress testing, read the matching `.kiro/steering/*.md` file listed above.
 - For UI changes, verify in a running sample app (SampleApp with `--StorageProvider=InMemory` if no DB is up) and
   check both light and dark theme.
+- The Superpowers plugin is enabled from `.claude/settings.json` (pinned commit). Its skills never override
+  the Git rules in `AGENTS.md`: confirm before every commit/push, GPG-sign, never merge locally or push to
+  `main`, and finish work through a PR. See "Agent skills (Superpowers)" in `AGENTS.md`.
 - On Windows the PowerShell tool can lag or queue output; for long commands, write output to a file and read it.
