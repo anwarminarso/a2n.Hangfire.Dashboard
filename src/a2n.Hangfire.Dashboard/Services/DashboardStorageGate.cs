@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace a2n.Hangfire.Dashboard.Services;
 
 /// <summary>
@@ -23,7 +25,7 @@ public sealed class DashboardStorageGate
 {
     private readonly DashboardUIOptions _options;
     private readonly object _initLock = new();
-    private SemaphoreSlim _semaphore;
+    private SemaphoreSlim? _semaphore;
     private int _limit;
     private int _inFlight;
 
@@ -68,7 +70,7 @@ public sealed class DashboardStorageGate
 
         // The slot is released when the call returns, not when the caller stops waiting.
         _ = task.ContinueWith(
-            static (_, state) => ((DashboardStorageGate)state).Release(),
+            static (_, state) => ((DashboardStorageGate)state!).Release(),
             this,
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
@@ -84,7 +86,7 @@ public sealed class DashboardStorageGate
     public Task RunAsync(Action call, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(call);
-        return RunAsync<object>(() =>
+        return RunAsync<object?>(() =>
         {
             call();
             return null;
@@ -94,7 +96,7 @@ public sealed class DashboardStorageGate
     private void Release()
     {
         Interlocked.Decrement(ref _inFlight);
-        _semaphore.Release();
+        _semaphore!.Release();
     }
 
     private SemaphoreSlim EnsureSemaphore()

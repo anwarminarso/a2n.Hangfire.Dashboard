@@ -158,7 +158,7 @@ public class HealthCheckResult
     /// Serialized as part of the JSON response so monitoring tools can scrape values.
     /// </summary>
     [JsonPropertyName("data")]
-    public Dictionary<string, object>? Data { get; set; }
+    public Dictionary<string, object?>? Data { get; set; }
 }
 
 /// <summary>

@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -38,11 +40,11 @@ internal sealed class DashboardPoller : IDisposable
     private readonly TimeSpan _interval;
     private readonly Func<CancellationToken, Task> _tick;
     private readonly PollingOptions _options;
-    private readonly DashboardCircuitState _circuit;
+    private readonly DashboardCircuitState? _circuit;
     private readonly ILogger _logger;
     private readonly TimeProvider _time;
     private readonly CancellationTokenSource _cts = new();
-    private Task _loop;
+    private Task? _loop;
     private int _started;
     private int _disposed;
     private long _currentDelayTicks;
@@ -59,10 +61,10 @@ internal sealed class DashboardPoller : IDisposable
         string name,
         TimeSpan interval,
         Func<CancellationToken, Task> tick,
-        PollingOptions options,
-        DashboardCircuitState circuit = null,
-        ILogger logger = null,
-        TimeProvider timeProvider = null)
+        PollingOptions? options,
+        DashboardCircuitState? circuit = null,
+        ILogger? logger = null,
+        TimeProvider? timeProvider = null)
     {
         _name = name ?? "refresh";
         _interval = interval;
@@ -112,7 +114,7 @@ internal sealed class DashboardPoller : IDisposable
     internal Task Completion => _loop ?? Task.CompletedTask;
 
     /// <summary>Called with each delay just before the loop waits for it (tests).</summary>
-    internal Action<TimeSpan> DelayScheduled { get; set; }
+    internal Action<TimeSpan>? DelayScheduled { get; set; }
 
     /// <summary>Starts the loop. Does nothing when disabled, already started, or disposed.</summary>
     public void Start()
@@ -169,7 +171,7 @@ internal sealed class DashboardPoller : IDisposable
             }
 
             var startedAt = _time.GetTimestamp();
-            Exception failure = null;
+            Exception? failure = null;
             try
             {
                 await _tick(ct).ConfigureAwait(false);
@@ -195,7 +197,7 @@ internal sealed class DashboardPoller : IDisposable
         }
     }
 
-    private TimeSpan NextDelay(TimeSpan current, Exception failure, TimeSpan elapsed)
+    private TimeSpan NextDelay(TimeSpan current, Exception? failure, TimeSpan elapsed)
     {
         var slowThreshold = SlowThreshold ?? _options.SlowCallThreshold;
         if (FixedCadence && (slowThreshold <= TimeSpan.Zero || slowThreshold > _interval))

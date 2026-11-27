@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.Extensions.DependencyInjection;
 using a2n.Hangfire.Dashboard.Models;
 
@@ -17,10 +19,10 @@ public sealed class ThrottlingSnapshot
 
     public sealed class MutexHolder
     {
-        public string MutexId { get; init; }
+        public string? MutexId { get; init; }
 
         /// <summary>Null when the mutex is registered with no current holder.</summary>
-        public ThrottleHolderDto Holder { get; init; }
+        public ThrottleHolderDto? Holder { get; init; }
     }
 }
 
@@ -51,7 +53,7 @@ public sealed class ThrottlingSnapshotCache : IDisposable
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    private ThrottlingSnapshot _snapshot;
+    private ThrottlingSnapshot? _snapshot;
     private long _computedAtTicks;
 
     /// <summary>How long a snapshot is reused before a fresh read. Default: 5 seconds.</summary>
@@ -65,7 +67,7 @@ public sealed class ThrottlingSnapshotCache : IDisposable
     /// <summary>
     /// Returns the cached snapshot when fresh; otherwise reads it once (single-flighted) and caches it.
     /// </summary>
-    public async Task<ThrottlingSnapshot> GetAsync(bool forceRefresh = false, CancellationToken ct = default)
+    public async Task<ThrottlingSnapshot?> GetAsync(bool forceRefresh = false, CancellationToken ct = default)
     {
         if (!forceRefresh && IsFresh())
             return _snapshot;
@@ -114,7 +116,7 @@ public sealed class ThrottlingSnapshotCache : IDisposable
         // reads the server list, so calling it per mutex would repeat that work needlessly.
         var holderDetails = reader
             .GetHolderDetails(mutexes.SelectMany(x => x.HolderJobIds).Distinct())
-            .ToDictionary(x => x.JobId);
+            .ToDictionary(x => x.JobId!);
 
         var rows = new List<ThrottlingSnapshot.MutexHolder>();
         foreach (var mutex in mutexes)

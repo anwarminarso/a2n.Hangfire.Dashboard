@@ -129,7 +129,7 @@ public static class JobNameHelper
     /// job when its type is loaded, otherwise from the invocation data, so a job whose assembly the
     /// dashboard doesn't reference still has a name (issue #70). Null when neither is available.
     /// </summary>
-    internal static string? GetTypeAndMethod(Job job, InvocationData invocationData)
+    internal static string? GetTypeAndMethod(Job? job, InvocationData? invocationData)
     {
         var (typeName, methodName) = GetTypeAndMethodNames(job, invocationData);
         if (typeName is null)

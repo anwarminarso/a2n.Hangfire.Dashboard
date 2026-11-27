@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Reflection;
 using System.Text.Json;
 using Hangfire;
@@ -44,7 +46,7 @@ public sealed class JobMethodResolver
     /// populated exactly once under <see cref="_scanLock"/>. <c>volatile</c> so other circuits see
     /// the fully-built list without tearing.
     /// </summary>
-    private volatile IReadOnlyList<JobMethodDescriptor> _registeredMethodsCache;
+    private volatile IReadOnlyList<JobMethodDescriptor>? _registeredMethodsCache;
 
     /// <summary>
     /// Scans the loaded assemblies for Registered_Methods on the first call and caches the result;
@@ -266,7 +268,7 @@ public sealed class JobMethodResolver
     {
         public static readonly MethodKeyComparer Instance = new();
 
-        public bool Equals(MethodInfo x, MethodInfo y)
+        public bool Equals(MethodInfo? x, MethodInfo? y)
         {
             if (ReferenceEquals(x, y)) return true;
             if (x is null || y is null) return false;
@@ -551,7 +553,7 @@ public sealed class JobMethodResolver
     /// Resolves a type by full name (preferred) or simple name across the loaded assemblies,
     /// skipping assemblies that cannot be inspected (Req 5.7 resilience pattern).
     /// </summary>
-    private static Type ResolveType(string typeName)
+    private static Type? ResolveType(string typeName)
     {
         if (string.IsNullOrWhiteSpace(typeName))
             return null;
@@ -586,7 +588,7 @@ public sealed class JobMethodResolver
     /// supplied argument value. When no argument values are supplied, an overload is considered
     /// to accept only when it has zero Job_Parameters.
     /// </summary>
-    private static bool OverloadAcceptsArgs(MethodInfo method, IReadOnlyList<JsonElement> args)
+    private static bool OverloadAcceptsArgs(MethodInfo method, IReadOnlyList<JsonElement>? args)
     {
         var jobParameters = JobParameters(method);
         var argCount = args?.Count ?? 0;
@@ -596,7 +598,7 @@ public sealed class JobMethodResolver
 
         for (var i = 0; i < jobParameters.Count; i++)
         {
-            if (!ArgAccepts(args[i], jobParameters[i].ParameterType))
+            if (!ArgAccepts(args![i], jobParameters[i].ParameterType))
                 return false;
         }
 

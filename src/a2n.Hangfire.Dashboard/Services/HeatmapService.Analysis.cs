@@ -1,3 +1,5 @@
+#nullable enable
+
 using a2n.Hangfire.Dashboard.Heatmap;
 using a2n.Hangfire.Dashboard.Models;
 using Microsoft.Extensions.Logging;
@@ -78,7 +80,7 @@ public partial class HeatmapService
         int workerCapacity,
         IReadOnlyList<int> adHocBaselinePerSlot,
         CancellationToken ct,
-        IReadOnlyList<string> queues = null)
+        IReadOnlyList<string>? queues = null)
     {
         if (query is null)
         {
@@ -98,7 +100,7 @@ public partial class HeatmapService
     /// the cron-only peak for selection; the demand baseline (if any) is applied when the chosen day
     /// is subsequently rendered via <see cref="GetConcurrencyAsync"/>.
     /// </summary>
-    public async Task<int> GetWorstConcurrencyDayAsync(HeatmapQuery query, int workerCapacity, CancellationToken ct, IReadOnlyList<string> queues = null)
+    public async Task<int> GetWorstConcurrencyDayAsync(HeatmapQuery query, int workerCapacity, CancellationToken ct, IReadOnlyList<string>? queues = null)
     {
         if (query is null)
         {
@@ -134,7 +136,7 @@ public partial class HeatmapService
         int workerCapacity,
         IReadOnlyList<int> adHocBaselinePerSlot,
         CancellationToken ct,
-        IReadOnlyList<string> queues = null)
+        IReadOnlyList<string>? queues = null)
     {
         if (query is null)
         {
@@ -153,7 +155,7 @@ public partial class HeatmapService
     /// load metric (Req 16.3–16.5). Returns an empty profile when no demand provider is registered
     /// (Req 16.7); never throws.
     /// </summary>
-    public DemandProfile GetDemandProfile(HeatmapQuery query)
+    public DemandProfile? GetDemandProfile(HeatmapQuery query)
     {
         if (query is null)
         {

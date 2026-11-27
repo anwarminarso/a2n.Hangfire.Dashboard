@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace a2n.Hangfire.Dashboard.Services;
@@ -42,7 +44,7 @@ public sealed class HealthReportCache : IDisposable
 
     private sealed class Entry
     {
-        public HealthReport Report;
+        public HealthReport? Report;
         // Stored as ticks and accessed via Volatile/Interlocked so the lock-free fast path in
         // IsFresh never observes a torn DateTime on any platform.
         public long ComputedAtTicks;
@@ -50,7 +52,7 @@ public sealed class HealthReportCache : IDisposable
     }
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly DashboardUIOptions _options;
+    private readonly DashboardUIOptions? _options;
     private readonly Entry[] _entries;
     private TimeSpan? _ttl;
 
@@ -73,7 +75,7 @@ public sealed class HealthReportCache : IDisposable
 
     /// <param name="scopeFactory">Creates the scope each report is computed in.</param>
     /// <param name="options">Supplies the default <see cref="Ttl"/>.</param>
-    public HealthReportCache(IServiceScopeFactory scopeFactory, DashboardUIOptions options)
+    public HealthReportCache(IServiceScopeFactory scopeFactory, DashboardUIOptions? options)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _options = options;
@@ -102,7 +104,7 @@ public sealed class HealthReportCache : IDisposable
         var entry = _entries[(int)mode];
 
         if (!forceRefresh && IsFresh(entry))
-            return entry.Report;
+            return entry.Report!;
 
         // Captured before contending for the gate. If, by the time we acquire it, the entry was
         // computed at or after this instant, a concurrent caller already produced exactly the fresh
@@ -115,11 +117,11 @@ public sealed class HealthReportCache : IDisposable
             if (forceRefresh)
             {
                 if (Volatile.Read(ref entry.ComputedAtTicks) >= requestedAtTicks && entry.Report is not null)
-                    return entry.Report;
+                    return entry.Report!;
             }
             else if (IsFresh(entry))
             {
-                return entry.Report;
+                return entry.Report!;
             }
 
             // The checks are asynchronous and bound their own storage reads (shared metrics

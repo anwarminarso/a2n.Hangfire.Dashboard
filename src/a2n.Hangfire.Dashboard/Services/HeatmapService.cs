@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Collections.Concurrent;
 using a2n.Hangfire.Dashboard.Heatmap;
 using a2n.Hangfire.Dashboard.Interfaces;
@@ -44,9 +46,9 @@ namespace a2n.Hangfire.Dashboard.Services;
 public partial class HeatmapService
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly IStorageMetricsProvider _metricsProvider;
-    private readonly JobStorage _storage;
-    private readonly HangfireMonitorService _monitor;
+    private readonly IStorageMetricsProvider? _metricsProvider;
+    private readonly JobStorage? _storage;
+    private readonly HangfireMonitorService? _monitor;
     private readonly DashboardUIOptions _options;
     private readonly ILogger<HeatmapService> _logger;
 
@@ -55,23 +57,23 @@ public partial class HeatmapService
     /// provider is available, otherwise the configured default (≥ 1 minute). Null when not registered
     /// (e.g. in unit tests), in which case every job falls back to the configured default (task 14.3).
     /// </summary>
-    private readonly EstimatedDurationResolver _durationResolver;
+    private readonly EstimatedDurationResolver? _durationResolver;
 
     /// <summary>
     /// Builds the ad-hoc <c>Demand_Profile</c> from the persisted rollup. Null when not registered;
     /// callers then receive an empty profile (graceful degradation, Req 16.7).
     /// </summary>
-    private readonly DemandProfileProvider _demandProfileProvider;
+    private readonly DemandProfileProvider? _demandProfileProvider;
 
     /// <summary>
     /// Short-lived memo of the resolved job-type → estimated-duration map, so the several projections
     /// performed in a single page interaction (matrix, specs, concurrency, recommendations) issue at
     /// most one duration-stats query per cache-TTL window instead of one per projection.
     /// </summary>
-    private IReadOnlyDictionary<string, (TimeSpan Duration, bool IsDefault)> _durationMemo;
+    private IReadOnlyDictionary<string, (TimeSpan Duration, bool IsDefault)>? _durationMemo;
     private DateTimeOffset _durationMemoAt = DateTimeOffset.MinValue;
 
-    private readonly IMemoryCache _cache;
+    private readonly IMemoryCache? _cache;
 
     /// <summary>
     /// Per-cache-key single-flight gates. A gate serializes the cold compute and any background

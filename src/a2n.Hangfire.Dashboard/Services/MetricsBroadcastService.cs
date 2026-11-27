@@ -1,3 +1,5 @@
+#nullable enable
+
 using a2n.Hangfire.Dashboard.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Hosting;

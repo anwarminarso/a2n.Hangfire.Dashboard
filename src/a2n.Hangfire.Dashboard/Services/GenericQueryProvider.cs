@@ -1,3 +1,5 @@
+#nullable enable
+
 using a2n.Hangfire.Dashboard.Helpers;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
@@ -23,7 +25,7 @@ public class GenericQueryProvider : IStorageQueryProvider
 
     private readonly JobStorage _storage;
     private readonly TagsDataReader _tagsReader;
-    private readonly IFailedJobPageSource _failedJobs;
+    private readonly IFailedJobPageSource? _failedJobs;
 
     /// <param name="storage">The Hangfire storage.</param>
     /// <param name="tagsReader">Reads tags for tag filters.</param>
@@ -31,7 +33,7 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// Optional page source for failed jobs, used for search and grouping instead of
     /// <see cref="IMonitoringApi.FailedJobs"/> when a storage adapter registers one.
     /// </param>
-    public GenericQueryProvider(JobStorage storage, TagsDataReader tagsReader, IFailedJobPageSource failedJobs = null)
+    public GenericQueryProvider(JobStorage storage, TagsDataReader tagsReader, IFailedJobPageSource? failedJobs = null)
     {
         _storage = storage;
         _tagsReader = tagsReader;
@@ -125,7 +127,7 @@ public class GenericQueryProvider : IStorageQueryProvider
             var jobName = JobNameHelper.GetTypeAndMethod(jobData.Job, jobData.InvocationData) ?? "Unknown";
             var queue = QueueOf(jobData.Job, jobData.InvocationData);
 
-            string[] tags = null;
+            string[]? tags = null;
             // Tags are optional on a search result: a failed read shows the job without them.
             try { tags = _tagsReader.GetJobTags(jobId); } catch { /* see above */ }
 
@@ -352,7 +354,7 @@ public class GenericQueryProvider : IStorageQueryProvider
     private JobList<FailedJobDto> FetchFailed(IMonitoringApi monitoringApi, int from, int count)
         => _failedJobs != null ? _failedJobs.GetFailedJobs(from, count) : monitoringApi.FailedJobs(from, count);
 
-    private static string GetValue(IDictionary<string, string> data, string key)
+    private static string? GetValue(IDictionary<string, string>? data, string key)
         => data != null && data.TryGetValue(key, out var value) ? value : null;
 
     // ─── Private Helpers ───────────────────────────────────────────────────────
@@ -434,8 +436,8 @@ public class GenericQueryProvider : IStorageQueryProvider
                     // A job stays in its queue until a worker fetches it, even after it moves to
                     // another state (deleted or succeeded while enqueued). The scan of that state
                     // finds it, so listing it here too would return it twice.
-                    if (!dto.InEnqueuedState) continue;
-                    if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
+                    if (!dto!.InEnqueuedState) continue;
+                    if (!filter.Matches(entry.Key, dto!.Job, dto.InvocationData)) continue;
 
                     candidates.Add(new JobSummaryDto
                     {
@@ -466,7 +468,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 if (!IsSearchable(dto?.Job, dto?.InvocationData)) continue;
-                if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
+                if (!filter.Matches(entry.Key, dto!.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -497,7 +499,7 @@ public class GenericQueryProvider : IStorageQueryProvider
                 if (candidates.Count >= SafetyCap) break;
                 var dto = entry.Value;
                 if (!IsSearchable(dto?.Job, dto?.InvocationData)) continue;
-                if (!filter.Matches(entry.Key, dto.Job, dto.InvocationData)) continue;
+                if (!filter.Matches(entry.Key, dto!.Job, dto.InvocationData)) continue;
 
                 candidates.Add(new JobSummaryDto
                 {
@@ -517,8 +519,8 @@ public class GenericQueryProvider : IStorageQueryProvider
 
     private void ScanBatched<TDto>(Func<int, int, JobList<TDto>> fetchBatch,
         string stateName, ScanFilter filter, List<JobSummaryDto> candidates, CancellationToken ct,
-        Func<TDto, Job> getJob, Func<TDto, InvocationData> getInvocationData,
-        Func<TDto, DateTime?> getTimestamp, Func<TDto, string> getQueue)
+        Func<TDto, Job?> getJob, Func<TDto, InvocationData?> getInvocationData,
+        Func<TDto, DateTime?> getTimestamp, Func<TDto, string?> getQueue)
     {
         int from = 0;
         while (!ct.IsCancellationRequested && candidates.Count < SafetyCap)
@@ -662,13 +664,13 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// such a job is still listed, named and matched from its invocation data (issue #70). Only a
     /// job with neither is skipped.
     /// </summary>
-    private static bool IsSearchable(Job job, InvocationData invocationData)
+    private static bool IsSearchable(Job? job, InvocationData? invocationData)
         => job != null || invocationData != null;
 
-    private static string QueueOf(Job job, InvocationData invocationData)
+    private static string? QueueOf(Job? job, InvocationData? invocationData)
         => job?.Queue ?? invocationData?.Queue;
 
-    private static bool MatchesName(Job job, InvocationData invocationData, string pattern)
+    private static bool MatchesName(Job? job, InvocationData? invocationData, string? pattern)
     {
         if (string.IsNullOrEmpty(pattern)) return true;
 
@@ -686,7 +688,7 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// Matches against the serialized job arguments only, never the type or method name — the
     /// same scope the storage adapters use for their SQL predicate.
     /// </summary>
-    private static bool MatchesArguments(Job job, InvocationData invocationData, string pattern)
+    private static bool MatchesArguments(Job? job, InvocationData? invocationData, string? pattern)
     {
         if (string.IsNullOrEmpty(pattern)) return true;
 
@@ -711,13 +713,13 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// extra reads are bounded, so the scan is left as it is.
     /// </para>
     /// </remarks>
-    private readonly record struct ScanFilter(string NamePattern, string ArgumentsPattern,
-        string FailureFingerprint, IStorageConnection Connection, CancellationToken Ct)
+    private readonly record struct ScanFilter(string? NamePattern, string? ArgumentsPattern,
+        string? FailureFingerprint, IStorageConnection? Connection, CancellationToken Ct)
     {
         /// <summary>No filtering — every scanned job becomes a candidate.</summary>
         public static ScanFilter None => default;
 
-        public bool Matches(string jobId, Job job, InvocationData invocationData)
+        public bool Matches(string jobId, Job? job, InvocationData? invocationData)
             => MatchesName(job, invocationData, NamePattern)
             && MatchesArguments(job, invocationData, ArgumentsPattern)
             && MatchesFailureFingerprint(jobId, FailureFingerprint, Connection, Ct);
@@ -730,13 +732,13 @@ public class GenericQueryProvider : IStorageQueryProvider
     /// <exception cref="OperationCanceledException">
     /// The search timed out or was cancelled; checked before each read, since each is a storage call.
     /// </exception>
-    private static bool MatchesFailureFingerprint(string jobId, string fingerprint, IStorageConnection connection,
+    private static bool MatchesFailureFingerprint(string jobId, string? fingerprint, IStorageConnection? connection,
         CancellationToken ct)
     {
         if (fingerprint == null) return true;
 
         ct.ThrowIfCancellationRequested();
-        var stored = connection.GetJobParameter(jobId, Helpers.FailureFingerprint.ParameterName);
+        var stored = connection!.GetJobParameter(jobId, Helpers.FailureFingerprint.ParameterName);
         return string.Equals(stored, fingerprint, StringComparison.Ordinal);
     }
 }

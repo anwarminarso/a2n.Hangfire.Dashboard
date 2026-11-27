@@ -127,7 +127,7 @@ internal static class JobArgumentConverter
     /// A successful <see cref="ArgsBuildResult"/> carrying the positional Args array, or a failed
     /// result identifying the parameter and expected type on a conversion failure.
     /// </returns>
-    public static ArgsBuildResult BuildArgs(MethodInfo method, IReadOnlyList<JsonElement> jobArgValues)
+    public static ArgsBuildResult BuildArgs(MethodInfo? method, IReadOnlyList<JsonElement> jobArgValues)
     {
         ArgumentNullException.ThrowIfNull(method);
         ArgumentNullException.ThrowIfNull(jobArgValues);

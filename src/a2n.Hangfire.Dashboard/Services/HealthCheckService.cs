@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Diagnostics;
 using System.Reflection;
 using Hangfire.Storage.Monitoring;
@@ -24,15 +26,15 @@ public class HealthCheckService
 
     private readonly HangfireMonitorService _monitor;
     private readonly DashboardUIOptions _options;
-    private readonly ILogger<HealthCheckService> _logger;
-    private readonly DashboardMetricsFeed _feed;
-    private readonly DashboardStorageGate _gate;
+    private readonly ILogger<HealthCheckService>? _logger;
+    private readonly DashboardMetricsFeed? _feed;
+    private readonly DashboardStorageGate? _gate;
 
     // Kept so assemblies compiled against 2.5.x find it.
     public HealthCheckService(
         HangfireMonitorService monitor,
         DashboardUIOptions options,
-        ILogger<HealthCheckService> logger = null)
+        ILogger<HealthCheckService>? logger = null)
         : this(monitor, options, logger, feed: null, gate: null)
     {
     }
@@ -48,9 +50,9 @@ public class HealthCheckService
     public HealthCheckService(
         HangfireMonitorService monitor,
         DashboardUIOptions options,
-        ILogger<HealthCheckService> logger,
-        DashboardMetricsFeed feed,
-        DashboardStorageGate gate)
+        ILogger<HealthCheckService>? logger,
+        DashboardMetricsFeed? feed,
+        DashboardStorageGate? gate)
     {
         _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -178,8 +180,8 @@ public class HealthCheckService
     private sealed record StorageProbe(
         HealthCheckResult Result,
         bool Reachable,
-        StatisticsDto Statistics = null,
-        IReadOnlyList<ServerDto> Servers = null);
+        StatisticsDto? Statistics = null,
+        IReadOnlyList<ServerDto>? Servers = null);
 
     private int StorageTimeoutMs => _options.HealthCheckThresholds.StorageProbeTimeoutMs;
 
@@ -238,7 +240,7 @@ public class HealthCheckService
         using var cts = TimeoutSource(ct);
 
         StatisticsDto stats;
-        IReadOnlyList<ServerDto> servers = null;
+        IReadOnlyList<ServerDto>? servers = null;
         TimeSpan storageTime;
         try
         {
@@ -247,7 +249,7 @@ public class HealthCheckService
                 var snapshot = force
                     ? await _feed.RefreshAsync(cts.Token).ConfigureAwait(false)
                     : await _feed.GetMetricsAsync(cts.Token).ConfigureAwait(false);
-                stats = snapshot.Statistics;
+                stats = snapshot!.Statistics;
                 servers = snapshot.Servers;
                 // A reused snapshot answers at once, but says how long storage took to produce it.
                 storageTime = snapshot.ReadDuration > sw.Elapsed ? snapshot.ReadDuration : sw.Elapsed;
@@ -388,7 +390,7 @@ public class HealthCheckService
             var queues = _monitor.GetQueues();
             var depths = new Dictionary<string, long>();
             long maxDepth = 0;
-            string maxQueue = null;
+            string? maxQueue = null;
 
             if (queues != null)
             {
@@ -437,7 +439,7 @@ public class HealthCheckService
         return result;
     }
 
-    private HealthCheckResult CheckStuckProcessing(StatisticsDto stats)
+    private HealthCheckResult CheckStuckProcessing(StatisticsDto? stats)
     {
         var result = new HealthCheckResult { Data = new() };
 
@@ -600,7 +602,7 @@ public class HealthCheckService
             var total = recurring?.Count ?? 0;
             var missed = 0;
             var failing = 0;
-            string firstMissedId = null;
+            string? firstMissedId = null;
 
             if (recurring != null)
             {

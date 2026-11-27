@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace a2n.Hangfire.Dashboard.Services;

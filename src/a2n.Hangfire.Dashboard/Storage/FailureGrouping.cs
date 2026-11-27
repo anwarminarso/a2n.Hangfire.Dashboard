@@ -146,11 +146,11 @@ public static class FailureGrouping
     /// </param>
     /// <param name="ct">Cancellation token</param>
     public static async Task<FailureGroupsResult> BuildAsync(
-        IEnumerable<StoredFailureGroup> stored,
+        IEnumerable<StoredFailureGroup>? stored,
         long unfingerprintedCount,
         IReadOnlyCollection<ComputedFailure> computed,
         int labelCount,
-        Func<IReadOnlyList<long>, CancellationToken, Task<IReadOnlyList<ComputedFailure>>> loadNewestJobs,
+        Func<IReadOnlyList<long>, CancellationToken, Task<IReadOnlyList<ComputedFailure>>>? loadNewestJobs,
         CancellationToken ct)
     {
         var groups = new Dictionary<string, GroupBuilder>(StringComparer.Ordinal);

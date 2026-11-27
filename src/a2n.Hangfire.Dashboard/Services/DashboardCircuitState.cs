@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.AspNetCore.Components.Server.Circuits;
 
 namespace a2n.Hangfire.Dashboard.Services;
@@ -57,7 +59,7 @@ public sealed class DashboardCircuitState : CircuitHandler
 
     internal void SetConnected(bool connected)
     {
-        TaskCompletionSource toComplete = null;
+        TaskCompletionSource? toComplete = null;
         lock (_lock)
         {
             if (connected)

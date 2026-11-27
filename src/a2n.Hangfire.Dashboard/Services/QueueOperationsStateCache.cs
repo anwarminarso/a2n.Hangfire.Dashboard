@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace a2n.Hangfire.Dashboard.Services;
@@ -22,7 +24,7 @@ public sealed class QueueOperationsStateCache : IDisposable
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    private QueueOperationsState _state;
+    private QueueOperationsState? _state;
     private long _computedAtTicks;
 
     /// <summary>How long a state snapshot is reused before a fresh read. Default: 2 seconds.</summary>
@@ -36,7 +38,7 @@ public sealed class QueueOperationsStateCache : IDisposable
     /// <summary>
     /// Returns the cached state when fresh; otherwise reads it once (single-flighted) and caches it.
     /// </summary>
-    public async Task<QueueOperationsState> GetAsync(bool forceRefresh = false, CancellationToken ct = default)
+    public async Task<QueueOperationsState?> GetAsync(bool forceRefresh = false, CancellationToken ct = default)
     {
         if (!forceRefresh && IsFresh())
             return _state;

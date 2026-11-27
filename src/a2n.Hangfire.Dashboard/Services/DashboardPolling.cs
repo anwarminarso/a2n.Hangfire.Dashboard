@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -13,14 +15,14 @@ internal sealed class DashboardPolling
 {
     private readonly DashboardStorageGate _gate;
     private readonly DashboardUIOptions _options;
-    private readonly DashboardCircuitState _circuit;
-    private readonly ILoggerFactory _loggerFactory;
+    private readonly DashboardCircuitState? _circuit;
+    private readonly ILoggerFactory? _loggerFactory;
 
     public DashboardPolling(
         DashboardStorageGate gate,
         DashboardUIOptions options,
-        DashboardCircuitState circuit = null,
-        ILoggerFactory loggerFactory = null)
+        DashboardCircuitState? circuit = null,
+        ILoggerFactory? loggerFactory = null)
     {
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _options = options ?? throw new ArgumentNullException(nameof(options));

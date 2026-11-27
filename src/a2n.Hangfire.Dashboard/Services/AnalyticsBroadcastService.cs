@@ -1,3 +1,5 @@
+#nullable enable
+
 using a2n.Hangfire.Dashboard.Hubs;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
@@ -140,10 +142,10 @@ public class AnalyticsBroadcastPayload
     /// <summary>
     /// Current server utilization snapshot (busy vs total workers per server).
     /// </summary>
-    public SnapshotResult<IReadOnlyList<ServerUtilizationDto>> ServerUtilization { get; set; }
+    public SnapshotResult<IReadOnlyList<ServerUtilizationDto>>? ServerUtilization { get; set; }
 
     /// <summary>
     /// Current queue depth snapshot (enqueued count per queue).
     /// </summary>
-    public SnapshotResult<IReadOnlyList<QueueDepthDto>> QueueDepth { get; set; }
+    public SnapshotResult<IReadOnlyList<QueueDepthDto>>? QueueDepth { get; set; }
 }

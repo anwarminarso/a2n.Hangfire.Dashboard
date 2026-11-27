@@ -93,7 +93,7 @@ public static class JobArgumentsRenderer
     /// Returns the job's arguments as plain text in their stored (JSON) form — the same text the
     /// <c>args:</c> search matches against — or an empty string when the job takes no arguments.
     /// </summary>
-    public static string GetArgumentsText(Job job, InvocationData invocationData)
+    public static string GetArgumentsText(Job? job, InvocationData? invocationData)
     {
         var raw = GetRawArguments(job, invocationData);
 
@@ -371,7 +371,7 @@ public static class JobArgumentsRenderer
     /// <see cref="InvocationData.Arguments"/> payload is preferred (it is the exact stored text);
     /// otherwise the arguments are re-serialized from the resolved job.
     /// </summary>
-    private static IReadOnlyList<string?> GetRawArguments(Job? job, InvocationData invocationData)
+    private static IReadOnlyList<string?> GetRawArguments(Job? job, InvocationData? invocationData)
     {
         var fromInvocationData = DeserializeStringArray(invocationData?.Arguments);
         if (fromInvocationData.Count > 0)

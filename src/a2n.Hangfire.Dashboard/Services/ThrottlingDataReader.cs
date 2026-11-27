@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Globalization;
 using System.Text.Json;
 using a2n.Hangfire.Dashboard.Models;
@@ -60,7 +62,7 @@ public class ThrottlingDataReader
     private readonly JobStorage _storage;
     private readonly TimeSpan _serverHeartbeatTolerance;
 
-    public ThrottlingDataReader(JobStorage storage, DashboardUIOptions options = null)
+    public ThrottlingDataReader(JobStorage storage, DashboardUIOptions? options = null)
     {
         _storage = storage;
 
@@ -150,7 +152,7 @@ public class ThrottlingDataReader
     /// <summary>
     /// Gets a single registered semaphore, or null when it does not exist.
     /// </summary>
-    public SemaphoreDto GetSemaphore(string semaphoreId)
+    public SemaphoreDto? GetSemaphore(string semaphoreId)
     {
         if (string.IsNullOrWhiteSpace(semaphoreId))
             return null;
@@ -187,7 +189,7 @@ public class ThrottlingDataReader
             // Registry entries are "{mutexId}/{jobId}" pairs (split on the first separator,
             // mirroring the writer). Tolerate bare ids by falling back to the holder set.
             string mutexId;
-            string holderJobId = null;
+            string? holderJobId = null;
 
             var separator = entry.IndexOf('/');
             if (separator >= 0)
@@ -243,7 +245,7 @@ public class ThrottlingDataReader
             {
                 var entries = storageConnection.GetAllEntriesFromHash(keyPrefix + id);
 
-                string description = null;
+                string? description = null;
                 entries?.TryGetValue("d", out description);
 
                 var window = new ThrottleWindowDto
@@ -377,7 +379,7 @@ public class ThrottlingDataReader
             int.TryParse(rawMax, out maxCount);
         }
 
-        string description = null;
+        string? description = null;
         options?.TryGetValue("d", out description);
 
         var holders = storageConnection.GetAllItemsFromSet($"sync:j:sm:{id}");
@@ -391,7 +393,7 @@ public class ThrottlingDataReader
         };
     }
 
-    private HashSet<string> GetActiveServerIds()
+    private HashSet<string>? GetActiveServerIds()
     {
         var active = new HashSet<string>(StringComparer.Ordinal);
         var threshold = DateTime.UtcNow - _serverHeartbeatTolerance;
@@ -419,7 +421,7 @@ public class ThrottlingDataReader
         return active;
     }
 
-    private static StateData SafeGetStateData(IStorageConnection connection, string jobId)
+    private static StateData? SafeGetStateData(IStorageConnection connection, string jobId)
     {
         try
         {

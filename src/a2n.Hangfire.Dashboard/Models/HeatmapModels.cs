@@ -298,7 +298,7 @@ public sealed record HeatmapResult(
     IReadOnlyList<string> UnparseableJobIds,
     IReadOnlyList<string> UnknownTimeZoneJobIds,
     IReadOnlyList<string> LongPeriodJobIds,
-    string HistoricalError);
+    string? HistoricalError);
 
 /// <summary>
 /// A single recurring job contributing to a drilled-into heatmap cell.
@@ -323,7 +323,7 @@ public sealed record DrillDownJob(
 /// <param name="Error">An error message when the drill-down lookup failed; <c>null</c> on success (Req 10.7).</param>
 public sealed record DrillDownResult(
     IReadOnlyList<DrillDownJob> Jobs,
-    string Error);
+    string? Error);
 
 /// <summary>
 /// The statistic used to summarize each <see cref="DemandProfile"/> slot across the lookback window

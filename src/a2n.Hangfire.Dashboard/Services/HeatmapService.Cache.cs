@@ -1,3 +1,5 @@
+#nullable enable
+
 using a2n.Hangfire.Dashboard.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -37,7 +39,7 @@ public partial class HeatmapService
         CancellationToken ct)
     {
         // Fast path: an entry exists. Serve it (fresh or stale), kicking off a refresh when stale.
-        if (_cache.TryGetValue(key, out CacheEntry entry) && entry is not null)
+        if (_cache!.TryGetValue(key, out CacheEntry? entry) && entry is not null)
         {
             if (DateTimeOffset.UtcNow < entry.ExpiresAtUtc)
             {
@@ -55,7 +57,7 @@ public partial class HeatmapService
         try
         {
             // Re-check: another caller may have populated the cache while we waited on the gate.
-            if (_cache.TryGetValue(key, out entry) && entry is not null)
+            if (_cache!.TryGetValue(key, out entry) && entry is not null)
             {
                 if (DateTimeOffset.UtcNow < entry.ExpiresAtUtc)
                 {
@@ -118,7 +120,7 @@ public partial class HeatmapService
     private void Store(string key, HeatmapResult value)
     {
         var cacheEntry = new CacheEntry(value, DateTimeOffset.UtcNow.Add(_cacheTtl));
-        _cache.Set(key, cacheEntry, new MemoryCacheEntryOptions
+        _cache!.Set(key, cacheEntry, new MemoryCacheEntryOptions
         {
             SlidingExpiration = _cacheRetention
         });

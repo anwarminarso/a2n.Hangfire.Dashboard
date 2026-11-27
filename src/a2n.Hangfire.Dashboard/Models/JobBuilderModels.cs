@@ -77,7 +77,7 @@ public sealed record JobParameterDescriptor(
 /// <param name="IsFormatTemplate">Whether <paramref name="QueueName"/> is a format template.</param>
 public sealed record QueueAttributeInfo(
     bool IsPresent,
-    string QueueName,
+    string? QueueName,
     bool IsFormatTemplate);
 
 /// <summary>
@@ -118,8 +118,8 @@ public enum ParameterInputKind
 /// </param>
 public sealed record MethodResolutionResult(
     bool Success,
-    MethodInfo Method,
-    string Error,
+    MethodInfo? Method,
+    string? Error,
     MethodResolutionError? ErrorKind,
     Type? ResolvedType = null);
 
@@ -145,7 +145,7 @@ public sealed record CustomMethodValidationResult(
     bool IsValid,
     CustomMethodCheck FailedCheck,
     string Message,
-    JobMethodDescriptor Descriptor);
+    JobMethodDescriptor? Descriptor);
 
 /// <summary>
 /// The ordered custom-method validation checks (Req 7).
@@ -233,9 +233,9 @@ public sealed record EnqueueJobRequest(
 /// <param name="FailedField">The field that failed validation, when applicable.</param>
 public sealed record JobOperationResult(
     bool Success,
-    string JobId,
-    string Error,
-    string FailedField);
+    string? JobId,
+    string? Error,
+    string? FailedField);
 
 /// <summary>
 /// Cron builder field model (Req 10.2). Each field captures how the corresponding cron field

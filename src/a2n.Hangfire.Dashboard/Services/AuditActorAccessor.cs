@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace a2n.Hangfire.Dashboard.Services;
 
 /// <summary>
@@ -20,10 +22,10 @@ namespace a2n.Hangfire.Dashboard.Services;
 public sealed class AuditActorAccessor
 {
     /// <summary>The resolved user name for the current circuit, or null if not yet set.</summary>
-    public string User { get; private set; }
+    public string? User { get; private set; }
 
     /// <summary>The originating client IP for the current circuit, or null if unknown.</summary>
-    public string ClientIp { get; private set; }
+    public string? ClientIp { get; private set; }
 
     /// <summary>True once <see cref="Set"/> has been called for this circuit.</summary>
     public bool HasActor => !string.IsNullOrEmpty(User);
