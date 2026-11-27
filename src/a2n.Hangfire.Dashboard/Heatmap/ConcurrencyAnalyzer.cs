@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -65,7 +67,7 @@ public static class ConcurrencyAnalyzer
     public static ConcurrencyResult Analyze(
         IReadOnlyList<ProjectedFire> dayFires,
         int workerCapacity,
-        IReadOnlyList<int> adHocBaselinePerSlot = null)
+        IReadOnlyList<int>? adHocBaselinePerSlot = null)
     {
         // Empty day: peak 0, no peak time, no over-capacity slots (Req 4.10).
         if (dayFires is null || dayFires.Count == 0)
@@ -160,7 +162,7 @@ public static class ConcurrencyAnalyzer
     private static int MinuteOfDay(DateTimeOffset fireTime)
         => (int)Math.Floor(fireTime.TimeOfDay.TotalMinutes);
 
-    private static int BaselineAt(IReadOnlyList<int> baseline, int slot)
+    private static int BaselineAt(IReadOnlyList<int>? baseline, int slot)
     {
         if (baseline is null || slot < 0 || slot >= baseline.Count)
         {

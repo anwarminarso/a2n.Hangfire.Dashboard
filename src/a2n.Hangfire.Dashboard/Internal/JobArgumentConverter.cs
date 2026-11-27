@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
@@ -131,7 +133,7 @@ internal static class JobArgumentConverter
         ArgumentNullException.ThrowIfNull(jobArgValues);
 
         var declared = method.GetParameters();
-        var args = new object[declared.Length];
+        var args = new object?[declared.Length];
         var jobParamIndex = 0;
 
         for (var i = 0; i < declared.Length; i++)
@@ -269,14 +271,14 @@ internal static class JobArgumentConverter
     /// <param name="method">The target method whose Job_Parameters the values correspond to.</param>
     /// <param name="jobArgValues">The values ordered over the method's Job_Parameters only.</param>
     /// <returns>A JSON array string representing the Argument_Values.</returns>
-    public static string ToParameterJson(MethodInfo method, IReadOnlyList<object> jobArgValues)
+    public static string ToParameterJson(MethodInfo method, IReadOnlyList<object?> jobArgValues)
     {
         ArgumentNullException.ThrowIfNull(method);
         ArgumentNullException.ThrowIfNull(jobArgValues);
 
         // Serialize over the supplied Job_Parameter values; each element is written using its runtime
         // type so structured values (enums, arrays, nested classes) round-trip canonically.
-        var elements = new object[jobArgValues.Count];
+        var elements = new object?[jobArgValues.Count];
         for (var i = 0; i < jobArgValues.Count; i++)
         {
             elements[i] = jobArgValues[i];
@@ -308,12 +310,12 @@ internal static class JobArgumentConverter
     /// included). A <c>null</c> or short list is tolerated: missing slots resolve to <c>null</c>.
     /// </param>
     /// <returns>A JSON array string over the method's Job_Parameters only.</returns>
-    public static string ToParameterJsonFromArgs(MethodInfo method, IReadOnlyList<object> allArgs)
+    public static string ToParameterJsonFromArgs(MethodInfo method, IReadOnlyList<object?>? allArgs)
     {
         ArgumentNullException.ThrowIfNull(method);
 
         var declared = method.GetParameters();
-        var values = new List<object>(declared.Length);
+        var values = new List<object?>(declared.Length);
 
         for (var i = 0; i < declared.Length; i++)
         {
@@ -342,7 +344,7 @@ internal static class JobArgumentConverter
     /// Converts a non-empty <see cref="JsonElement"/> to <paramref name="declaredType"/>, using
     /// culture-invariant parsing for scalars and <see cref="JsonSerializer"/> for structured types.
     /// </summary>
-    private static object ConvertElement(JsonElement element, Type declaredType)
+    private static object? ConvertElement(JsonElement element, Type declaredType)
     {
         var targetType = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
 
@@ -355,7 +357,7 @@ internal static class JobArgumentConverter
     /// Converts a scalar value with culture-invariant semantics, tolerating values supplied either as
     /// native JSON tokens or as JSON strings (how blank-able form fields encode their content).
     /// </summary>
-    private static object ConvertScalar(JsonElement element, Type targetType)
+    private static object? ConvertScalar(JsonElement element, Type targetType)
     {
         if (targetType == typeof(string))
         {
@@ -363,7 +365,7 @@ internal static class JobArgumentConverter
         }
 
         // Normalize to an invariant string representation so parsing never depends on the host culture.
-        var raw = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
+        var raw = (element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText())!;
 
         if (targetType == typeof(bool))
         {
@@ -416,7 +418,7 @@ internal static class JobArgumentConverter
     /// Returns the zero value for a non-nullable value type (e.g. <c>0</c>, <c>false</c>,
     /// <see cref="Guid.Empty"/>, <c>default(DateTime)</c>, the enum's zero member).
     /// </summary>
-    private static object CreateDefault(Type declaredType) => Activator.CreateInstance(declaredType);
+    private static object? CreateDefault(Type declaredType) => Activator.CreateInstance(declaredType);
 
     /// <summary>
     /// Identifies the scalar types that receive culture-invariant parsing rather than JSON
@@ -458,7 +460,7 @@ internal static class JobArgumentConverter
 
         if (type.IsArray)
         {
-            return FriendlyTypeName(type.GetElementType()) + "[]";
+            return FriendlyTypeName(type.GetElementType()!) + "[]";
         }
 
         if (type.IsGenericType)

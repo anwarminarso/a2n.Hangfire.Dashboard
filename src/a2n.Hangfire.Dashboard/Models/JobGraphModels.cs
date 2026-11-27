@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Collections.Generic;
 
 namespace a2n.Hangfire.Dashboard.Models;
@@ -18,13 +20,13 @@ public enum JobContinuationCondition
 /// </summary>
 public class JobGraphNode
 {
-    public string JobId { get; set; }
+    public string? JobId { get; set; }
 
     /// <summary>Resolved display name, or fallback to InvocationData when assembly unavailable.</summary>
-    public string DisplayName { get; set; }
+    public string? DisplayName { get; set; }
 
     /// <summary>Latest state name (e.g. "Succeeded", "Awaiting", "Failed"). Null if job not found.</summary>
-    public string StateName { get; set; }
+    public string? StateName { get; set; }
 
     /// <summary>True when the job referenced by an edge could not be loaded (expired or deleted).</summary>
     public bool NotFound { get; set; }
@@ -46,7 +48,7 @@ public class JobGraphNode
 public class JobGraphEdge
 {
     public JobContinuationCondition Condition { get; set; }
-    public JobGraphNode Target { get; set; }
+    public JobGraphNode? Target { get; set; }
 }
 
 /// <summary>
@@ -56,7 +58,7 @@ public class JobGraphEdge
 /// </summary>
 public class JobDependencyGraph
 {
-    public JobGraphNode Root { get; set; }
+    public JobGraphNode? Root { get; set; }
 
     /// <summary>True when at least one continuation edge was found (graph is non-trivial).</summary>
     public bool HasEdges { get; set; }

@@ -1,3 +1,5 @@
+#nullable enable
+
 using a2n.Hangfire.Dashboard.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
@@ -23,9 +25,9 @@ internal sealed class DashboardHubAuthorizationFilter : IHubFilter
         await next(context);
     }
 
-    public async ValueTask<object> InvokeMethodAsync(
+    public async ValueTask<object?> InvokeMethodAsync(
         HubInvocationContext invocationContext,
-        Func<HubInvocationContext, ValueTask<object>> next)
+        Func<HubInvocationContext, ValueTask<object?>> next)
     {
         if (invocationContext.Hub is DashboardHub && !await AuthorizeAsync(invocationContext.Context.GetHttpContext()))
             throw new HubException("Unauthorized");
@@ -33,7 +35,7 @@ internal sealed class DashboardHubAuthorizationFilter : IHubFilter
         return await next(invocationContext);
     }
 
-    private static async Task<bool> AuthorizeAsync(HttpContext httpContext)
+    private static async Task<bool> AuthorizeAsync(HttpContext? httpContext)
     {
         if (httpContext == null)
             return false;

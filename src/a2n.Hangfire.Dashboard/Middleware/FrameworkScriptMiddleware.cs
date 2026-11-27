@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Reflection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -29,8 +31,8 @@ internal class FrameworkScriptMiddleware
 
     private readonly RequestDelegate _next;
 
-    public FrameworkScriptMiddleware(RequestDelegate next, IWebHostEnvironment env = null,
-        ILogger<FrameworkScriptMiddleware> logger = null)
+    public FrameworkScriptMiddleware(RequestDelegate next, IWebHostEnvironment? env = null,
+        ILogger<FrameworkScriptMiddleware>? logger = null)
     {
         _next = next ?? throw new ArgumentNullException(nameof(next));
         if (env is not null)
@@ -38,7 +40,7 @@ internal class FrameworkScriptMiddleware
     }
 
     /// <summary>The version of the bundled <c>blazor.web.js</c>, or null when this build has none (net8.0, net9.0).</summary>
-    internal static string BundledBlazorWebScriptVersion { get; } = typeof(FrameworkScriptMiddleware).Assembly
+    internal static string? BundledBlazorWebScriptVersion { get; } = typeof(FrameworkScriptMiddleware).Assembly
         .GetCustomAttributes<AssemblyMetadataAttribute>()
         .FirstOrDefault(a => a.Key == "BundledBlazorWebScriptVersion")?.Value;
 

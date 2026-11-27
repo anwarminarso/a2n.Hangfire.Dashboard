@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Reflection;
 
 namespace a2n.Hangfire.Dashboard.Middleware;
@@ -64,7 +66,7 @@ internal static class ResourceRegistry
         }
     }
 
-    public static bool TryGetResource(string path, out EmbeddedResourceInfo info)
+    public static bool TryGetResource(string path, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out EmbeddedResourceInfo info)
     {
         return Resources.TryGetValue(path, out info);
     }
@@ -76,7 +78,7 @@ internal static class ResourceRegistry
     /// Strategy: Find the known file extension at the end, then convert all dots in the
     /// remaining prefix portion to path separators.
     /// </summary>
-    private static string ConvertResourceNameToUrlPath(string resourceSuffix)
+    private static string? ConvertResourceNameToUrlPath(string resourceSuffix)
     {
         // Try to match a known extension at the end of the resource name
         foreach (var ext in KnownExtensions)

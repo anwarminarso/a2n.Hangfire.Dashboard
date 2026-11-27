@@ -362,7 +362,7 @@ public sealed partial class MetricsRollupStore
         })).OrderByDescending(j => j.DurationMs).Take(100).ToList();
 
         updates[SlowestHashKey] = jobs.Select(j => new KeyValuePair<string, string>(
-            j.JobId,
+            j.JobId!,
             $"{j.DurationMs.ToString("R", CultureInfo.InvariantCulture)}|{j.CompletedAt?.Ticks.ToString(CultureInfo.InvariantCulture)}|{j.JobName}")).ToList();
     }
 }

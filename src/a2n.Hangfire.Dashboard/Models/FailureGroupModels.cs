@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using a2n.Hangfire.Dashboard.Helpers;
@@ -11,7 +13,7 @@ namespace a2n.Hangfire.Dashboard.Models;
 public class FailureGroupDto
 {
     /// <summary>The fingerprint the jobs share; the group's key.</summary>
-    public string Fingerprint { get; set; }
+    public string? Fingerprint { get; set; }
 
     /// <summary>Number of failed jobs in the group: <see cref="StoredCount"/> plus <see cref="ComputedCount"/>.</summary>
     public long Count { get; set; }
@@ -40,7 +42,7 @@ public class FailureGroupDto
     /// <summary>
     /// Id of the group's newest job: the one that failed last, on every provider.
     /// </summary>
-    public string NewestJobId { get; set; }
+    public string? NewestJobId { get; set; }
 
     /// <summary>
     /// True when the label below was loaded. Only the largest groups are labeled; see
@@ -49,22 +51,22 @@ public class FailureGroupDto
     public bool IsLabeled { get; set; }
 
     /// <summary>Full name of the exception type, without generic arguments. Null when not labeled.</summary>
-    public string ExceptionType { get; set; }
+    public string? ExceptionType { get; set; }
 
     /// <summary>
     /// Full name of the innermost exception's type when the exception wraps others, otherwise empty.
     /// Null when not labeled.
     /// </summary>
-    public string InnerExceptionType { get; set; }
+    public string? InnerExceptionType { get; set; }
 
     /// <summary>
     /// First line of the message with run-specific values replaced by placeholders, as the
     /// fingerprint uses it. Null when not labeled.
     /// </summary>
-    public string NormalizedMessage { get; set; }
+    public string? NormalizedMessage { get; set; }
 
     /// <summary>The stack frame the fingerprint uses, or empty when there is none. Null when not labeled.</summary>
-    public string TopFrame { get; set; }
+    public string? TopFrame { get; set; }
 
     /// <summary>
     /// When the newest job failed: its <c>FailedAt</c>, or the time its Failed state was recorded

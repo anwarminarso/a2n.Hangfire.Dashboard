@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace a2n.Hangfire.Dashboard.Storage;
 
 /// <summary>

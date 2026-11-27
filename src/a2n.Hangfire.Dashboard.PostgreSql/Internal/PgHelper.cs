@@ -81,7 +81,7 @@ internal static class PgHelper
     /// Falls back to JSON InvocationData parsing if no pipe separator is found.
     /// Returns "Unknown" if parsing fails.
     /// </summary>
-    public static string ExtractJobTypeName(string typeMethodString)
+    public static string ExtractJobTypeName(string? typeMethodString)
     {
         if (string.IsNullOrEmpty(typeMethodString))
             return "Unknown";

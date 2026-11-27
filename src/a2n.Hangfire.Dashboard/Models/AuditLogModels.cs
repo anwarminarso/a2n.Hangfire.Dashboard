@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace a2n.Hangfire.Dashboard;
 
 /// <summary>
@@ -33,28 +35,28 @@ public static class AuditAction
 public class AuditLogEntry
 {
     /// <summary>Sortable identifier (UTC ticks suffix); also the score used by the storage set.</summary>
-    public string Id { get; set; }
+    public string? Id { get; set; }
 
     /// <summary>UTC timestamp of the action.</summary>
     public DateTime TimestampUtc { get; set; }
 
     /// <summary>The actor — typically the authenticated user name or "(local)" for unauthenticated local requests.</summary>
-    public string User { get; set; }
+    public string? User { get; set; }
 
     /// <summary>The originating client IP (best-effort; may reflect proxy address).</summary>
-    public string ClientIp { get; set; }
+    public string? ClientIp { get; set; }
 
     /// <summary>The action key (see <see cref="AuditAction"/>).</summary>
-    public string Action { get; set; }
+    public string? Action { get; set; }
 
     /// <summary>The target of the action — job id, queue name, recurring id, or empty for global actions.</summary>
-    public string Target { get; set; }
+    public string? Target { get; set; }
 
     /// <summary>Optional human-readable reason supplied by the operator.</summary>
-    public string Reason { get; set; }
+    public string? Reason { get; set; }
 
     /// <summary>Optional small metadata bag (e.g., batch counts, before/after values). Truncated when persisted.</summary>
-    public Dictionary<string, string> Metadata { get; set; }
+    public Dictionary<string, string>? Metadata { get; set; }
 }
 
 /// <summary>Filter used by audit-log queries. All fields are optional and ANDed together.</summary>
@@ -67,13 +69,13 @@ public class AuditLogFilter
     public DateTime? ToUtc { get; set; }
 
     /// <summary>Match on action prefix (e.g., "job." matches all job actions). Case-insensitive.</summary>
-    public string ActionPrefix { get; set; }
+    public string? ActionPrefix { get; set; }
 
     /// <summary>Match on user (substring, case-insensitive).</summary>
-    public string User { get; set; }
+    public string? User { get; set; }
 
     /// <summary>Match on target (substring, case-insensitive).</summary>
-    public string Target { get; set; }
+    public string? Target { get; set; }
 }
 
 /// <summary>Configuration for the audit log subsystem.</summary>

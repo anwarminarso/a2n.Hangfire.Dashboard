@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 
 namespace a2n.Hangfire.Dashboard.Heatmap;

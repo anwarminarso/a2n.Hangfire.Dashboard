@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -24,7 +26,7 @@ public static class StackTraceFormatter
     /// </summary>
     /// <param name="stackTrace">Raw stack trace text.</param>
     /// <param name="sourceLink">Optional source-link configuration. When null, paths render as plain spans.</param>
-    public static string Format(string stackTrace, SourceLinkOptions sourceLink = null)
+    public static string Format(string stackTrace, SourceLinkOptions? sourceLink = null)
     {
         if (string.IsNullOrEmpty(stackTrace)) return string.Empty;
 
@@ -53,7 +55,7 @@ public static class StackTraceFormatter
             }
 
             var encodedUrl = WebUtility.HtmlEncode(url);
-            var iconClass = sourceLink.Kind == SourceLinkKind.Local
+            var iconClass = sourceLink!.Kind == SourceLinkKind.Local
                 ? "bi-window-stack"
                 : "bi-box-arrow-up-right";
             var tooltip = sourceLink.Kind == SourceLinkKind.Local
@@ -70,7 +72,7 @@ public static class StackTraceFormatter
         return encoded;
     }
 
-    private static string TryBuildUrl(string rawPath, string rawLine, SourceLinkOptions options)
+    private static string? TryBuildUrl(string rawPath, string rawLine, SourceLinkOptions? options)
     {
         if (options is null || string.IsNullOrWhiteSpace(options.UrlPattern)) return null;
         if (string.IsNullOrWhiteSpace(rawPath)) return null;

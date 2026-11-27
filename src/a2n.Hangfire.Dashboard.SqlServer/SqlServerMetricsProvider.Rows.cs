@@ -103,12 +103,12 @@ public partial class SqlServerMetricsProvider
 
     private class RecurringExecutionBatchRow : RecurringExecutionRow
     {
-        public string? RecurringJobIdStored { get; set; }
+        public string RecurringJobIdStored { get; set; } = null!;
     }
 
     private class RecurringExecutionSummaryRow
     {
-        public string? RecurringJobIdStored { get; set; }
+        public string RecurringJobIdStored { get; set; } = null!;
         public string? StateName { get; set; }
         public double DurationMs { get; set; }
     }

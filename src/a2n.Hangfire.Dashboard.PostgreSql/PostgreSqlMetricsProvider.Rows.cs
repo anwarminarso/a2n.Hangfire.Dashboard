@@ -47,14 +47,14 @@ public partial class PostgreSqlMetricsProvider
 
     private class RecurringExecutionSummaryRow
     {
-        public string? RecurringJobIdStored { get; set; }
+        public string RecurringJobIdStored { get; set; } = null!;
         public string? StateName { get; set; }
         public decimal DurationMs { get; set; }
     }
 
     private class RecurringExecutionBatchRow
     {
-        public string? RecurringJobIdStored { get; set; }
+        public string RecurringJobIdStored { get; set; } = null!;
         public string? JobId { get; set; }
         public DateTimeOffset ExecutedAt { get; set; }
         public double DurationMs { get; set; }

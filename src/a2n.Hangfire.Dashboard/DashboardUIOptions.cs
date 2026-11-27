@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Reflection;
 using a2n.Hangfire.Dashboard.Models;
 using a2n.Hangfire.Dashboard.Security;
@@ -22,7 +24,7 @@ public class DashboardUIOptions
     /// <summary>
     /// Optional login path. When set, unauthenticated users are redirected here instead of receiving HTTP 401.
     /// </summary>
-    public string LoginPath { get; set; }
+    public string? LoginPath { get; set; }
 
     /// <summary>
     /// The title displayed on the dashboard.
@@ -99,7 +101,7 @@ public class DashboardUIOptions
     /// or a full URL (e.g., "https://example.com/icon.png").
     /// When null, the dashboard's built-in favicon is used.
     /// </summary>
-    public string FaviconPath { get; set; }
+    public string? FaviconPath { get; set; }
 
     /// <summary>
     /// Maximum traversal depth (in either direction — ancestors or descendants) when building the
@@ -129,7 +131,7 @@ public class DashboardUIOptions
     /// a self-hosted Git server, or a local IDE handler such as <c>vscode://</c>). When null,
     /// stack traces render as plain text. See <see cref="SourceLinkOptions"/> presets.
     /// </summary>
-    public SourceLinkOptions SourceLink { get; set; }
+    public SourceLinkOptions? SourceLink { get; set; }
 
     /// <summary>
     /// Authorization filters for the dashboard. Defaults to <see cref="LocalRequestsOnlyAuthorizationFilter"/>
@@ -200,7 +202,7 @@ public class DashboardUIOptions
     /// page load, and the same instance is handed to Hangfire authorization filters and the
     /// read-only function through their <c>DashboardContext</c>.
     /// </summary>
-    internal DashboardOptions HangfireOptions { get; set; }
+    internal DashboardOptions? HangfireOptions { get; set; }
 
     /// <summary>
     /// Copies every configurable option value from this instance onto <paramref name="target"/>.

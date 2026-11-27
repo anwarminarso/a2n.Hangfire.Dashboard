@@ -1,3 +1,5 @@
+#nullable enable
+
 using a2n.Hangfire.Dashboard.Services;
 using Microsoft.AspNetCore.SignalR;
 
@@ -55,7 +57,7 @@ public class DashboardHub : Hub
             _subscriptions.RemoveAnalyticsSubscriber();
     }
 
-    public override async Task OnDisconnectedAsync(Exception exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (Context.Items.Remove("metrics"))
             _subscriptions.RemoveMetricsSubscriber();

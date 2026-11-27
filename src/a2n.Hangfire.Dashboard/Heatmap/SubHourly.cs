@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -163,7 +165,7 @@ public static class SubHourly
                && _hour == other._hour
                && string.Equals(_jobId, other._jobId, StringComparison.Ordinal);
 
-        public override bool Equals(object obj) => obj is JobBucketKey other && Equals(other);
+        public override bool Equals(object? obj) => obj is JobBucketKey other && Equals(other);
 
         public override int GetHashCode()
         {

@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace a2n.Hangfire.Dashboard.Models;
 
 public class SearchRequest
@@ -11,22 +13,22 @@ public class SearchRequest
     public DateTime? DateFrom { get; set; }
     public DateTime? DateTo { get; set; }
     public List<string> States { get; set; } = new();
-    public string Server { get; set; }
+    public string? Server { get; set; }
     public int? MinDurationSeconds { get; set; }
     public int? MaxDurationSeconds { get; set; }
     public List<string> Tags { get; set; } = new();
-    public string Queue { get; set; }
-    public string RecurringJobId { get; set; }
+    public string? Queue { get; set; }
+    public string? RecurringJobId { get; set; }
 
     // Exception filter: a failure fingerprint (v1:…) stored by FailureFingerprintFilter. A value that
     // isn't a current fingerprint is ignored.
-    public string ExceptionFingerprint { get; set; }
+    public string? ExceptionFingerprint { get; set; }
 
     // Argument search (matches the serialized job arguments only, not the type or method name)
-    public string ArgumentsQuery { get; set; }
+    public string? ArgumentsQuery { get; set; }
 
     // Content search (searches inside job data — stack trace, console output)
-    public string ContentQuery { get; set; }
+    public string? ContentQuery { get; set; }
     public bool SearchStackTrace { get; set; } = false;
     public bool SearchConsoleOutput { get; set; } = false;
 }
@@ -53,21 +55,21 @@ public class SearchResult
     public TimeSpan Elapsed { get; set; }
     public bool TimedOut { get; set; }
     public bool HasError { get; set; }
-    public string ErrorMessage { get; set; }
+    public string? ErrorMessage { get; set; }
 }
 
 public class SearchResultItem
 {
-    public string JobId { get; set; }
-    public string JobName { get; set; }
-    public string State { get; set; }
-    public string Queue { get; set; }
+    public string? JobId { get; set; }
+    public string? JobName { get; set; }
+    public string? State { get; set; }
+    public string? Queue { get; set; }
     public DateTime? LastStateChange { get; set; }
     public DateTime? CreatedAt { get; set; }
     public double? DurationMs { get; set; }
-    public string[] Tags { get; set; }
-    public string ExceptionExcerpt { get; set; }
-    public string ContentExcerpt { get; set; }
+    public string[]? Tags { get; set; }
+    public string? ExceptionExcerpt { get; set; }
+    public string? ContentExcerpt { get; set; }
     public SearchMatchSource MatchSource { get; set; }
 }
 
@@ -93,18 +95,18 @@ public class FilterOptions
 
 public class FilterPreset
 {
-    public string Name { get; set; }
-    public string Query { get; set; }
+    public string? Name { get; set; }
+    public string? Query { get; set; }
     public List<string> States { get; set; } = new();
     public DateTime? DateFrom { get; set; }
     public DateTime? DateTo { get; set; }
-    public string Server { get; set; }
+    public string? Server { get; set; }
     public int? MinDurationSeconds { get; set; }
     public int? MaxDurationSeconds { get; set; }
     public List<string> Tags { get; set; } = new();
-    public string Queue { get; set; }
-    public string RecurringJobId { get; set; }
-    public string ContentQuery { get; set; }
+    public string? Queue { get; set; }
+    public string? RecurringJobId { get; set; }
+    public string? ContentQuery { get; set; }
     public bool SearchStackTrace { get; set; } = false;
     public bool SearchConsoleOutput { get; set; } = false;
 }

@@ -1,3 +1,5 @@
+#nullable enable
+
 using a2n.Hangfire.Dashboard;
 using a2n.Hangfire.Dashboard.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,7 +52,7 @@ public static class HangfireDashboardHealthCheckExtensions
         this IHealthChecksBuilder builder,
         string name = "hangfire_dashboard",
         AspNetHealthStatus? failureStatus = null,
-        IEnumerable<string> tags = null)
+        IEnumerable<string>? tags = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -73,13 +75,13 @@ public static class HangfireDashboardHealthCheckExtensions
 internal sealed class HangfireDashboardHealthCheck : IHealthCheck
 {
     private readonly HealthReportCache _cache;
-    private readonly DashboardUIOptions _options;
-    private readonly ILogger _logger;
+    private readonly DashboardUIOptions? _options;
+    private readonly ILogger? _logger;
 
     public HangfireDashboardHealthCheck(
         HealthReportCache cache,
-        DashboardUIOptions options = null,
-        ILoggerFactory loggerFactory = null)
+        DashboardUIOptions? options = null,
+        ILoggerFactory? loggerFactory = null)
     {
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _options = options;
@@ -121,7 +123,7 @@ internal sealed class HangfireDashboardHealthCheck : IHealthCheck
         // Flatten checks into the "data" dictionary so HealthCheckUI / consumers can see them.
         var data = new Dictionary<string, object>
         {
-            ["version"] = report.Version,
+            ["version"] = report.Version ?? string.Empty,
             ["durationMs"] = report.DurationMs,
             ["overallStatus"] = report.Status.ToString(),
         };

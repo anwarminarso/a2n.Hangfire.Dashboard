@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Reflection;
 using System.Text.Json;
 
@@ -119,7 +121,7 @@ public sealed record MethodResolutionResult(
     MethodInfo Method,
     string Error,
     MethodResolutionError? ErrorKind,
-    Type ResolvedType = null);
+    Type? ResolvedType = null);
 
 /// <summary>
 /// Categories of method-resolution failure (Req 1.5–1.8).
@@ -169,8 +171,8 @@ public sealed record ParameterJsonValidation(
     ParameterJsonStatus Status,
     int ExpectedCount,
     int ActualCount,
-    string ParameterName,
-    string ExpectedType);
+    string? ParameterName,
+    string? ExpectedType);
 
 /// <summary>
 /// Parameter JSON validation status (Req 2.2–2.7).
@@ -194,10 +196,10 @@ public enum ParameterJsonStatus
 /// <param name="Error">An error message describing a conversion failure.</param>
 public sealed record ArgsBuildResult(
     bool Success,
-    object[] Args,
-    string ParameterName,
-    string ExpectedType,
-    string Error);
+    object?[]? Args,
+    string? ParameterName,
+    string? ExpectedType,
+    string? Error);
 
 /// <summary>
 /// Request to create or update a recurring job (Req 11).

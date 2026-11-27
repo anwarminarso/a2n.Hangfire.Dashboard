@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace a2n.Hangfire.Dashboard;
 
 /// <summary>
@@ -59,10 +61,10 @@ public class QueueOperationsState
     public DateTime? MaintenanceEnabledAtUtc { get; set; }
 
     /// <summary>Optional reason for maintenance mode (set by the operator).</summary>
-    public string MaintenanceReason { get; set; }
+    public string? MaintenanceReason { get; set; }
 
     /// <summary>The user who enabled maintenance mode (best effort).</summary>
-    public string MaintenanceEnabledBy { get; set; }
+    public string? MaintenanceEnabledBy { get; set; }
 
     /// <summary>Set of explicitly paused queue names (independent of maintenance mode).</summary>
     public HashSet<string> PausedQueues { get; set; } = new(StringComparer.OrdinalIgnoreCase);

@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Text.Json;
 using a2n.Hangfire.Dashboard.Services;
 using Microsoft.AspNetCore.Http;

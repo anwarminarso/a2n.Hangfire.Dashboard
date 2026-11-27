@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using a2n.Hangfire.Dashboard.Models;
 

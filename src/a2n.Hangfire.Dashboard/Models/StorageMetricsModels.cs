@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 
@@ -33,7 +35,7 @@ public class StateTransitionDataPoint
 /// </summary>
 public class JobDurationStatsDto
 {
-    public string JobType { get; set; }
+    public string? JobType { get; set; }
     public double AverageMs { get; set; }
     public double MinMs { get; set; }
     public double MaxMs { get; set; }
@@ -48,7 +50,7 @@ public class JobDurationStatsDto
 /// </summary>
 public class QueueLatencyStatsDto
 {
-    public string QueueName { get; set; }
+    public string? QueueName { get; set; }
     public double AverageMs { get; set; }
     public double P50Ms { get; set; }
     public double P95Ms { get; set; }
@@ -60,7 +62,7 @@ public class QueueLatencyStatsDto
 /// </summary>
 public class JobTypeFailureRateDto
 {
-    public string JobType { get; set; }
+    public string? JobType { get; set; }
     public long TotalCount { get; set; }
     public long FailedCount { get; set; }
     public double FailureRate { get; set; }  // 0.0 to 1.0
@@ -71,7 +73,7 @@ public class JobTypeFailureRateDto
 /// </summary>
 public class ExceptionSummaryDto
 {
-    public string ExceptionType { get; set; }
+    public string? ExceptionType { get; set; }
     public long Count { get; set; }
 }
 
@@ -89,7 +91,7 @@ public class RetryBucketDto
 /// </summary>
 public class ServerUtilizationDto
 {
-    public string ServerName { get; set; }
+    public string? ServerName { get; set; }
     public int TotalWorkers { get; set; }
     public int BusyWorkers { get; set; }
     public double UtilizationPercent { get; set; }  // 0.0 to 100.0
@@ -100,7 +102,7 @@ public class ServerUtilizationDto
 /// </summary>
 public class QueueDepthDto
 {
-    public string QueueName { get; set; }
+    public string? QueueName { get; set; }
     public long EnqueuedCount { get; set; }
     public long FetchedCount { get; set; }
 }
@@ -111,7 +113,7 @@ public class QueueDepthDto
 public class QueueThroughputDataPoint
 {
     public DateTimeOffset Timestamp { get; set; }
-    public string QueueName { get; set; }
+    public string? QueueName { get; set; }
     public long SucceededCount { get; set; }
 }
 
@@ -120,11 +122,11 @@ public class QueueThroughputDataPoint
 /// </summary>
 public class RecurringJobHealthDto
 {
-    public string JobId { get; set; }
+    public string? JobId { get; set; }
     public RecurringJobHealthStatus Status { get; set; }
     public DateTimeOffset? LastRunTime { get; set; }
     public double AverageDurationMs { get; set; }
-    public string ErrorMessage { get; set; }
+    public string? ErrorMessage { get; set; }
     public IReadOnlyList<bool> LastExecutionResults { get; set; } = Array.Empty<bool>();
 }
 
@@ -143,11 +145,11 @@ public enum RecurringJobHealthStatus
 /// </summary>
 public class RecurringJobExecutionDto
 {
-    public string JobId { get; set; }
+    public string? JobId { get; set; }
     public DateTimeOffset ExecutedAt { get; set; }
     public double DurationMs { get; set; }
     public bool Succeeded { get; set; }
-    public string ErrorMessage { get; set; }
+    public string? ErrorMessage { get; set; }
 }
 
 /// <summary>
@@ -174,7 +176,7 @@ public class HourlyActivityDto
 /// </summary>
 public class JobTypeVolumeDto
 {
-    public string JobType { get; set; }
+    public string? JobType { get; set; }
     public long ExecutionCount { get; set; }
 }
 
@@ -185,7 +187,7 @@ public class JobTypeVolumeDto
 /// <typeparam name="T">The snapshot data type</typeparam>
 public class SnapshotResult<T>
 {
-    public T Data { get; set; }
+    public T? Data { get; set; }
     public DateTimeOffset CapturedAt { get; set; }
 }
 
@@ -198,7 +200,7 @@ public class SnapshotResult<T>
 public class HistoricalScheduleBucket
 {
     /// <summary>Queue name the bucketed executions belong to.</summary>
-    public string Queue { get; set; }
+    public string? Queue { get; set; }
 
     /// <summary>Day-of-week index (0 = Monday … 6 = Sunday) in the aggregation's time frame.</summary>
     public int DayIndex { get; set; }

@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace a2n.Hangfire.Dashboard.Helpers;
 
 /// <summary>
@@ -29,7 +31,7 @@ internal static class GridSort
         IEnumerable<T> items,
         GridSortState<TColumn> state,
         Func<TColumn, Func<T, object>> keyFor,
-        Func<T, string> tieBreak = null)
+        Func<T, string>? tieBreak = null)
         where TColumn : struct, Enum
     {
         if (items is null)
@@ -47,7 +49,7 @@ internal static class GridSort
     {
         public static readonly ValueComparer Instance = new();
 
-        public int Compare(object x, object y) =>
+        public int Compare(object? x, object? y) =>
             x is string a && y is string b
                 ? StringComparer.OrdinalIgnoreCase.Compare(a, b)
                 : Comparer<object>.Default.Compare(x, y);

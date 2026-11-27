@@ -1,3 +1,5 @@
+#nullable enable
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -66,7 +68,7 @@ internal static class DashboardAuthorization
     /// Logs, once when the dashboard is mapped, the authorization setups that deserve a warning:
     /// no filter at all (local-only fallback) and a dashboard open to everyone.
     /// </summary>
-    internal static void LogStartupWarnings(DashboardUIOptions options, ILogger logger)
+    internal static void LogStartupWarnings(DashboardUIOptions options, ILogger? logger)
     {
         if (logger is null) return;
 
