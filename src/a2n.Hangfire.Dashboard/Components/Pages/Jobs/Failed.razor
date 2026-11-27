@@ -78,94 +78,22 @@ else
         <div class="d-flex flex-wrap align-items-center justify-content-sm-end flex-grow-1 gap-2">
             @if (ShowExceptionFilter)
             {
-                // Built once per render; the active option is looked up in it by fingerprint.
-                var options = MenuOptions;
-                var activeOption = ActiveOptionIn(options);
-                @* A select-only combobox rather than a native select, since each entry needs several lines
-                   and a tooltip. Focus stays on the toggle: the arrow keys move the active option, which
-                   aria-activedescendant points to, and Enter or Space selects it. data-hf-listbox-keys lets
-                   nav.js cancel the page scroll for those keys only, so Tab still moves on. *@
-                <div class="hf-combobox position-relative hf-exception-filter">
-                    <div id="exception-filter" role="combobox" tabindex="0" data-hf-listbox-keys
-                         class="form-select form-select-sm text-start text-truncate"
-                         aria-label="Exception" aria-haspopup="listbox"
-                         aria-expanded="@(_menuOpen ? "true" : "false")" aria-controls="exception-filter-list"
-                         aria-activedescendant="@(_menuOpen ? OptionId(activeOption) : null)"
-                         @onfocus="EnsureGroupsLoaded" @onclick="ToggleMenu" @onkeydown="HandleFilterKeyDown"
-                         @onfocusout="CloseMenu">
-                        @SelectedLabel
-                    </div>
-                    @if (_menuOpen)
-                    {
-                        @* tabindex="-1": Chromium makes a scroll container with no focusable children a Tab
-                           stop, so Tab would land here instead of moving past the filter. That also makes it
-                           focusable by mouse, so mousedown is cancelled on the whole container: pressing an
-                           option, the scrollbar or the status line then leaves focus on the toggle, whose
-                           focusout would otherwise close the list mid-click or mid-drag. *@
-                        <div class="hf-combobox-menu hf-exception-menu bg-body border rounded shadow-sm" tabindex="-1"
-                             @onmousedown:preventDefault="true">
-                            <div class="list-group list-group-flush" id="exception-filter-list" role="listbox" aria-label="Exceptions">
-                                @for (var i = 0; i < options.Count; i++)
-                                {
-                                    var index = i;
-                                    var group = options[i];
-                                    var fingerprint = group?.Fingerprint;
-                                    var selected = fingerprint == _selectedFingerprint;
-                                    <div id="@OptionId(index)" role="option" aria-selected="@(selected ? "true" : "false")"
-                                         class="list-group-item list-group-item-action @(group is null ? null : "hf-exception-option") @(selected ? "active" : null) @(index == activeOption ? "hf-option-active" : null)"
-                                         title="@(group is null ? null : FullTypeName(group))"
-                                         @onclick="() => SelectGroup(fingerprint)">
-                                        @if (group is null)
-                                        {
-                                            <span>All exceptions</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="d-flex justify-content-between align-items-start gap-2">
-                                                <span class="fw-semibold text-break">@ShortTypeName(group)</span>
-                                                <span class="badge text-bg-danger rounded-pill flex-shrink-0">@CountText(group)</span>
-                                            </span>
-                                            @if (!string.IsNullOrEmpty(group.NormalizedMessage))
-                                            {
-                                                <span class="d-block small text-truncate">@Truncate(group.NormalizedMessage, 120)</span>
-                                            }
-                                            @if (!string.IsNullOrEmpty(group.TopFrame))
-                                            {
-                                                <span class="d-block small font-monospace text-truncate opacity-75">@group.TopFrame</span>
-                                            }
-                                        }
-                                    </div>
-                                }
-                            </div>
-                            @* Not options, so outside the listbox. The region stays in place while empty so a
-                               screen reader announces what appears in it. *@
-                            <div class="small @MenuStatusClass" role="status" data-testid="filter-status">
-                                @switch (_groupsStatus)
-                                {
-                                    case LoadStatus.Loading:
-                                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                                        <span>Loading exceptions…</span>
-                                        break;
-                                    case LoadStatus.TimedOut:
-                                        @TimedOutMessage
-                                        break;
-                                    case LoadStatus.Failed:
-                                        <span>Exceptions could not be loaded.</span>
-                                        break;
-                                    case LoadStatus.Loaded when UnlabeledGroupCount > 0:
-                                        <span>@UnlabeledGroupCount.ToString("N0") more @(UnlabeledGroupCount == 1 ? "exception" : "exceptions") with fewer failures not listed.</span>
-                                        break;
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
+                <FailedExceptionFilter GetOptions="() => MenuOptions"
+                                       Status="_groupsStatus"
+                                       UnlabeledCount="UnlabeledGroupCount"
+                                       TimedOutMessage="@TimedOutMessage"
+                                       IsPartial="_groups.IsPartial"
+                                       SelectedFingerprint="@_selectedFingerprint"
+                                       SelectedLabel="@SelectedLabel"
+                                       OnOpen="EnsureGroupsLoaded"
+                                       OnSelect="SelectGroup"
+                                       OnMenuOpenChanged="open => _menuOpen = open" />
             }
             <PageSizeSelector PageSize="@(InGroupView ? _groupSize : _pageSize)" OnPageSizeChanged="HandlePageSizeChanged" />
         </div>
     </div>
 
-    @if ((InGroupView || _menuOpen) && _groupsStatus == LoadStatus.Loaded && _groups.IsPartial)
+    @if ((InGroupView || _menuOpen) && _groupsStatus == FailureGroupLoadStatus.Loaded && _groups.IsPartial)
     {
         <p class="small text-body-secondary mb-2" data-testid="partial-notice">
             <i class="bi bi-info-circle"></i>
@@ -196,15 +124,15 @@ else
             <div class="card-body py-2">
                 @if (_selectedGroup is null)
                 {
-                    @if (_groupsStatus == LoadStatus.Loading)
+                    @if (_groupsStatus == FailureGroupLoadStatus.Loading)
                     {
                         <span class="text-muted small">Loading…</span>
                     }
-                    else if (_groupsStatus == LoadStatus.TimedOut)
+                    else if (_groupsStatus == FailureGroupLoadStatus.TimedOut)
                     {
                         <span class="text-warning-emphasis small">@TimedOutMessage</span>
                     }
-                    else if (_groupsStatus == LoadStatus.Failed)
+                    else if (_groupsStatus == FailureGroupLoadStatus.Failed)
                     {
                         <span class="text-danger small">Exceptions could not be loaded.</span>
                     }
@@ -260,15 +188,15 @@ else
             </div>
         </div>
 
-        @if (_groupJobsStatus == LoadStatus.TimedOut)
+        @if (_groupJobsStatus == FailureGroupLoadStatus.TimedOut)
         {
             <p class="small text-warning-emphasis">@TimedOutMessage</p>
         }
-        else if (_groupJobsStatus == LoadStatus.Failed)
+        else if (_groupJobsStatus == FailureGroupLoadStatus.Failed)
         {
             <p class="small text-danger">The jobs could not be loaded.</p>
         }
-        else if (_groupJobsStatus == LoadStatus.Loading && _groupRows.Count == 0)
+        else if (_groupJobsStatus == FailureGroupLoadStatus.Loading && _groupRows.Count == 0)
         {
             <p class="text-muted">Loading...</p>
         }

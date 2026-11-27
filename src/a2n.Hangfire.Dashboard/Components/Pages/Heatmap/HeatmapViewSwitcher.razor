@@ -1,0 +1,64 @@
+@* The Schedule Heatmap view selector, with the controls that belong to the active view: Day for
+   Queue × Hour, Color by for the historical Calendar, and the Concurrency day. *@
+@using a2n.Hangfire.Dashboard.Heatmap
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="View">
+        @foreach (var view in Views)
+        {
+            <button type="button"
+                    class="btn @(View == view.Key ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick="() => OnViewChanged.InvokeAsync(view.Key)">
+                @view.Label
+                @if (view.Key == "rec" && RecommendationCount > 0)
+                {
+                    <span class="badge rounded-pill text-bg-light border ms-1">@RecommendationCount</span>
+                }
+            </button>
+        }
+    </div>
+
+    <div class="flex-grow-1"></div>
+
+    @if (ShowDaySelector)
+    {
+        <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+            Day
+            <select class="form-select form-select-sm w-auto" value="@SelectedDay" @onchange="OnSelectedDayChanged">
+                <option value="-1">All week</option>
+                @for (var d = 0; d < DayLabels.Length; d++)
+                {
+                    var di = d;
+                    <option value="@di">@DayLabels[di]</option>
+                }
+            </select>
+        </label>
+    }
+
+    @if (ShowColorBy)
+    {
+        <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+            Color by
+            <select class="form-select form-select-sm w-auto" value="@ColorBy" @onchange="OnColorByChanged">
+                <option value="volume">Volume</option>
+                <option value="failure">Failure rate</option>
+                <option value="duration">Duration (p95)</option>
+            </select>
+        </label>
+    }
+
+    @if (View == "conc")
+    {
+        <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
+            Day
+            <select class="form-select form-select-sm w-auto" value="@ConcurrencyDay" @onchange="OnConcurrencyDayChanged">
+                <option value="-1">Worst day (auto)</option>
+                @for (var d = 0; d < HeatmapTime.WindowDays; d++)
+                {
+                    var di = d;
+                    <option value="@di">@DayLabelFor(di)</option>
+                }
+            </select>
+        </label>
+    }
+</div>

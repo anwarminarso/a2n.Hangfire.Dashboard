@@ -1,6 +1,7 @@
 using System.Data;
 using a2n.Hangfire.Dashboard.Interfaces;
 using a2n.Hangfire.Dashboard.Models;
+using a2n.Hangfire.Dashboard.Storage;
 using a2n.Hangfire.Dashboard.SqlServer.Internal;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -47,7 +48,7 @@ WHERE ([Key] LIKE 'stats:succeeded:%'
         var rows = await connection.QueryAsync<AggregatedCounterRow>(
             new CommandDefinition(sql, cancellationToken: ct));
 
-        return AggregateCounterRows(rows, from, to, interval);
+        return StorageMetricsHelpers.AggregateThroughput(rows.Select(r => (r.Key, (long)r.Value)), from, to, interval);
     }
 
     /// <inheritdoc />
@@ -69,7 +70,7 @@ ORDER BY Bucket";
         var rows = await connection.QueryAsync<StateTransitionRow>(
             new CommandDefinition(sql, new { From = from.UtcDateTime, To = to.UtcDateTime }, cancellationToken: ct));
 
-        return BuildStateTransitions(rows, from, to, interval);
+        return StorageMetricsHelpers.BuildStateTransitions(rows.Select(r => (r.Bucket, r.StateName, r.Cnt)));
     }
 
     /// <inheritdoc />
@@ -360,7 +361,7 @@ GROUP BY COALESCE(JSON_VALUE(s.Data, '$.ServerId'), JSON_VALUE(s.Data, '$.Server
         var results = new List<ServerUtilizationDto>();
         foreach (var server in servers)
         {
-            var workerCount = ParseWorkerCount(server.Data);
+            var workerCount = StorageMetricsHelpers.ParseWorkerCount(server.Data);
             busyWorkers.TryGetValue(server.ServerName ?? string.Empty, out var busy);
 
             results.Add(new ServerUtilizationDto

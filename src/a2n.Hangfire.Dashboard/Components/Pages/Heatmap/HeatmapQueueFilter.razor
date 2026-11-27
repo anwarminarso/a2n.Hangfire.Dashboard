@@ -1,0 +1,23 @@
+@* Queue filter chips of the Schedule Heatmap (cron and ad-hoc queues): each chip shows or hides a queue
+   in every view and analysis. *@
+
+<div class="vr d-none d-md-block"></div>
+<span class="small text-body-secondary">Queues:</span>
+<div class="d-flex flex-wrap align-items-center gap-1" aria-label="Queue filter">
+    @foreach (var q in Queues)
+    {
+        var selected = Selected.Contains(q);
+        <button type="button"
+                class="btn btn-sm @(selected ? "btn-primary" : "btn-outline-secondary")"
+                aria-pressed="@(selected ? "true" : "false")"
+                title="@(selected ? "Click to hide this queue" : "Click to show this queue")"
+                @onclick="() => OnToggle.InvokeAsync(q)">
+            <span class="hf-q-dot me-1" style="background-color:@ColorFor(q);"></span>
+            @q
+            <span class="badge rounded-pill text-bg-light border ms-1" style="font-size: .65em;">@ClassFor(q)</span>
+        </button>
+    }
+    <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 ms-1"
+            disabled="@(Selected.Count == Queues.Count)"
+            @onclick="OnSelectAll">All</button>
+</div>

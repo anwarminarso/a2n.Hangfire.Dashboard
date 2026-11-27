@@ -153,48 +153,17 @@ else
        jump to the Concurrency / Recommendations views (Req: layout parity with the mockup). ────── *@
     @if (!_loading && _result is not null)
     {
-        <div class="row row-cols-2 row-cols-lg-4 g-2 mt-3" aria-label="Heatmap insights">
-            <div class="col">
-                <div class="card h-100">
-                    <div class="card-body py-2">
-                        <div class="small text-body-secondary">Best window to schedule</div>
-                        <div class="fw-semibold text-success">@(_insightBestWindow ?? "—")</div>
-                        <div class="small text-body-secondary">lowest combined load</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col">
-                <div class="card h-100">
-                    <div class="card-body py-2">
-                        <div class="small text-body-secondary">Ad-hoc demand peak</div>
-                        <div class="fw-semibold">@(_insightAdhocPeak ?? "—")</div>
-                        <div class="small text-body-secondary">@(_insightAdhocWhen ?? (_demandAvailable ? "no demand collected yet" : "needs a metrics provider"))</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col">
-                <div class="card h-100 @(_insightPeakOver ? "border-danger" : null)" role="button" tabindex="0"
-                     style="cursor: pointer;" title="View the concurrency analysis"
-                     @onclick='() => SetView("conc")'>
-                    <div class="card-body py-2">
-                        <div class="small text-body-secondary">Peak combined concurrency</div>
-                        <div class="fw-semibold @(_insightPeakOver ? "text-danger" : null)">@(_concurrency?.PeakConcurrency ?? 0)</div>
-                        <div class="small text-body-secondary">@(_insightPeakWhen ?? "—") · cap @_capacity.Capacity</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col">
-                <div class="card h-100 @(_recommendations.Any(r => r.Severity == RecommendationSeverity.High) ? "border-danger" : null)"
-                     role="button" tabindex="0" style="cursor: pointer;" title="View the overlap recommendations"
-                     @onclick='() => SetView("rec")'>
-                    <div class="card-body py-2">
-                        <div class="small text-body-secondary">Overlap suggestions</div>
-                        <div class="fw-semibold">@_recommendations.Count</div>
-                        <div class="small text-body-secondary">@(_recommendations.Count > 0 ? "click to view" : "all clear")</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <HeatmapInsights BestWindow="@_insightBestWindow"
+                         AdhocPeak="@_insightAdhocPeak"
+                         AdhocWhen="@_insightAdhocWhen"
+                         DemandAvailable="_demandAvailable"
+                         PeakConcurrency="@(_concurrency?.PeakConcurrency ?? 0)"
+                         PeakWhen="@_insightPeakWhen"
+                         PeakOver="_insightPeakOver"
+                         Capacity="_capacity.Capacity"
+                         RecommendationCount="_recommendations.Count"
+                         HasHighSeverityRecommendation="@(_recommendations.Any(r => r.Severity == RecommendationSeverity.High))"
+                         OnViewRequested="SetView" />
     }
 
     @* ── TOOLBAR 1 — class · source · window · tz | load · hide sub-hourly · log ───────────────── *@
@@ -333,92 +302,21 @@ else
                 @* Queue filter chips (cron ∪ ad-hoc) — scope every view/analysis to the selection. *@
                 @if (_availableQueues.Count > 0)
                 {
-                    <div class="vr d-none d-md-block"></div>
-                    <span class="small text-body-secondary">Queues:</span>
-                    <div class="d-flex flex-wrap align-items-center gap-1" aria-label="Queue filter">
-                        @foreach (var q in _availableQueues)
-                        {
-                            var selected = _selectedQueues.Contains(q);
-                            <button type="button"
-                                    class="btn btn-sm @(selected ? "btn-primary" : "btn-outline-secondary")"
-                                    aria-pressed="@(selected ? "true" : "false")"
-                                    title="@(selected ? "Click to hide this queue" : "Click to show this queue")"
-                                    @onclick="() => ToggleQueueAsync(q)">
-                                <span class="hf-q-dot me-1" style="background-color:@QueueColorFor(q);"></span>
-                                @q
-                                <span class="badge rounded-pill text-bg-light border ms-1" style="font-size: .65em;">@QueueClass(q)</span>
-                            </button>
-                        }
-                        <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 ms-1"
-                                disabled="@(_selectedQueues.Count == _availableQueues.Count)"
-                                @onclick="SelectAllQueuesAsync">All</button>
-                    </div>
+                    <HeatmapQueueFilter Queues="_availableQueues" Selected="_selectedQueues"
+                                        ColorFor="QueueColorFor" ClassFor="QueueClass"
+                                        OnToggle="ToggleQueueAsync" OnSelectAll="SelectAllQueuesAsync" />
                 }
             </div>
         </div>
     </div>
 
     @* ── TOOLBAR 3 — view selector · day · color-by ───────────────────────────────────────────── *@
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="View">
-            @foreach (var view in Views)
-            {
-                <button type="button"
-                        class="btn @(_view == view.Key ? "btn-primary" : "btn-outline-secondary")"
-                        @onclick="() => SetView(view.Key)">
-                    @view.Label
-                    @if (view.Key == "rec" && _recommendations.Count > 0)
-                    {
-                        <span class="badge rounded-pill text-bg-light border ms-1">@_recommendations.Count</span>
-                    }
-                </button>
-            }
-        </div>
-
-        <div class="flex-grow-1"></div>
-
-        @if (ShowDaySelector)
-        {
-            <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
-                Day
-                <select class="form-select form-select-sm w-auto" @bind="_selectedDay">
-                    <option value="-1">All week</option>
-                    @for (var d = 0; d < DayLabels.Length; d++)
-                    {
-                        var di = d;
-                        <option value="@di">@DayLabels[di]</option>
-                    }
-                </select>
-            </label>
-        }
-
-        @if (ShowColorBy)
-        {
-            <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
-                Color by
-                <select class="form-select form-select-sm w-auto" @bind="_colorBy">
-                    <option value="volume">Volume</option>
-                    <option value="failure">Failure rate</option>
-                    <option value="duration">Duration (p95)</option>
-                </select>
-            </label>
-        }
-
-        @if (_view == "conc")
-        {
-            <label class="d-flex align-items-center gap-1 small text-body-secondary mb-0">
-                Day
-                <select class="form-select form-select-sm w-auto" @bind="_concDay" @bind:after="RecomputeConcurrencyAsync">
-                    <option value="-1">Worst day (auto)</option>
-                    @for (var d = 0; d < HeatmapTime.WindowDays; d++)
-                    {
-                        var di = d;
-                        <option value="@di">@DayLabelFor(di)</option>
-                    }
-                </select>
-            </label>
-        }
-    </div>
+    <HeatmapViewSwitcher Views="Views" View="@_view" OnViewChanged="SetView"
+                         RecommendationCount="_recommendations.Count"
+                         ShowDaySelector="ShowDaySelector" DayLabels="DayLabels" @bind-SelectedDay="_selectedDay"
+                         ShowColorBy="ShowColorBy" @bind-ColorBy="_colorBy"
+                         @bind-ConcurrencyDay="_concDay" @bind-ConcurrencyDay:after="RecomputeConcurrencyAsync"
+                         DayLabelFor="DayLabelFor" />
 
     @* ── Active view host ──────────────────────────────────────────────────────────────────────── *@
     @if (_loading)
