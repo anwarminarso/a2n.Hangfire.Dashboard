@@ -324,7 +324,11 @@ else if (_statsExpanded)
                     StateHasChanged();
                 }
             }
-            catch { }
+            catch
+            {
+                // The saved preference is cosmetic: without it (no JS runtime yet, a disconnected
+                // circuit, blocked localStorage) the stats keep their default state.
+            }
 
             _chartsInitialized = true;
             await JS.InvokeVoidAsync("dashboardCharts.initRealtimeChart", "realtimeChart");
@@ -335,7 +339,11 @@ else if (_statsExpanded)
                 var (succeededValues, failedValues) = await ReadHistoryAsync("day");
                 await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues);
             }
-            catch { }
+            catch
+            {
+                // The history chart stays empty when storage or the circuit fails; the rest of the page
+                // and the realtime chart keep working, and the next period switch retries.
+            }
         }
     }
 
@@ -376,7 +384,10 @@ else if (_statsExpanded)
             await JS.InvokeVoidAsync("dashboardCharts.initHistoryChart", "historyChart", succeededValues, failedValues,
                 period == "week" ? "week" : "day");
         }
-        catch { }
+        catch
+        {
+            // Same as on first render: a failed read leaves the previous chart in place.
+        }
     }
 
     private static string FormatCount(long count)

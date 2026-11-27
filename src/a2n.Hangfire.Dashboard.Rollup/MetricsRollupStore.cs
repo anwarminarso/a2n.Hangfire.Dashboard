@@ -47,7 +47,7 @@ public sealed class MetricsRollupStore
 
     private readonly ILogger<MetricsRollupStore> _logger;
 
-    public MetricsRollupStore(ILogger<MetricsRollupStore> logger = null)
+    public MetricsRollupStore(ILogger<MetricsRollupStore>? logger = null)
     {
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<MetricsRollupStore>.Instance;
     }
@@ -327,7 +327,7 @@ public sealed class MetricsRollupStore
     }
 
     /// <summary>Count-weighted mean over every entity stored in a duration-style hash.</summary>
-    private static double WeightedMean(IReadOnlyDictionary<string, string> hash)
+    private static double WeightedMean(IReadOnlyDictionary<string, string>? hash)
     {
         if (hash == null || hash.Count == 0)
             return 0d;
@@ -355,7 +355,7 @@ public sealed class MetricsRollupStore
 
         return hash
             .Select(ParseSlowest)
-            .Where(j => j != null)
+            .OfType<SlowestJobDto>()
             .OrderByDescending(j => j.DurationMs)
             .Take(count)
             .ToList();
@@ -528,7 +528,8 @@ public sealed class MetricsRollupStore
                         var lastColon = k.LastIndexOf(':');
                         return lastColon > 0 ? k[..lastColon] : null;
                     })
-                    .Where(k => k != null && k.Count(c => c == ':') == 1)
+                    .OfType<string>()
+                    .Where(k => k.Count(c => c == ':') == 1)
                     .Distinct(StringComparer.Ordinal);
 
                 foreach (var field in fieldPrefixes)
@@ -947,7 +948,7 @@ public sealed class MetricsRollupStore
             return;
 
         var existing = SafeReadHashStatic(connection, SlowestHashKey) ?? new Dictionary<string, string>();
-        var jobs = existing.Select(ParseSlowest).Where(j => j != null).Concat(acc.SlowestJobs.Select(s => new SlowestJobDto
+        var jobs = existing.Select(ParseSlowest).OfType<SlowestJobDto>().Concat(acc.SlowestJobs.Select(s => new SlowestJobDto
         {
             JobId = s.JobId,
             JobName = s.JobName,
@@ -960,7 +961,7 @@ public sealed class MetricsRollupStore
             $"{j.DurationMs.ToString("R", CultureInfo.InvariantCulture)}|{j.CompletedAt?.Ticks.ToString(CultureInfo.InvariantCulture)}|{j.JobName}")).ToList();
     }
 
-    private static SlowestJobDto ParseSlowest(KeyValuePair<string, string> entry)
+    private static SlowestJobDto? ParseSlowest(KeyValuePair<string, string> entry)
     {
         var parts = entry.Value?.Split('|') ?? Array.Empty<string>();
         if (parts.Length < 2)
@@ -992,7 +993,7 @@ public sealed class MetricsRollupStore
             .OrderBy(k => k, StringComparer.Ordinal)
             .ToList();
 
-    private static JobDurationStatsDto ParseDurationFields(
+    private static JobDurationStatsDto? ParseDurationFields(
         IReadOnlyDictionary<string, string> hash, string prefix, bool isQueue = false)
     {
         var stats = ReadDurationFields(hash, prefix);
@@ -1023,7 +1024,7 @@ public sealed class MetricsRollupStore
         public List<double> Samples { get; set; } = new();
     }
 
-    private static DurationFields ReadDurationFields(IReadOnlyDictionary<string, string> hash, string prefix)
+    private static DurationFields? ReadDurationFields(IReadOnlyDictionary<string, string> hash, string prefix)
     {
         var count = ParseLong(hash, $"{prefix}:count");
         if (count == 0)
@@ -1039,7 +1040,7 @@ public sealed class MetricsRollupStore
         };
     }
 
-    private static DurationFields MergeDurationDelta(DurationFields prior, RollupAccumulator.DurationDelta delta)
+    private static DurationFields MergeDurationDelta(DurationFields? prior, RollupAccumulator.DurationDelta delta)
     {
         prior ??= new DurationFields();
         var samples = prior.Samples;
@@ -1099,7 +1100,7 @@ public sealed class MetricsRollupStore
             ? ticks
             : 0L;
 
-    private static Dictionary<string, string> SafeReadHashStatic(IStorageConnection connection, string key)
+    private static Dictionary<string, string>? SafeReadHashStatic(IStorageConnection connection, string key)
     {
         try
         {
@@ -1111,7 +1112,7 @@ public sealed class MetricsRollupStore
         }
     }
 
-    private Dictionary<string, string> SafeReadHash(IStorageConnection connection, string key)
+    private Dictionary<string, string>? SafeReadHash(IStorageConnection connection, string key)
         => SafeReadHashStatic(connection, key);
 
     private HashSet<string> SafeReadSet(IStorageConnection connection, string key)

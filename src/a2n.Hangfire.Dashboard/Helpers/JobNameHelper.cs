@@ -136,7 +136,7 @@ public static class JobNameHelper
     }
 
     /// <summary>
-    /// The job's class name (as <see cref="Type.Name"/> gives it) and method name, from the job or,
+    /// The job's class name (as <c>Type.Name</c> gives it) and method name, from the job or,
     /// when its type isn't loaded, from the invocation data. Nulls when neither is available.
     /// </summary>
     internal static (string TypeName, string MethodName) GetTypeAndMethodNames(Job job, InvocationData invocationData)
@@ -171,7 +171,7 @@ public static class JobNameHelper
     private static readonly char[] TypeNameSeparators = { '.', '+' };
 
     /// <summary>
-    /// The class name in an assembly-qualified type name, as <see cref="Type.Name"/> gives it:
+    /// The class name in an assembly-qualified type name, as <c>Type.Name</c> gives it:
     /// <c>"Ns.Outer+Inner`1[[System.String, mscorlib]], App"</c> → <c>"Inner`1"</c>. The assembly and
     /// generic arguments are cut first, since they contain commas and dots of their own.
     /// </summary>

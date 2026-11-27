@@ -318,8 +318,9 @@ else
     {
         long? enqueued = null;
         long? fetched = null;
-        try { enqueued = Monitor.GetEnqueuedCount(name); } catch { }
-        try { fetched = Monitor.GetFetchedCount(name); } catch { }
+        // A failed probe leaves the count null, which the card shows as "—".
+        try { enqueued = Monitor.GetEnqueuedCount(name); } catch { /* see above */ }
+        try { fetched = Monitor.GetFetchedCount(name); } catch { /* see above */ }
         return new QueueRow { Name = name, Length = enqueued, Fetched = fetched };
     }
 

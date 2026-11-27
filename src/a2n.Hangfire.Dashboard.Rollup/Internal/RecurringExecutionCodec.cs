@@ -29,7 +29,7 @@ internal static class RecurringExecutionCodec
         return string.Join(EntrySeparator, packed);
     }
 
-    public static List<RollupAccumulator.RecurringExecutionEntry> Parse(string packed)
+    public static List<RollupAccumulator.RecurringExecutionEntry> Parse(string? packed)
     {
         var results = new List<RollupAccumulator.RecurringExecutionEntry>();
         if (string.IsNullOrEmpty(packed))

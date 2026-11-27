@@ -1,19 +1,22 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace a2n.Hangfire.Dashboard.Rollup;
 
 /// <summary>A single processed job execution fed into the rollup accumulator.</summary>
 public sealed class ProcessedExecution
 {
-    public string JobId { get; init; }
+    public string JobId { get; init; } = null!;
     public DateTime ExecutedAtUtc { get; init; }
     public bool Succeeded { get; init; }
-    public string JobType { get; init; }
-    public string Queue { get; init; }
-    public string RecurringJobId { get; init; }
+    public string? JobType { get; init; }
+    public string? Queue { get; init; }
+    public string? RecurringJobId { get; init; }
     public double DurationMs { get; init; }
     public double LatencyMs { get; init; }
-    public string ExceptionType { get; set; }
+    public string? ExceptionType { get; set; }
     public int RetryCount { get; init; }
-    public string JobName { get; init; }
+    public string? JobName { get; init; }
+    [MemberNotNullWhen(true, nameof(RecurringJobId))]
     public bool IsRecurring => !string.IsNullOrWhiteSpace(RecurringJobId);
     public bool IsAdHoc => !IsRecurring;
 }
@@ -85,8 +88,8 @@ public sealed class RollupAccumulator
 
     public sealed class SlowestJobEntry
     {
-        public string JobId { get; init; }
-        public string JobName { get; init; }
+        public string JobId { get; init; } = null!;
+        public string? JobName { get; init; }
         public double DurationMs { get; init; }
         public DateTime CompletedAt { get; init; }
     }
@@ -94,7 +97,7 @@ public sealed class RollupAccumulator
     /// <summary>One recorded execution of a recurring job, kept in a bounded per-job ring.</summary>
     public sealed class RecurringExecutionEntry
     {
-        public string JobId { get; init; }
+        public string JobId { get; init; } = null!;
         public DateTime ExecutedAtUtc { get; init; }
         public bool Succeeded { get; init; }
         public double DurationMs { get; init; }

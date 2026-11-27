@@ -106,7 +106,7 @@ public class HealthThresholds
     public long FailureRateMinimumSample { get; set; } = 20;
 
     /// <summary>
-    /// Tolerance window for recurring jobs that have missed their <see cref="Hangfire.Storage.RecurringJobDto.NextExecution"/>.
+    /// Tolerance window for recurring jobs that have missed their <c>RecurringJobDto.NextExecution</c>.
     /// A recurring job is "missed" when <c>NextExecution</c> is older than now minus this tolerance.
     /// Default: 5 minutes.
     /// </summary>

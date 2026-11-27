@@ -16,7 +16,7 @@ public sealed record PlannerCellKey(int DayIndex, int Hour);
 
 /// <summary>
 /// A single planner cell: the combined picture of ad-hoc demand and projected cron load for one
-/// <c>day × hour</c> slot, together with its <see cref="Safe_Window"/> classification.
+/// <c>day × hour</c> slot, together with its <c>Safe_Window</c> classification.
 /// </summary>
 /// <param name="Key">The <c>day-index × hour</c> address of the slot.</param>
 /// <param name="AdHocDemand">The ad-hoc <c>Demand_Profile</c> load summed across the active queues for this slot.</param>

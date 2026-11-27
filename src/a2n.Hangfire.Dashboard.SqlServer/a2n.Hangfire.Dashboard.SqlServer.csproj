@@ -2,7 +2,6 @@
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>disable</Nullable>
     <RootNamespace>a2n.Hangfire.Dashboard.SqlServer</RootNamespace>
     <PackageId>a2n.Hangfire.Dashboard.SqlServer</PackageId>
     <Description>SQL Server storage adapter for a2n.Hangfire.Dashboard. Provides optimized Dapper-based queries for search, filtering, pagination, and analytics metrics using T-SQL.</Description>

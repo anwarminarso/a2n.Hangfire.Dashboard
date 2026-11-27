@@ -16,7 +16,7 @@ public sealed class RollupMetricsProvider : IStorageMetricsProvider
     private readonly MetricsRollupStore _store;
     private readonly ILogger _logger;
 
-    public RollupMetricsProvider(JobStorage storage, ILogger logger = null)
+    public RollupMetricsProvider(JobStorage storage, ILogger? logger = null)
     {
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;

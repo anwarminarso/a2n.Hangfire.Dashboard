@@ -39,7 +39,7 @@ public sealed record ProjectionWindow(
     ProjectionWindowKind Kind);
 
 /// <summary>
-/// The origin of the active <see cref="Worker_Capacity"/> value.
+/// The origin of the active <c>Worker_Capacity</c> value.
 /// </summary>
 public enum CapacitySource
 {

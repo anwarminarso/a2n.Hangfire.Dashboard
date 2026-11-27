@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Nullable reference types and a stricter Release build ([#103](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/103)).** `a2n.Hangfire.Tags`, `.Dashboard.Redis`, `.Dashboard.Rollup`, `.Dashboard.PostgreSql` and `.Dashboard.SqlServer` now build with nullable reference types, like `a2n.Hangfire.Console` already did, so their public APIs carry nullability annotations (for example `TagsOptions.TagColor` is `string?`, `UseTags(TagsOptions? options = null)`). Annotations only: no behavior change. `a2n.Hangfire.Dashboard` still opts out while it is migrated. `src/Directory.Build.props` turns nullable on for the packages and treats warnings as errors in Release (NuGet vulnerability advisories stay warnings). A root `.editorconfig` records the code style and enforces CA2016 (forward the `CancellationToken`). Every empty `catch` in `src/` now says why swallowing the exception is safe.
+
 ## 2.6.1 — Job Details expiration banner, re-stopped recurring jobs
 
 > **Patch release.** The Job Details banner shows when the storage will actually remove a job, instead of "in 24 hours" for every Succeeded or Deleted job ([#97](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/97)). A recurring job that is stopped, started and stopped again stays in the **Stopped Jobs** list and can be started again ([#98](https://github.com/anwarminarso/a2n.Hangfire.Dashboard/issues/98)). No public API changes; no migration.

@@ -3,7 +3,7 @@ using Hangfire.Common;
 namespace a2n.Hangfire.Dashboard.Storage;
 
 /// <summary>
-/// Hangfire persists <see cref="CreateContext.Parameters"/> with <see cref="SerializationOption.User"/> (JSON).
+/// Hangfire persists <c>CreateContext.Parameters</c> with <see cref="SerializationOption.User"/> (JSON).
 /// Recurring job ids in Set/Hash storage are plain strings — SQL must match both forms.
 /// </summary>
 public static class JobParameterMatching
