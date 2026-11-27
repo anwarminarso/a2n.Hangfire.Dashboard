@@ -331,7 +331,16 @@ else if (_statsExpanded)
             }
 
             _chartsInitialized = true;
-            await JS.InvokeVoidAsync("dashboardCharts.initRealtimeChart", "realtimeChart");
+            try
+            {
+                await JS.InvokeVoidAsync("dashboardCharts.initRealtimeChart", "realtimeChart");
+            }
+            catch (JSDisconnectedException)
+            {
+                // The tab was closed while the page was still loading: there is no chart to start
+                // and no history to load.
+                return;
+            }
 
             // Load history data
             try
