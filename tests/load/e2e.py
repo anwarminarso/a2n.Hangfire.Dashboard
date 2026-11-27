@@ -162,27 +162,30 @@ def test_search(page, dashboard_url: str, results: TestResults):
 def test_theme_toggle(page, dashboard_url: str, results: TestResults):
     page.goto(dashboard_url + "/")
     page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(1000)  # the buttons work once the Blazor circuit is up
 
-    # Look for theme toggle button
-    toggle = page.locator(
-        "button[title*='theme'], button[aria-label*='theme'], "
-        "[data-bs-theme], .theme-toggle, #themeToggle"
-    )
-    has_toggle = toggle.count() > 0
-    results.add("Theme: toggle button present", has_toggle)
+    # ThemeToggle: three buttons (System preference / Light mode / Dark mode), identified by title.
+    light = page.locator("button[title='Light mode']:visible")
+    dark = page.locator("button[title='Dark mode']:visible")
+    has_toggle = light.count() > 0 and dark.count() > 0
+    results.add("Theme: toggle buttons present", has_toggle)
 
     if has_toggle:
-        # Get initial theme
         initial_theme = page.evaluate("document.documentElement.getAttribute('data-bs-theme')")
-        # Click the toggle
-        toggle.first.click()
+        stored = page.evaluate("window.themeManager ? window.themeManager.get() : null") or "auto"
+        target = "dark" if initial_theme == "light" else "light"
+        (dark if target == "dark" else light).first.click()
         page.wait_for_timeout(500)
         new_theme = page.evaluate("document.documentElement.getAttribute('data-bs-theme')")
         results.add(
             "Theme: toggle changes theme",
-            initial_theme != new_theme,
+            new_theme == target,
             f"{initial_theme} → {new_theme}",
         )
+        # Put the stored preference back (auto, light or dark) so later runs start from the same theme.
+        titles = {"auto": "System preference", "light": "Light mode", "dark": "Dark mode"}
+        page.locator(f"button[title='{titles.get(stored, 'System preference')}']:visible").first.click()
+        page.wait_for_timeout(300)
 
 
 def test_signalr_connection(page, dashboard_url: str, results: TestResults):

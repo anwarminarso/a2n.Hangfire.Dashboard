@@ -1392,9 +1392,15 @@ def tier_p1(ctx: Context) -> TierResult:
         version = published
         rows.append(("Package", f"a2n.Hangfire.Dashboard {version} from nuget.org"))
     else:
-        code, out = _run(["dotnet", "pack", str(REPO_ROOT / "src" / "a2n.Hangfire.Dashboard" / "a2n.Hangfire.Dashboard.csproj"),
-                          "-c", "Release", "-o", str(feed), "-nologo"], REPO_ROOT)
-        pkgs = sorted(feed.glob("a2n.Hangfire.Dashboard.*.nupkg"))
+        # The dashboard package depends on a2n.Hangfire.Console and a2n.Hangfire.Tags of the same
+        # version, which nuget.org doesn't have until they are published: pack them into the feed too.
+        code, out = 0, ""
+        for project in ("a2n.Hangfire.Dashboard", "a2n.Hangfire.Console", "a2n.Hangfire.Tags"):
+            code, out = _run(["dotnet", "pack", str(REPO_ROOT / "src" / project / f"{project}.csproj"),
+                              "-c", "Release", "-o", str(feed), "-nologo"], REPO_ROOT)
+            if code != 0:
+                break
+        pkgs = sorted(feed.glob("a2n.Hangfire.Dashboard.[0-9]*.nupkg"))
         if code != 0 or not pkgs:
             return TierResult("P1", "Package drop-in", False, "dotnet pack failed", notes=[out])
         version = pkgs[0].stem[len("a2n.Hangfire.Dashboard."):]
