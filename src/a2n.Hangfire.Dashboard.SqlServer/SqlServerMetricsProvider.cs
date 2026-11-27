@@ -498,7 +498,7 @@ WHERE [Key] IN @Keys";
         {
             var hashKey = $"recurring-job:{jobId}";
             hashByJob.TryGetValue(hashKey, out var fields);
-            fields ??= new Dictionary<string, string>();
+            fields ??= new Dictionary<string, string?>();
 
             var lastExecution = ParseDateTimeOffset(fields.GetValueOrDefault("LastExecution"));
             var nextExecution = ParseDateTimeOffset(fields.GetValueOrDefault("NextExecution"));
@@ -948,7 +948,7 @@ ORDER BY COUNT(*) DESC";
         return dataPoints.Values.OrderBy(p => p.Timestamp).ToList();
     }
 
-    private static int ParseWorkerCount(string serverData)
+    private static int ParseWorkerCount(string? serverData)
     {
         if (string.IsNullOrEmpty(serverData)) return 0;
 
@@ -966,7 +966,7 @@ ORDER BY COUNT(*) DESC";
         return 0;
     }
 
-    private static string ExtractJobTypeName(string invocationData)
+    private static string ExtractJobTypeName(string? invocationData)
     {
         if (string.IsNullOrEmpty(invocationData)) return "Unknown";
 
@@ -1010,12 +1010,15 @@ ORDER BY COUNT(*) DESC";
                 }
             }
         }
-        catch { }
+        catch
+        {
+            // Malformed invocation data: fall through to the "Unknown" type name below.
+        }
 
         return "Unknown";
     }
 
-    private static DateTimeOffset? ParseDateTimeOffset(string value)
+    private static DateTimeOffset? ParseDateTimeOffset(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
 
@@ -1089,20 +1092,20 @@ ORDER BY RecurringJobIdStored, rn";
 
     private class AggregatedCounterRow
     {
-        public string Key { get; set; }
+        public string? Key { get; set; }
         public decimal Value { get; set; }
     }
 
     private class StateTransitionRow
     {
         public DateTime Bucket { get; set; }
-        public string StateName { get; set; }
+        public string? StateName { get; set; }
         public long Cnt { get; set; }
     }
 
     private class DurationBasicRow
     {
-        public string JobType { get; set; }
+        public string? JobType { get; set; }
         public double AverageMs { get; set; }
         public long MinMs { get; set; }
         public long MaxMs { get; set; }
@@ -1111,7 +1114,7 @@ ORDER BY RecurringJobIdStored, rn";
 
     private class PercentileRow
     {
-        public string JobType { get; set; }
+        public string? JobType { get; set; }
         public double P50Ms { get; set; }
         public double P95Ms { get; set; }
         public double P99Ms { get; set; }
@@ -1119,14 +1122,14 @@ ORDER BY RecurringJobIdStored, rn";
 
     private class LatencyBasicRow
     {
-        public string QueueName { get; set; }
+        public string? QueueName { get; set; }
         public double AverageMs { get; set; }
         public long Cnt { get; set; }
     }
 
     private class LatencyPercentileRow
     {
-        public string QueueName { get; set; }
+        public string? QueueName { get; set; }
         public double P50Ms { get; set; }
         public double P95Ms { get; set; }
         public double P99Ms { get; set; }
@@ -1135,43 +1138,43 @@ ORDER BY RecurringJobIdStored, rn";
     private class SlowestJobRow
     {
         public long JobId { get; set; }
-        public string JobName { get; set; }
+        public string? JobName { get; set; }
         public long DurationMs { get; set; }
         public DateTime? CompletedAt { get; set; }
     }
 
     private class FailureRateRow
     {
-        public string JobType { get; set; }
+        public string? JobType { get; set; }
         public long TotalCount { get; set; }
         public long FailedCount { get; set; }
     }
 
     private class ServerRow
     {
-        public string ServerName { get; set; }
-        public string Data { get; set; }
+        public string? ServerName { get; set; }
+        public string? Data { get; set; }
         public DateTime LastHeartbeat { get; set; }
     }
 
     private class BusyWorkerRow
     {
-        public string ServerName { get; set; }
+        public string? ServerName { get; set; }
         public int BusyCount { get; set; }
     }
 
     private class QueueThroughputRow
     {
         public DateTime Bucket { get; set; }
-        public string QueueName { get; set; }
+        public string? QueueName { get; set; }
         public long SucceededCount { get; set; }
     }
 
     private class HashRow
     {
-        public string Key { get; set; }
-        public string Field { get; set; }
-        public string Value { get; set; }
+        public string Key { get; set; } = null!;
+        public string Field { get; set; } = null!;
+        public string? Value { get; set; }
     }
 
     private class RecurringExecutionRow
@@ -1179,37 +1182,37 @@ ORDER BY RecurringJobIdStored, rn";
         public long JobId { get; set; }
         public DateTime ExecutedAt { get; set; }
         public long DurationMs { get; set; }
-        public string StateName { get; set; }
-        public string Reason { get; set; }
+        public string? StateName { get; set; }
+        public string? Reason { get; set; }
     }
 
     private class RecurringExecutionBatchRow : RecurringExecutionRow
     {
-        public string RecurringJobIdStored { get; set; }
+        public string? RecurringJobIdStored { get; set; }
     }
 
     private class RecurringExecutionSummaryRow
     {
-        public string RecurringJobIdStored { get; set; }
-        public string StateName { get; set; }
+        public string? RecurringJobIdStored { get; set; }
+        public string? StateName { get; set; }
         public double DurationMs { get; set; }
     }
 
     private class StateTimingRow
     {
-        public string StateName { get; set; }
+        public string StateName { get; set; } = null!;
         public double AvgMs { get; set; }
     }
 
     private class JobTypeVolumeRow
     {
-        public string JobType { get; set; }
+        public string? JobType { get; set; }
         public long ExecutionCount { get; set; }
     }
 
     private class ScheduleBucketRow
     {
-        public string QueueName { get; set; }
+        public string? QueueName { get; set; }
         public int DayIndex { get; set; }
         public int Hour { get; set; }
         public long FireCount { get; set; }
@@ -1221,7 +1224,7 @@ ORDER BY RecurringJobIdStored, rn";
 
     private class SchedulePercentileRow
     {
-        public string QueueName { get; set; }
+        public string? QueueName { get; set; }
         public int DayIndex { get; set; }
         public int Hour { get; set; }
         public double P95Ms { get; set; }

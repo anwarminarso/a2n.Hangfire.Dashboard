@@ -651,7 +651,7 @@ ORDER BY m.StateId DESC, m.Id DESC;";
         }
     }
 
-    private string BuildContentSearchCte(JobFilterCriteria criteria, DynamicParameters parameters)
+    private string? BuildContentSearchCte(JobFilterCriteria criteria, DynamicParameters parameters)
     {
         if (string.IsNullOrWhiteSpace(criteria.ContentPattern))
             return null;
@@ -752,7 +752,7 @@ ORDER BY m.StateId DESC, m.Id DESC;";
         };
     }
 
-    private static string ExtractJobName(string invocationData)
+    private static string ExtractJobName(string? invocationData)
     {
         if (string.IsNullOrWhiteSpace(invocationData))
             return "(unknown)";
@@ -819,20 +819,20 @@ ORDER BY m.StateId DESC, m.Id DESC;";
     private class JobRawRow
     {
         public long JobId { get; set; }
-        public string InvocationData { get; set; }
-        public string State { get; set; }
+        public string? InvocationData { get; set; }
+        public string? State { get; set; }
         public DateTime? CreatedAt { get; set; }
         public DateTime? LastStateChange { get; set; }
         public long? DurationMs { get; set; }
         public long? LatencyMs { get; set; }
-        public string ExceptionType { get; set; }
-        public string ExceptionMessage { get; set; }
+        public string? ExceptionType { get; set; }
+        public string? ExceptionMessage { get; set; }
     }
 
     private class SlowestJobRawRow
     {
         public long JobId { get; set; }
-        public string InvocationData { get; set; }
+        public string? InvocationData { get; set; }
         public long DurationMs { get; set; }
         public DateTime? CompletedAt { get; set; }
     }

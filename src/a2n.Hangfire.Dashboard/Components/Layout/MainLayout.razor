@@ -144,7 +144,7 @@
                 as Microsoft.AspNetCore.Http.IHttpContextAccessor;
             ip = httpAccessor?.HttpContext?.Connection?.RemoteIpAddress?.ToString();
         }
-        catch { /* ignore */ }
+        catch { /* The client IP is informational; without an HttpContext it stays unknown. */ }
 
         ActorAccessor.Set(user, ip);
     }

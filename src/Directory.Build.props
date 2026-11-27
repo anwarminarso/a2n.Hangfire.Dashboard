@@ -1,0 +1,16 @@
+<Project>
+  <!-- Settings for the shipped packages under src/. The repository-wide settings come first. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!-- Nullable reference types for every package. A project may still opt out while it is migrated. -->
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- NuGet vulnerability advisories stay warnings: a newly published advisory must not break an
+         unrelated build. Dependabot raises the fix. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>

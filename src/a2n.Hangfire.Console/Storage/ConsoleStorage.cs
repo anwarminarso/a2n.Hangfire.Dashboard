@@ -3,6 +3,11 @@ using Hangfire.Common;
 using Hangfire.Console.Serialization;
 using Hangfire.Storage;
 
+// JobHelper.ToJson/FromJson are obsolete in Hangfire 1.8 but are what the original Hangfire.Console uses
+// to write console lines. Keeping them keeps the stored format identical, so lines written by either
+// package stay readable by both.
+#pragma warning disable CS0618
+
 namespace Hangfire.Console.Storage;
 
 /// <summary>

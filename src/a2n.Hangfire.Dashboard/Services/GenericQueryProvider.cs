@@ -126,7 +126,8 @@ public class GenericQueryProvider : IStorageQueryProvider
             var queue = QueueOf(jobData.Job, jobData.InvocationData);
 
             string[] tags = null;
-            try { tags = _tagsReader.GetJobTags(jobId); } catch { }
+            // Tags are optional on a search result: a failed read shows the job without them.
+            try { tags = _tagsReader.GetJobTags(jobId); } catch { /* see above */ }
 
             candidates.Add(new JobSummaryDto
             {

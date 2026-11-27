@@ -35,9 +35,9 @@ internal sealed record CronPreviewResult(bool IsValid, DateTime? NextOccurrenceU
 internal static class CronPreview
 {
     /// <summary>
-    /// Attempts to parse <paramref name="cronExpression"/> into a <see cref="CronExpression"/>.
-    /// Five-field expressions are parsed with <see cref="CronFormat.Standard"/> and six-field
-    /// expressions with <see cref="CronFormat.IncludeSeconds"/>; the alternate format is tried as a
+    /// Attempts to parse <paramref name="cronExpression"/> into a <c>Cronos.CronExpression</c>.
+    /// Five-field expressions are parsed with <c>CronFormat.Standard</c> and six-field
+    /// expressions with <c>CronFormat.IncludeSeconds</c>; the alternate format is tried as a
     /// fallback so well-formed expressions of either shape parse successfully.
     /// </summary>
     /// <param name="cronExpression">The candidate cron expression.</param>

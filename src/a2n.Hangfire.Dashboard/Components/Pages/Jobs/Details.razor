@@ -369,7 +369,7 @@
             && !string.IsNullOrEmpty(expireAtStr))
         {
             try { return global::Hangfire.Common.JobHelper.DeserializeDateTime(expireAtStr); }
-            catch { }
+            catch { /* An unparseable legacy value means no known expiration: no banner. */ }
         }
 
         return null;

@@ -1,0 +1,50 @@
+# Editor and analyzer settings for the whole repository.
+# Style rules are suggestions (IDE only); the dotnet_diagnostic entries below are enforced in the build.
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{csproj,props,targets,xml,json,yml,yaml,slnx}]
+indent_size = 2
+
+[*.{js,css,html,razor}]
+indent_size = 4
+
+[*.{cs,razor}]
+# Namespaces and usings
+csharp_style_namespace_declarations = file_scoped:suggestion
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:suggestion
+
+# var and expression-bodied members: follow the surrounding code
+csharp_style_var_for_built_in_types = true:silent
+csharp_style_var_when_type_is_apparent = true:silent
+csharp_style_var_elsewhere = true:silent
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+csharp_style_expression_bodied_properties = true:silent
+
+# Braces and new lines (Allman)
+csharp_new_line_before_open_brace = all
+csharp_prefer_braces = when_multiline:silent
+
+# Naming: private fields are _camelCase
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel_case
+dotnet_naming_rule.private_fields_underscore.severity = suggestion
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_fields.required_modifiers =
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+
+# Analyzer rules enforced in the build (Release treats warnings in src/ as errors).
+# CA2016: forward the CancellationToken to methods that accept one.
+dotnet_diagnostic.CA2016.severity = warning

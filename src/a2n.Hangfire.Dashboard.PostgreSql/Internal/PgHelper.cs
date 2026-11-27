@@ -119,7 +119,7 @@ internal static class PgHelper
     /// InvocationData format: {"Type":"Namespace.Class, Assembly","Method":"MethodName","ParameterTypes":"[...]","Arguments":"[...]"}
     /// Returns "ClassName.MethodName" or "Unknown" if parsing fails.
     /// </summary>
-    public static string ExtractJobName(string invocationData)
+    public static string ExtractJobName(string? invocationData)
     {
         if (string.IsNullOrWhiteSpace(invocationData))
             return "Unknown";
@@ -129,8 +129,8 @@ internal static class PgHelper
             using var doc = JsonDocument.Parse(invocationData);
             var root = doc.RootElement;
 
-            string typeName = null;
-            string methodName = null;
+            string? typeName = null;
+            string? methodName = null;
 
             // Try "Type" (capital) then "t" (lowercase, older format)
             if (root.TryGetProperty("Type", out var typeProp))

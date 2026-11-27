@@ -84,10 +84,10 @@
     }
 
     /// <summary>
-    /// Builds the operator-facing Parameter_JSON from a recurring job's stored <see cref="Hangfire.Common.Job"/>.
+    /// Builds the operator-facing Parameter_JSON from a recurring job's stored <c>Hangfire.Common.Job</c>.
     /// The stored <c>Args</c> are positional over ALL declared parameters (injected slots included),
     /// so they are projected onto the method's Job_Parameters only — dropping Hangfire-injected
-    /// parameters such as <see cref="Hangfire.Server.PerformContext"/> and
+    /// parameters such as <c>Hangfire.Server.PerformContext</c> and
     /// <see cref="System.Threading.CancellationToken"/> — and serialized one-to-one into a JSON array
     /// (Req 3.1). A null job/method or absent Args yields an empty array <c>[]</c> (Req 3.2). When the
     /// stored Args cannot be serialized, an interpretation error is shown and an empty array is

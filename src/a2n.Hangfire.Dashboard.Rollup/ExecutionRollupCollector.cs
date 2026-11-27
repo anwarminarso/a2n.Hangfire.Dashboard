@@ -44,13 +44,13 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
 
     private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(10);
 
-    private readonly JobStorage _storage;
+    private readonly JobStorage? _storage;
     private readonly MetricsRollupStore _store;
-    private readonly IFailedJobPageSource _failedJobs;
-    private readonly DashboardUIOptions _options;
+    private readonly IFailedJobPageSource? _failedJobs;
+    private readonly DashboardUIOptions? _options;
     private readonly ILogger<ExecutionRollupCollector> _logger;
-    private CancellationTokenSource _stoppingCts;
-    private Task _loopTask;
+    private CancellationTokenSource? _stoppingCts;
+    private Task? _loopTask;
     private TimeSpan _pollInterval = new PollingOptions().RollupPollInterval;
 
     public ExecutionRollupCollector(IServiceProvider serviceProvider)
@@ -85,7 +85,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
         }
 
         _stoppingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _loopTask = Task.Run(() => RunLoopAsync(_stoppingCts.Token));
+        _loopTask = Task.Run(() => RunLoopAsync(_stoppingCts.Token), CancellationToken.None);
         return Task.CompletedTask;
     }
 
@@ -128,7 +128,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
             catch (OperationCanceledException) { return; }
 
             var startedAt = Stopwatch.GetTimestamp();
-            Exception failure = null;
+            Exception? failure = null;
             try { PollOnce(ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
             catch (Exception ex) { failure = ex; }
@@ -182,15 +182,20 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
     {
         ct.ThrowIfCancellationRequested();
 
+        // StartAsync never starts the loop without a storage; tests may call this directly.
+        var storage = _storage;
+        if (storage == null)
+            return;
+
         IMonitoringApi monitoringApi;
-        try { monitoringApi = _storage.GetMonitoringApi(); }
+        try { monitoringApi = storage.GetMonitoringApi(); }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to obtain the Hangfire monitoring API for rollup collection.");
             return;
         }
 
-        using var connection = _storage.GetConnection();
+        using var connection = storage.GetConnection();
         if (connection == null)
             return;
 
@@ -387,7 +392,7 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
         };
     }
 
-    private static string SafeGetParameter(IStorageConnection connection, string jobId, string name)
+    private static string? SafeGetParameter(IStorageConnection connection, string jobId, string name)
     {
         try { return connection.GetJobParameter(jobId, name); }
         catch { return null; }
@@ -431,7 +436,11 @@ public sealed class ExecutionRollupCollector : IHostedService, IDisposable
             if (attr != null && !string.IsNullOrWhiteSpace(attr.Queue) && !attr.Queue.Contains('{'))
                 return attr.Queue;
         }
-        catch { }
+        catch
+        {
+            // Reading the [Queue] attribute can fail for a job whose type or method can't be loaded;
+            // the queue is then unknown, which the caller handles.
+        }
 
         return ScheduleAggregator.DefaultQueue;
     }

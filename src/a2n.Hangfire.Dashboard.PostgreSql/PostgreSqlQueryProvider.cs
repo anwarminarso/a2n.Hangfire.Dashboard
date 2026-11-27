@@ -671,7 +671,7 @@ ORDER BY stateid DESC NULLS LAST, id DESC";
     /// Stage 4: Content search CTE (stack trace + console output).
     /// Returns the CTE body SQL or null if not needed.
     /// </summary>
-    private string BuildContentSearchCte(JobFilterCriteria criteria, DynamicParameters parameters)
+    private string? BuildContentSearchCte(JobFilterCriteria criteria, DynamicParameters parameters)
     {
         if (string.IsNullOrWhiteSpace(criteria.ContentPattern))
             return null;
@@ -774,21 +774,21 @@ ORDER BY stateid DESC NULLS LAST, id DESC";
 
     private class JobRawRow
     {
-        public string JobId { get; set; }
-        public string InvocationData { get; set; }
-        public string State { get; set; }
+        public string? JobId { get; set; }
+        public string? InvocationData { get; set; }
+        public string? State { get; set; }
         public DateTime? CreatedAt { get; set; }
         public DateTime? LastStateChange { get; set; }
         public double? DurationMs { get; set; }
         public double? LatencyMs { get; set; }
-        public string ExceptionType { get; set; }
-        public string ExceptionMessage { get; set; }
+        public string? ExceptionType { get; set; }
+        public string? ExceptionMessage { get; set; }
     }
 
     private class SlowestJobRawRow
     {
-        public string JobId { get; set; }
-        public string InvocationData { get; set; }
+        public string? JobId { get; set; }
+        public string? InvocationData { get; set; }
         public double DurationMs { get; set; }
         public DateTime? CompletedAt { get; set; }
     }

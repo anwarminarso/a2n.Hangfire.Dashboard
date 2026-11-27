@@ -109,7 +109,7 @@ public enum ParameterInputKind
 /// <param name="ErrorKind">The category of resolution failure, or null on success.</param>
 /// <param name="ResolvedType">
 /// The type the method was resolved <em>against</em> — i.e. the operator-selected/typed type, which
-/// may be a subclass or interface implementer of <see cref="MethodInfo.DeclaringType"/> when the
+/// may be a subclass or interface implementer of <c>MethodInfo.DeclaringType</c> when the
 /// method is inherited. The job must be constructed with this type (not
 /// <c>Method.DeclaringType</c>) so class-level <c>[Tag]</c>/<c>[Queue]</c> attributes and activation
 /// match the original Hangfire <c>AddOrUpdate&lt;T&gt;</c> semantics. Null when resolution fails.

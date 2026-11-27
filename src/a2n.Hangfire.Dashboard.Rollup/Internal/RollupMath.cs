@@ -29,7 +29,7 @@ internal static class RollupMath
         return sorted[lo] + (frac * (sorted[hi] - sorted[lo]));
     }
 
-    public static double[] ParseSamples(string raw)
+    public static double[] ParseSamples(string? raw)
     {
         if (string.IsNullOrEmpty(raw))
             return Array.Empty<double>();

@@ -67,9 +67,9 @@ LIMIT @Count OFFSET @From";
 
     private static FailedJobDto Map(FailedJobRow row)
     {
-        InvocationData invocation = null;
-        Job job = null;
-        JobLoadException loadException = null;
+        InvocationData? invocation = null;
+        Job? job = null;
+        JobLoadException? loadException = null;
 
         if (!string.IsNullOrEmpty(row.InvocationData))
         {
@@ -126,7 +126,7 @@ LIMIT @Count OFFSET @From";
             : DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
     }
 
-    private static DateTime? ReadFailedAt(Dictionary<string, string> state)
+    private static DateTime? ReadFailedAt(Dictionary<string, string>? state)
     {
         var text = Get(state, "FailedAt");
         if (string.IsNullOrEmpty(text))
@@ -142,7 +142,7 @@ LIMIT @Count OFFSET @From";
         }
     }
 
-    private static Dictionary<string, string> ReadState(string json)
+    private static Dictionary<string, string>? ReadState(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
             return null;
@@ -160,7 +160,7 @@ LIMIT @Count OFFSET @From";
         }
     }
 
-    private static string Get(Dictionary<string, string> state, string key)
+    private static string? Get(Dictionary<string, string>? state, string key)
     {
         if (state == null)
             return null;
@@ -169,11 +169,11 @@ LIMIT @Count OFFSET @From";
 
     private sealed class FailedJobRow
     {
-        public string Id { get; set; }
-        public string InvocationData { get; set; }
-        public string Arguments { get; set; }
-        public string Reason { get; set; }
+        public string? Id { get; set; }
+        public string? InvocationData { get; set; }
+        public string? Arguments { get; set; }
+        public string? Reason { get; set; }
         public DateTime? StateCreatedAt { get; set; }
-        public string StateData { get; set; }
+        public string? StateData { get; set; }
     }
 }
