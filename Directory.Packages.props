@@ -1,0 +1,71 @@
+<Project>
+  <!--
+    Central Package Management: this file is the single place where NuGet package versions are defined.
+    Project files reference packages without a Version attribute. Versions are pinned (no floating "*")
+    so every build of a commit restores the same dependency graph. Dependabot (.github/dependabot.yml)
+    proposes updates.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!-- Libraries (shipped packages) -->
+  <ItemGroup>
+    <PackageVersion Include="Cronos" Version="0.11.0" />
+    <PackageVersion Include="Dapper" Version="2.1.100" />
+    <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.25" />
+    <PackageVersion Include="Hangfire.Core" Version="1.8.25" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.3" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
+    <!-- Forces a non-vulnerable version (transitive from Hangfire.Core); referenced in Directory.Build.props. -->
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageVersion Include="Npgsql" Version="8.0.9" />
+  </ItemGroup>
+
+  <!-- Packages that follow the target framework's major version -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.34" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="8.0.34" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.23" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="9.0.23" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.23" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.15" />
+  </ItemGroup>
+
+  <!-- Tests -->
+  <ItemGroup>
+    <PackageVersion Include="AngleSharp" Version="1.8.2" />
+    <PackageVersion Include="bunit" Version="2.11.3" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.1" />
+    <PackageVersion Include="FsCheck.Xunit" Version="2.16.6" />
+    <PackageVersion Include="Hangfire.InMemory" Version="1.0.0" />
+    <PackageVersion Include="Hangfire.PostgreSql" Version="1.20.13" />
+    <PackageVersion Include="Hangfire.SqlServer" Version="1.8.25" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.2" />
+    <PackageVersion Include="Moq" Version="4.21.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.4.13" />
+  </ItemGroup>
+
+  <!-- Samples -->
+  <ItemGroup>
+    <PackageVersion Include="Hangfire.Redis.StackExchange" Version="1.12.0" />
+    <!-- SampleAppOrig only: the original plugins, used to write legacy data for compatibility checks. -->
+    <PackageVersion Include="FaceIT.Hangfire.Tags" Version="1.9.0" />
+    <PackageVersion Include="FaceIT.Hangfire.Tags.PostgreSql" Version="1.9.7" />
+    <PackageVersion Include="FaceIT.Hangfire.Tags.SqlServer" Version="1.9.15" />
+    <PackageVersion Include="Hangfire.Console" Version="1.4.3" />
+    <PackageVersion Include="Hangfire.Tags.MemoryStorage" Version="0.2.0" />
+  </ItemGroup>
+</Project>
