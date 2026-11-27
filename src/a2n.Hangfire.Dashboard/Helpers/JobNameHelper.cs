@@ -18,7 +18,7 @@ public static class JobNameHelper
     /// <summary>
     /// Gets a display name from a Job object, or falls back to InvocationData if Job is null.
     /// </summary>
-    public static string GetDisplayName(Job job, InvocationData invocationData)
+    public static string GetDisplayName(Job? job, InvocationData? invocationData)
     {
         // Best case: Job is resolved, check for display name attributes
         if (job is not null)
@@ -67,7 +67,7 @@ public static class JobNameHelper
             }
 
             // 3. Type.Method fallback
-            return $"{job.Type.Name}.{job.Method.Name}";
+            return $"{job.Type.Name}.{job.Method!.Name}";
         }
 
         // 4. Fallback: extract from InvocationData (raw strings, assembly may not be loaded)
@@ -88,7 +88,7 @@ public static class JobNameHelper
     /// inherited by implementing methods in .NET, so a job stored against a concrete implementation
     /// would otherwise lose the interface contract's <c>[JobDisplayName]</c>.
     /// </remarks>
-    private static T FindInterfaceAttribute<T>(Type type, MethodInfo method) where T : Attribute
+    private static T? FindInterfaceAttribute<T>(Type type, MethodInfo? method) where T : Attribute
     {
         if (type is null || method is null || type.IsInterface)
             return null;
@@ -127,7 +127,7 @@ public static class JobNameHelper
     /// job when its type is loaded, otherwise from the invocation data, so a job whose assembly the
     /// dashboard doesn't reference still has a name (issue #70). Null when neither is available.
     /// </summary>
-    internal static string GetTypeAndMethod(Job job, InvocationData invocationData)
+    internal static string? GetTypeAndMethod(Job? job, InvocationData? invocationData)
     {
         var (typeName, methodName) = GetTypeAndMethodNames(job, invocationData);
         if (typeName is null)
@@ -139,7 +139,7 @@ public static class JobNameHelper
     /// The job's class name (as <c>Type.Name</c> gives it) and method name, from the job or,
     /// when its type isn't loaded, from the invocation data. Nulls when neither is available.
     /// </summary>
-    internal static (string TypeName, string MethodName) GetTypeAndMethodNames(Job job, InvocationData invocationData)
+    internal static (string? TypeName, string? MethodName) GetTypeAndMethodNames(Job? job, InvocationData? invocationData)
     {
         if (job?.Type is not null && job.Method is not null)
             return (job.Type.Name, job.Method.Name);

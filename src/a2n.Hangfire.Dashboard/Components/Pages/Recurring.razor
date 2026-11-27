@@ -292,10 +292,10 @@ else
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
-    private IReadOnlyList<RecurringJobDto> _jobs;
+    private IReadOnlyList<RecurringJobDto>? _jobs;
     private List<StoppedJobInfo> _stoppedJobs = new();
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
@@ -303,9 +303,9 @@ else
     private int _pageSize = 20;
     private int _from;
     private int _stoppedFrom;
-    private DashboardPoller _poller;
-    private string _successMessage;
-    private string _errorMessage;
+    private DashboardPoller? _poller;
+    private string? _successMessage;
+    private string? _errorMessage;
 
     // Trigger and Delete are hidden in read-only mode; Create, Edit, Stop and Start also need job
     // management (issue #73). The service refuses them in read-only mode as well.
@@ -416,14 +416,14 @@ else
     // Carries the deleted job id when arriving from the edit-form delete so a confirmation can be
     // shown on the list (Issue #10 — success message on delete).
     [Parameter, SupplyParameterFromQuery(Name = "deleted")]
-    public string DeletedJobId { get; set; }
+    public string? DeletedJobId { get; set; }
 
     private class StoppedJobInfo
     {
         public string Id { get; set; } = "";
         public string Cron { get; set; } = "";
         public string Queue { get; set; } = "default";
-        public string TimeZone { get; set; }
+        public string? TimeZone { get; set; }
         public string TypeName { get; set; } = "";
         public string MethodName { get; set; } = "";
         public DateTime? StoppedAt { get; set; }

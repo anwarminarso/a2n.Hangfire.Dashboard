@@ -58,13 +58,13 @@ public sealed class DashboardMetricsFeed : IDisposable
 
     private Func<DashboardMetricsSnapshot, Task>[] _metricsHandlers = [];
     private Func<AnalyticsBroadcastPayload, Task>[] _analyticsHandlers = [];
-    private DashboardMetricsSnapshot _latest;
+    private DashboardMetricsSnapshot? _latest;
 
     public DashboardMetricsFeed(
         IServiceScopeFactory scopeFactory,
         DashboardSubscriptionTracker subscriptions,
         DashboardUIOptions options,
-        ILogger<DashboardMetricsFeed> logger = null)
+        ILogger<DashboardMetricsFeed>? logger = null)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _subscriptions = subscriptions ?? throw new ArgumentNullException(nameof(subscriptions));
@@ -79,7 +79,7 @@ public sealed class DashboardMetricsFeed : IDisposable
     public TimeSpan Interval => ResolveInterval(_options.StatsPollingInterval);
 
     /// <summary>The most recent snapshot, or <c>null</c> when none has been read yet.</summary>
-    public DashboardMetricsSnapshot Latest => Volatile.Read(ref _latest);
+    public DashboardMetricsSnapshot? Latest => Volatile.Read(ref _latest);
 
     internal static TimeSpan ResolveInterval(int milliseconds)
     {
@@ -188,7 +188,7 @@ public sealed class DashboardMetricsFeed : IDisposable
     {
         var read = Task.Run(ReadAndStore, CancellationToken.None);
         _ = read.ContinueWith(
-            static (_, gate) => ((SemaphoreSlim)gate).Release(),
+            static (_, gate) => ((SemaphoreSlim)gate!).Release(),
             _gate,
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
@@ -215,7 +215,7 @@ public sealed class DashboardMetricsFeed : IDisposable
         return snapshot;
     }
 
-    private bool IsFresh(DashboardMetricsSnapshot snapshot)
+    private bool IsFresh([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] DashboardMetricsSnapshot? snapshot)
         => snapshot is not null && DateTime.UtcNow - snapshot.CapturedAtUtc < Interval;
 
     private void Dispatch<T>(Func<T, Task>[] handlers, T payload)
@@ -252,7 +252,7 @@ public sealed class DashboardMetricsFeed : IDisposable
 
     private sealed class Subscription(Action unsubscribe) : IDisposable
     {
-        private Action _unsubscribe = unsubscribe;
+        private Action? _unsubscribe = unsubscribe;
 
         public void Dispose() => Interlocked.Exchange(ref _unsubscribe, null)?.Invoke();
     }

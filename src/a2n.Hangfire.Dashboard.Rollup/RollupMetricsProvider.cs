@@ -159,7 +159,7 @@ public sealed class RollupMetricsProvider : IStorageMetricsProvider
 
                     return new RecurringJobHealthDto
                     {
-                        JobId = r.Id,
+                        JobId = r.Id!,
                         Status = status,
                         LastRunTime = r.LastExecution.HasValue
                             ? new DateTimeOffset(DateTime.SpecifyKind(r.LastExecution.Value, DateTimeKind.Utc))

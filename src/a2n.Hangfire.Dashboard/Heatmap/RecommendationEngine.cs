@@ -81,7 +81,7 @@ public static class RecommendationEngine
     public static IReadOnlyList<Recommendation> Analyze(
         IReadOnlyList<ProjectedFire> cronFires,
         int workerCapacity,
-        IReadOnlyList<int> adHocBaselinePerSlot = null)
+        IReadOnlyList<int>? adHocBaselinePerSlot = null)
     {
         if (cronFires is null || cronFires.Count == 0)
         {

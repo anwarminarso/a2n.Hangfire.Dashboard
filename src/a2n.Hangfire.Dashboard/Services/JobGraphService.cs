@@ -34,7 +34,7 @@ public class JobGraphService
     /// (walking up via Awaiting state's ParentId), then expanding all descendants via Continuations.
     /// Returns null when the job itself cannot be loaded.
     /// </summary>
-    public JobDependencyGraph Build(string jobId, int maxNodes = DefaultMaxNodes, int maxDepth = DefaultMaxDepth)
+    public JobDependencyGraph? Build(string? jobId, int maxNodes = DefaultMaxNodes, int maxDepth = DefaultMaxDepth)
     {
         if (string.IsNullOrWhiteSpace(jobId)) return null;
 
@@ -89,7 +89,7 @@ public class JobGraphService
 
     private void ExpandDescendants(
         JobGraphNode node,
-        JobDetailsDto nodeDetails,
+        JobDetailsDto? nodeDetails,
         string focusedJobId,
         Dictionary<string, JobGraphNode> visited,
         BuildContext ctx,
@@ -141,7 +141,7 @@ public class JobGraphService
 
     private static JobGraphNode MaterializeNode(
         string jobId,
-        JobDetailsDto details,
+        JobDetailsDto? details,
         Dictionary<string, JobGraphNode> visited,
         BuildContext _)
     {
@@ -162,7 +162,7 @@ public class JobGraphService
         return node;
     }
 
-    private JobDetailsDto SafeGetJobDetails(string jobId)
+    private JobDetailsDto? SafeGetJobDetails(string jobId)
     {
         try
         {
@@ -178,7 +178,7 @@ public class JobGraphService
     /// Looks at the job's state history and returns the ParentId stored on any Awaiting state entry.
     /// History order is implementation-defined across storages, so we scan all entries.
     /// </summary>
-    private static string ExtractParentIdFromHistory(JobDetailsDto details)
+    private static string? ExtractParentIdFromHistory(JobDetailsDto details)
     {
         if (details?.History is null) return null;
 
@@ -242,7 +242,7 @@ public class JobGraphService
         _ => JobContinuationCondition.OnAnyFinishedState,
     };
 
-    private static bool HasAnyEdge(JobGraphNode node)
+    private static bool HasAnyEdge(JobGraphNode? node)
     {
         if (node?.Children is null) return false;
         if (node.Children.Count > 0) return true;
@@ -260,7 +260,7 @@ public class JobGraphService
 
     private sealed class ContinuationDto
     {
-        public string JobId { get; set; }
+        public string? JobId { get; set; }
         public int Options { get; set; }
     }
 

@@ -27,7 +27,7 @@ internal static class EffectiveQueue
     /// empty, or whitespace, the result falls back to <see cref="DefaultQueue"/>.
     /// </param>
     /// <returns>The effective queue name; never null or blank.</returns>
-    public static string Resolve(QueueAttributeInfo queueAttribute, string configuredQueue)
+    public static string? Resolve(QueueAttributeInfo? queueAttribute, string configuredQueue)
     {
         if (queueAttribute is { IsPresent: true })
         {

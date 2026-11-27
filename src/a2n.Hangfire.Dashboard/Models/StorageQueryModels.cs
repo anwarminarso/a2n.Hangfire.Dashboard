@@ -76,22 +76,22 @@ public class JobSummaryDto
     /// <summary>
     /// The unique job identifier.
     /// </summary>
-    public string JobId { get; set; }
+    public string JobId { get; set; } = null!;
 
     /// <summary>
     /// The display name of the job (typically the type and method name).
     /// </summary>
-    public string JobName { get; set; }
+    public string? JobName { get; set; }
 
     /// <summary>
     /// The current state of the job (e.g., Succeeded, Failed, Processing).
     /// </summary>
-    public string State { get; set; }
+    public string? State { get; set; }
 
     /// <summary>
     /// The queue the job was enqueued to.
     /// </summary>
-    public string Queue { get; set; }
+    public string? Queue { get; set; }
 
     /// <summary>
     /// When the job was created.
@@ -116,23 +116,23 @@ public class JobSummaryDto
     /// <summary>
     /// Tags associated with the job.
     /// </summary>
-    public string[] Tags { get; set; }
+    public string[]? Tags { get; set; }
 
     /// <summary>
     /// The exception type if the job failed.
     /// </summary>
-    public string ExceptionType { get; set; }
+    public string? ExceptionType { get; set; }
 
     /// <summary>
     /// The exception message if the job failed.
     /// </summary>
-    public string ExceptionMessage { get; set; }
+    public string? ExceptionMessage { get; set; }
 
     /// <summary>
     /// The reason recorded with the job's current state. Only set by
     /// <see cref="Interfaces.IStorageQueryProvider.GetFailureGroupJobsAsync"/>.
     /// </summary>
-    public string Reason { get; set; }
+    public string? Reason { get; set; }
 
     /// <summary>
     /// The job's stored invocation data, including its arguments, so a list can show the job the way
@@ -140,7 +140,7 @@ public class JobSummaryDto
     /// <see cref="Interfaces.IStorageQueryProvider.GetFailureGroupJobsAsync"/>; meant for rendering,
     /// not as a stable contract of the Hangfire type it exposes.
     /// </summary>
-    public InvocationData InvocationData { get; set; }
+    public InvocationData? InvocationData { get; set; }
 }
 
 /// <summary>
@@ -162,13 +162,13 @@ public class JobFilterCriteria
     /// <summary>
     /// Filter by job state (e.g., "Succeeded", "Failed"). Single state.
     /// </summary>
-    public string State { get; set; }
+    public string? State { get; set; }
 
     /// <summary>
     /// Filter by multiple states (OR logic between states).
     /// Takes precedence over <see cref="State"/> if both are set.
     /// </summary>
-    public List<string> States { get; set; }
+    public List<string>? States { get; set; }
 
     /// <summary>
     /// Filter jobs created on or after this date.
@@ -183,12 +183,12 @@ public class JobFilterCriteria
     /// <summary>
     /// Filter by queue name.
     /// </summary>
-    public string Queue { get; set; }
+    public string? Queue { get; set; }
 
     /// <summary>
     /// Filter by server name (from State.Data ServerId).
     /// </summary>
-    public string Server { get; set; }
+    public string? Server { get; set; }
 
     /// <summary>
     /// Filter jobs with duration greater than or equal to this value.
@@ -203,12 +203,12 @@ public class JobFilterCriteria
     /// <summary>
     /// Filter jobs that have all specified tags (AND logic between tags).
     /// </summary>
-    public List<string> Tags { get; set; }
+    public List<string>? Tags { get; set; }
 
     /// <summary>
     /// Filter by recurring job identifier.
     /// </summary>
-    public string RecurringJobId { get; set; }
+    public string? RecurringJobId { get; set; }
 
     /// <summary>
     /// Filter by the failure fingerprint that <c>FailureFingerprintFilter</c> stored on the job
@@ -217,13 +217,13 @@ public class JobFilterCriteria
     /// <see cref="Helpers.FailureFingerprint.IsCurrentVersion"/> is true is applied; anything else is
     /// ignored, so a malformed value can't turn into a query.
     /// </summary>
-    public string FailureFingerprint { get; set; }
+    public string? FailureFingerprint { get; set; }
 
     /// <summary>
     /// <see cref="FailureFingerprint"/> when it is a current-version fingerprint, otherwise null.
     /// Providers apply this rather than the raw value.
     /// </summary>
-    public string EffectiveFailureFingerprint
+    public string? EffectiveFailureFingerprint
         => Helpers.FailureFingerprint.IsCurrentVersion(FailureFingerprint) ? FailureFingerprint : null;
 
     // ─── Search Patterns (absorbed from separate search methods) ─────
@@ -232,26 +232,26 @@ public class JobFilterCriteria
     /// Search by job type/method name (ILIKE on InvocationData).
     /// Replaces SearchJobsByNameAsync.
     /// </summary>
-    public string JobNamePattern { get; set; }
+    public string? JobNamePattern { get; set; }
 
     /// <summary>
     /// Search by the serialized job arguments, as they are stored.
     /// Unlike <see cref="JobNamePattern"/> this only matches the argument payload, so a value
     /// that also appears in a type or method name does not produce a hit.
     /// </summary>
-    public string ArgumentsPattern { get; set; }
+    public string? ArgumentsPattern { get; set; }
 
     /// <summary>
     /// Search by exception type or message (ILIKE on State.Data exception fields).
     /// Replaces SearchFailedByExceptionAsync.
     /// </summary>
-    public string ExceptionPattern { get; set; }
+    public string? ExceptionPattern { get; set; }
 
     /// <summary>
     /// Search by content (stack trace and/or console output).
     /// Replaces SearchByContentAsync.
     /// </summary>
-    public string ContentPattern { get; set; }
+    public string? ContentPattern { get; set; }
 
     /// <summary>
     /// When ContentPattern is set, whether to search in exception stack traces.
@@ -308,7 +308,7 @@ public class TagCountDto
     /// <summary>
     /// The tag value.
     /// </summary>
-    public string Tag { get; set; }
+    public string? Tag { get; set; }
 
     /// <summary>
     /// Number of jobs associated with this tag.
@@ -325,12 +325,12 @@ public class SlowestJobDto
     /// <summary>
     /// The unique job identifier.
     /// </summary>
-    public string JobId { get; set; }
+    public string JobId { get; set; } = null!;
 
     /// <summary>
     /// The display name of the job (type and method).
     /// </summary>
-    public string JobName { get; set; }
+    public string? JobName { get; set; }
 
     /// <summary>
     /// Processing duration in milliseconds.

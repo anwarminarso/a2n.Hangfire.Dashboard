@@ -40,13 +40,13 @@ public class SourceLinkOptions
     /// <example>
     /// <c>https://github.com/owner/repo/blob/main/{path}#L{line}</c>
     /// </example>
-    public string UrlPattern { get; set; }
+    public string? UrlPattern { get; set; }
 
     /// <summary>
     /// Optional transform applied to the raw file path from the stack trace before substitution into <see cref="UrlPattern"/>.
     /// Use to strip build-agent prefixes, fix path separators, or rebase to a different folder root.
     /// </summary>
-    public Func<string, string> PathTransform { get; set; }
+    public Func<string, string>? PathTransform { get; set; }
 
     /// <summary>
     /// Categorization used by the renderer for icon/tooltip selection. Defaults to <see cref="SourceLinkKind.Custom"/>.
@@ -138,7 +138,7 @@ public static class SourceLinkOptionsExtensions
     /// <example>
     /// <c>"C:\jenkins\workspace\proj\src\Foo.cs".WithPathStrip("src")</c> → <c>"src/Foo.cs"</c>
     /// </example>
-    public static SourceLinkOptions WithPathStrip(this SourceLinkOptions options, string folderName)
+    public static SourceLinkOptions? WithPathStrip(this SourceLinkOptions options, string folderName)
     {
         if (options is null) return null;
         if (string.IsNullOrWhiteSpace(folderName)) return options;
@@ -165,7 +165,7 @@ public static class SourceLinkOptionsExtensions
     /// Sets <see cref="SourceLinkOptions.PathTransform"/> to a regex replace.
     /// Useful for stripping arbitrary build-agent prefixes.
     /// </summary>
-    public static SourceLinkOptions WithPathReplace(this SourceLinkOptions options, string pattern, string replacement)
+    public static SourceLinkOptions? WithPathReplace(this SourceLinkOptions options, string pattern, string replacement)
     {
         if (options is null) return null;
         var regex = new System.Text.RegularExpressions.Regex(pattern);

@@ -30,7 +30,7 @@ public class RetrySummary
     public IReadOnlyList<string> DistinctExceptionTypes { get; init; } = Array.Empty<string>();
 
     /// <summary>Final state name observed (e.g. <c>"Succeeded"</c>, <c>"Failed"</c>, <c>"Deleted"</c>).</summary>
-    public string FinalState { get; init; }
+    public string? FinalState { get; init; }
 
     /// <summary>
     /// Maps each Processing state (and the immediately-following Failed state of the same attempt)
@@ -124,7 +124,7 @@ public class RetrySummary
     /// <summary>
     /// Returns a tooltip listing the distinct exception types, suitable for a hover hint on the banner badge.
     /// </summary>
-    public string GetExceptionTooltip()
+    public string? GetExceptionTooltip()
     {
         if (DistinctExceptionTypes.Count == 0) return null;
         return string.Join(" · ", DistinctExceptionTypes.Select(ExceptionTypeNames.Short));

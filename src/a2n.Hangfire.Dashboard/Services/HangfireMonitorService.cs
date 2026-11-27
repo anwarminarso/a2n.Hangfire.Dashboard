@@ -16,17 +16,17 @@ namespace a2n.Hangfire.Dashboard.Services;
 public class HangfireMonitorService
 {
     private readonly JobStorage _storage;
-    private readonly AuditLogService _audit;
+    private readonly AuditLogService? _audit;
     private readonly DashboardUIOptions _options;
     private readonly JobMethodResolver _resolver;
-    private readonly IFailedJobPageSource _failedJobs;
+    private readonly IFailedJobPageSource? _failedJobs;
 
     public HangfireMonitorService(
         JobStorage storage,
-        AuditLogService audit = null,
-        DashboardUIOptions options = null,
-        JobMethodResolver resolver = null,
-        IFailedJobPageSource failedJobs = null)
+        AuditLogService? audit = null,
+        DashboardUIOptions? options = null,
+        JobMethodResolver? resolver = null,
+        IFailedJobPageSource? failedJobs = null)
     {
         _storage = storage;
         _audit = audit;
@@ -158,7 +158,7 @@ public class HangfireMonitorService
     /// factory. Null when the service is constructed directly, in which case only
     /// <see cref="DashboardUIOptions.IsReadOnly"/> applies.
     /// </summary>
-    internal DashboardPermissionsState Permissions { get; init; }
+    internal DashboardPermissionsState? Permissions { get; init; }
 
     /// <summary>
     /// Read at call time: the option, or the permissions of this scope (for example
@@ -239,8 +239,8 @@ public class HangfireMonitorService
     /// and the exception is rethrown.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
-    public int RequeueJobs(IEnumerable<string> jobIds, string fromState,
-        IReadOnlyDictionary<string, string> auditMetadata = null)
+    public int RequeueJobs(IEnumerable<string> jobIds, string? fromState,
+        IReadOnlyDictionary<string, string>? auditMetadata = null)
     {
         ThrowIfReadOnly();
         return ThrowIfFailed(ChangeStates(jobIds, () => new EnqueuedState(), fromState, AuditAction.JobsRequeuedBatch, auditMetadata));
@@ -275,8 +275,8 @@ public class HangfireMonitorService
     /// and the exception is rethrown.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>).</exception>
-    public int DeleteJobs(IEnumerable<string> jobIds, string fromState,
-        IReadOnlyDictionary<string, string> auditMetadata = null)
+    public int DeleteJobs(IEnumerable<string> jobIds, string? fromState,
+        IReadOnlyDictionary<string, string>? auditMetadata = null)
     {
         ThrowIfReadOnly();
         return ThrowIfFailed(ChangeStates(jobIds, DeletedForDashboard, fromState, AuditAction.JobsDeletedBatch, auditMetadata));
@@ -298,8 +298,8 @@ public class HangfireMonitorService
     /// <exception cref="InvalidOperationException">
     /// The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>). Thrown before any batch runs.
     /// </exception>
-    public Task<BulkJobActionResult> RequeueJobsInBatchesAsync(IReadOnlyList<string> jobIds, string fromState = null,
-        IReadOnlyDictionary<string, string> auditMetadata = null, IProgress<BulkJobActionResult> progress = null,
+    public Task<BulkJobActionResult> RequeueJobsInBatchesAsync(IReadOnlyList<string> jobIds, string? fromState = null,
+        IReadOnlyDictionary<string, string>? auditMetadata = null, IProgress<BulkJobActionResult>? progress = null,
         CancellationToken ct = default)
     {
         ThrowIfReadOnly();
@@ -324,8 +324,8 @@ public class HangfireMonitorService
     /// <exception cref="InvalidOperationException">
     /// The dashboard is read-only (<see cref="DashboardUIOptions.IsReadOnly"/>). Thrown before any batch runs.
     /// </exception>
-    public Task<BulkJobActionResult> DeleteJobsInBatchesAsync(IReadOnlyList<string> jobIds, string fromState = null,
-        IReadOnlyDictionary<string, string> auditMetadata = null, IProgress<BulkJobActionResult> progress = null,
+    public Task<BulkJobActionResult> DeleteJobsInBatchesAsync(IReadOnlyList<string> jobIds, string? fromState = null,
+        IReadOnlyDictionary<string, string>? auditMetadata = null, IProgress<BulkJobActionResult>? progress = null,
         CancellationToken ct = default)
     {
         ThrowIfReadOnly();
@@ -337,7 +337,7 @@ public class HangfireMonitorService
     private static IState DeletedForDashboard() => new DeletedState { Reason = "Deleted via Dashboard" };
 
     // What one batch of state changes did. Completed leaves out the job whose change threw, if one did.
-    private readonly record struct BatchOutcome(int Completed, int Succeeded, Exception Error);
+    private readonly record struct BatchOutcome(int Completed, int Succeeded, Exception? Error);
 
     private static int ThrowIfFailed(BatchOutcome outcome)
     {
@@ -346,14 +346,14 @@ public class HangfireMonitorService
         return outcome.Succeeded;
     }
 
-    private BatchOutcome ChangeStates(IEnumerable<string> jobIds, Func<IState> newState, string fromState,
-        string auditAction, IReadOnlyDictionary<string, string> auditMetadata)
+    private BatchOutcome ChangeStates(IEnumerable<string> jobIds, Func<IState> newState, string? fromState,
+        string auditAction, IReadOnlyDictionary<string, string>? auditMetadata)
     {
         var client = new BackgroundJobClient(_storage);
         var idList = jobIds?.ToList() ?? [];
         var completed = 0;
         var count = 0;
-        Exception error = null;
+        Exception? error = null;
         try
         {
             foreach (var jobId in idList)
@@ -387,7 +387,7 @@ public class HangfireMonitorService
     }
 
     private static async Task<BulkJobActionResult> RunInBatchesAsync(IReadOnlyList<string> jobIds,
-        Func<IReadOnlyList<string>, BatchOutcome> runBatch, IProgress<BulkJobActionResult> progress, CancellationToken ct)
+        Func<IReadOnlyList<string>, BatchOutcome> runBatch, IProgress<BulkJobActionResult>? progress, CancellationToken ct)
     {
         var ids = jobIds ?? Array.Empty<string>();
         var processed = 0;
@@ -451,7 +451,7 @@ public class HangfireMonitorService
             return new JobOperationResult(false, request.JobId, "A job identifier is required.", nameof(RecurringJobRequest.JobId));
 
         // --- Parse Parameter_JSON into the ordered argument elements (over Job_Parameters). ---
-        List<JsonElement> args;
+        List<JsonElement>? args;
         try
         {
             args = ParseParameterJson(request.ParameterJson);
@@ -498,7 +498,7 @@ public class HangfireMonitorService
         // --- Upsert by id. Any storage/cron failure leaves stored state unchanged (Req 11.3). ---
         try
         {
-            var job = new global::Hangfire.Common.Job(resolution.ResolvedType ?? resolution.Method.DeclaringType, resolution.Method, build.Args);
+            var job = new global::Hangfire.Common.Job(resolution.ResolvedType ?? resolution.Method!.DeclaringType, resolution.Method, build.Args!);
             var manager = new RecurringJobManager(_storage);
 
 #pragma warning disable CS0618 // QueueName is obsolete but no alternative overload available in 1.8.x
@@ -558,7 +558,7 @@ public class HangfireMonitorService
             return new JobOperationResult(false, null, "Arbitrary method invocation is disabled.", null);
 
         // --- Parse Parameter_JSON into the ordered argument elements (over Job_Parameters). ---
-        List<JsonElement> args;
+        List<JsonElement>? args;
         try
         {
             args = ParseParameterJson(request.ParameterJson);
@@ -593,7 +593,7 @@ public class HangfireMonitorService
         string jobId;
         try
         {
-            var job = new global::Hangfire.Common.Job(resolution.ResolvedType ?? resolution.Method.DeclaringType, resolution.Method, build.Args);
+            var job = new global::Hangfire.Common.Job(resolution.ResolvedType ?? resolution.Method!.DeclaringType, resolution.Method, build.Args!);
             var client = new BackgroundJobClient(_storage);
             jobId = client.Create(job, new EnqueuedState(queue));
         }
@@ -635,7 +635,7 @@ public class HangfireMonitorService
     /// Job_Parameters. Returns an empty list for null/blank input, <c>null</c> when the top-level
     /// JSON value is not an array, and throws <see cref="JsonException"/> for malformed JSON.
     /// </summary>
-    private static List<JsonElement> ParseParameterJson(string parameterJson)
+    private static List<JsonElement>? ParseParameterJson(string parameterJson)
     {
         if (string.IsNullOrWhiteSpace(parameterJson))
             return [];
@@ -821,7 +821,7 @@ public class HangfireMonitorService
     /// <c>Job</c> field (exact text, readable even when the job's assembly is not loaded) and falling
     /// back to re-serializing the resolved job.
     /// </summary>
-    private static string ReadRecurringJobPayload(JobStorageConnection connection, string recurringJobId, RecurringJobDto job)
+    private static string? ReadRecurringJobPayload(JobStorageConnection connection, string recurringJobId, RecurringJobDto job)
     {
         var entries = connection.GetAllEntriesFromHash($"recurring-job:{recurringJobId}");
         if (entries is not null &&
@@ -880,7 +880,7 @@ public class HangfireMonitorService
         return new global::Hangfire.Common.Job(type, method, args);
     }
 
-    private static object DefaultArgumentFor(System.Reflection.ParameterInfo parameter)
+    private static object? DefaultArgumentFor(System.Reflection.ParameterInfo parameter)
     {
         var parameterType = parameter.ParameterType;
 
@@ -925,7 +925,7 @@ public class HangfireMonitorService
     /// <summary>
     /// Gets the stored config for a stopped recurring job.
     /// </summary>
-    public Dictionary<string, string> GetStoppedJobConfig(string recurringJobId)
+    public Dictionary<string, string>? GetStoppedJobConfig(string recurringJobId)
     {
         using var connection = _storage.GetReadOnlyConnection();
         if (connection is not JobStorageConnection storageConnection) return null;

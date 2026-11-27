@@ -8,13 +8,13 @@ namespace a2n.Hangfire.Dashboard.Helpers;
 internal static class GridSort
 {
     public static IOrderedEnumerable<T> By<T, TKey>(
-        IEnumerable<T> items,
+        IEnumerable<T>? items,
         Func<T, TKey> key,
         Func<T, bool> hasValue,
         IComparer<TKey> comparer,
         bool descending)
     {
-        var missingLast = items.OrderBy(item => hasValue(item) ? 0 : 1);
+        var missingLast = items!.OrderBy(item => hasValue(item) ? 0 : 1);
         return descending
             ? missingLast.ThenByDescending(key, comparer)
             : missingLast.ThenBy(key, comparer);
@@ -26,10 +26,10 @@ internal static class GridSort
     /// <c>null</c> key value counts as missing. Strings compare case-insensitively.
     /// </summary>
     public static IEnumerable<T> Apply<T, TColumn>(
-        IEnumerable<T> items,
+        IEnumerable<T>? items,
         GridSortState<TColumn> state,
-        Func<TColumn, Func<T, object>> keyFor,
-        Func<T, string> tieBreak = null)
+        Func<TColumn, Func<T, object?>?> keyFor,
+        Func<T, string?>? tieBreak = null)
         where TColumn : struct, Enum
     {
         if (items is null)
@@ -43,14 +43,14 @@ internal static class GridSort
         return tieBreak is null ? ordered : ordered.ThenBy(tieBreak, StringComparer.OrdinalIgnoreCase);
     }
 
-    private sealed class ValueComparer : IComparer<object>
+    private sealed class ValueComparer : IComparer<object?>
     {
         public static readonly ValueComparer Instance = new();
 
-        public int Compare(object x, object y) =>
+        public int Compare(object? x, object? y) =>
             x is string a && y is string b
                 ? StringComparer.OrdinalIgnoreCase.Compare(a, b)
-                : Comparer<object>.Default.Compare(x, y);
+                : Comparer<object?>.Default.Compare(x, y);
     }
 }
 

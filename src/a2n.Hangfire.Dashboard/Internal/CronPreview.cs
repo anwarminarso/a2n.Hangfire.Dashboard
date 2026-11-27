@@ -43,7 +43,7 @@ internal static class CronPreview
     /// <param name="cronExpression">The candidate cron expression.</param>
     /// <param name="parsed">The parsed expression when this method returns <c>true</c>; otherwise <c>null</c>.</param>
     /// <returns><c>true</c> when the expression parsed successfully; otherwise <c>false</c>.</returns>
-    public static bool TryParse(string cronExpression, out CronExpression parsed)
+    public static bool TryParse(string cronExpression, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out CronExpression? parsed)
     {
         parsed = null;
 
@@ -53,7 +53,7 @@ internal static class CronPreview
         }
 
         var expression = cronExpression.Trim();
-        var fieldCount = expression.Split((char[])null, StringSplitOptions.RemoveEmptyEntries).Length;
+        var fieldCount = expression.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
         var primaryFormat = fieldCount >= 6 ? CronFormat.IncludeSeconds : CronFormat.Standard;
 
         if (TryParseWithFormat(expression, primaryFormat, out parsed))
@@ -101,7 +101,8 @@ internal static class CronPreview
         return new CronPreviewResult(true, next);
     }
 
-    private static bool TryParseWithFormat(string expression, CronFormat format, out CronExpression parsed)
+    private static bool TryParseWithFormat(
+        string expression, CronFormat format, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out CronExpression? parsed)
     {
         try
         {

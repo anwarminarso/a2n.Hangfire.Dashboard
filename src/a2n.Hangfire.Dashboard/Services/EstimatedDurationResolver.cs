@@ -34,7 +34,7 @@ public class EstimatedDurationResolver
     /// <summary>The floor for any resolved or default estimated duration (Req 21.3, design invariant).</summary>
     private static readonly TimeSpan MinimumDuration = TimeSpan.FromMinutes(1);
 
-    private readonly IStorageMetricsProvider _metricsProvider;
+    private readonly IStorageMetricsProvider? _metricsProvider;
     private readonly DashboardUIOptions _options;
     private readonly ILogger<EstimatedDurationResolver> _logger;
 

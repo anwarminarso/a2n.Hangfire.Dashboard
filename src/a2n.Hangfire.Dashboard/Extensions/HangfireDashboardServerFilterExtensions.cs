@@ -39,7 +39,7 @@ public static class HangfireDashboardServerFilterExtensions
     /// <param name="options">Optional behaviour options. When null, defaults are used.</param>
     public static IGlobalConfiguration UseDashboardQueuePauseFilter(
         this IGlobalConfiguration configuration,
-        QueueOperationsOptions options = null)
+        QueueOperationsOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         GlobalJobFilters.Filters.Add(new QueuePauseServerFilter(options));

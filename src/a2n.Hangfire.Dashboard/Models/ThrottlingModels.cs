@@ -16,13 +16,13 @@ public static class ThrottleWindowTypes
 /// </summary>
 public class SemaphoreDto
 {
-    public string Id { get; set; }
+    public string Id { get; set; } = null!;
 
     /// <summary>Maximum number of concurrent holders.</summary>
     public int MaxCount { get; set; }
 
     /// <summary>Optional description, when one was provided at registration.</summary>
-    public string Description { get; set; }
+    public string? Description { get; set; }
 
     /// <summary>Ids of background jobs currently holding a slot.</summary>
     public IReadOnlyList<string> HolderJobIds { get; set; } = [];
@@ -34,7 +34,7 @@ public class SemaphoreDto
 /// </summary>
 public class MutexDto
 {
-    public string Id { get; set; }
+    public string Id { get; set; } = null!;
 
     /// <summary>Ids of background jobs currently holding the mutex (normally one).</summary>
     public IReadOnlyList<string> HolderJobIds { get; set; } = [];
@@ -45,13 +45,13 @@ public class MutexDto
 /// </summary>
 public class ThrottleHolderDto
 {
-    public string JobId { get; set; }
+    public string JobId { get; set; } = null!;
 
     /// <summary>Current state name of the job, or null when the job no longer exists.</summary>
-    public string StateName { get; set; }
+    public string? StateName { get; set; }
 
     /// <summary>The server processing the job, when it is in the Processing state.</summary>
-    public string ServerId { get; set; }
+    public string? ServerId { get; set; }
 
     /// <summary>
     /// True when the job can no longer release its own slot: its record has expired out of
@@ -65,7 +65,7 @@ public class ThrottleHolderDto
     /// Why the holder was flagged as orphaned, shown to the operator before they detach it.
     /// Null when <see cref="IsOrphaned"/> is false.
     /// </summary>
-    public string OrphanReason { get; set; }
+    public string? OrphanReason { get; set; }
 }
 
 /// <summary>
@@ -74,12 +74,12 @@ public class ThrottleHolderDto
 public class ThrottleWindowDto
 {
     /// <summary>"Fixed", "Sliding", or "Dynamic".</summary>
-    public string Type { get; set; }
+    public string? Type { get; set; }
 
-    public string Id { get; set; }
+    public string Id { get; set; } = null!;
 
     /// <summary>Optional description, when one was provided at registration.</summary>
-    public string Description { get; set; }
+    public string? Description { get; set; }
 
     /// <summary>Maximum executions per window, when the stored object exposes it.</summary>
     public int? Limit { get; set; }

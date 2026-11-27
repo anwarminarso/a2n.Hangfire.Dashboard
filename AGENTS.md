@@ -23,8 +23,7 @@ Core principles (from `docs/ROADMAP.md`):
   (per-TFM versions use conditional `PackageVersion` items); `.csproj` files use `<PackageReference Include="…" />`
   without `Version`. Don't use floating (`*`) versions. Dependabot proposes updates weekly.
 - **Compiler settings:** `src/Directory.Build.props` enables nullable reference types for every package and
-  treats warnings as errors in Release. `a2n.Hangfire.Dashboard` still sets `<Nullable>disable</Nullable>` until its
-  migration is done; new code elsewhere must be nullable-clean. `.editorconfig` holds the code style and the
+  treats warnings as errors in Release, so all new code must be nullable-clean. `.editorconfig` holds the code style and the
   enforced analyzer rules. An empty `catch` needs a comment that says why swallowing is safe.
 
 ## Tech stack

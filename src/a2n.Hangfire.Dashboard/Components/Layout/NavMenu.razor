@@ -177,13 +177,13 @@
     private static readonly string[] _managementExpandPaths = { "recurring", "heatmap", "servers", "queues", "retries", "tags", "search", "audit" };
     private static readonly string[] _analyticsExpandPaths = { "analytics" };
 
-    private StatisticsDto _stats;
+    private StatisticsDto? _stats;
     private long _tagsCount;
     private bool _hasThrottling;
     private int _pausedQueueCount;
     private bool _analyticsAvailable;
-    private IDisposable _metricsSubscription;
-    private DashboardPoller _slowPoller;
+    private IDisposable? _metricsSubscription;
+    private DashboardPoller? _slowPoller;
 
     protected override async Task OnInitializedAsync()
     {

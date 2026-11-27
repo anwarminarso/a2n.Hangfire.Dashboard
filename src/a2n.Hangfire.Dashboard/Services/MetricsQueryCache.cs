@@ -26,15 +26,15 @@ public sealed class MetricsQueryCache
         CancellationToken ct,
         bool snapshot = false)
     {
-        if (_cache.TryGetValue(key, out T cached))
-            return cached;
+        if (_cache.TryGetValue(key, out T? cached))
+            return cached!;
 
         var gate = _locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         try
         {
             if (_cache.TryGetValue(key, out cached))
-                return cached;
+                return cached!;
 
             var value = await factory(ct);
             _cache.Set(key, value, snapshot ? SnapshotTtl : DefaultTtl);

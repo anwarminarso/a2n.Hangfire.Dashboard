@@ -193,8 +193,8 @@ else
 
     // Duration trend chart
     private string[] _durationTrendLabels = Array.Empty<string>();
-    private object _durationTrendData;
-    private object _durationTrendOptions;
+    private object? _durationTrendData;
+    private object? _durationTrendOptions;
     private readonly string _durationTrendCanvasId = $"perf-duration-trend-{Guid.NewGuid():N}";
 
     // Duration stats table
@@ -202,14 +202,14 @@ else
 
     // Queue latency chart
     private IReadOnlyList<QueueLatencyStatsDto> _queueLatencyStats = Array.Empty<QueueLatencyStatsDto>();
-    private object _queueLatencyData;
-    private object _queueLatencyOptions;
+    private object? _queueLatencyData;
+    private object? _queueLatencyOptions;
 
     // Slowest jobs table
     private IReadOnlyList<SlowestJobDto> _slowestJobs = Array.Empty<SlowestJobDto>();
 
     // Average state timings
-    private AverageStateTimingsDto _stateTimings;
+    private AverageStateTimingsDto? _stateTimings;
 
     protected override async Task OnInitializedAsync()
     {
@@ -398,7 +398,7 @@ else
         };
     }
 
-    private static string GetShortTypeName(string fullTypeName)
+    private static string GetShortTypeName(string? fullTypeName)
     {
         if (string.IsNullOrEmpty(fullTypeName))
             return "Unknown";

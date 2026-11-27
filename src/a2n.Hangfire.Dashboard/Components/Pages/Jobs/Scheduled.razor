@@ -99,17 +99,17 @@
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
-    private JobList<ScheduledJobDto> _jobs;
+    private JobList<ScheduledJobDto>? _jobs;
     private long _totalCount;
     private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
 
     protected override async Task OnInitializedAsync()
     {
@@ -145,7 +145,7 @@
 
     // Storages keep the scheduled set ordered by the time a job will be enqueued, so that is the
     // column the order toggle belongs to.
-    private JobList<ScheduledJobDto> FetchPage(long total) =>
+    private JobList<ScheduledJobDto>? FetchPage(long total) =>
         _order.Fetch(Monitor.GetScheduledJobs, total, _from, _pageSize, j => j.EnqueueAt);
 
     private async Task ToggleOrder()

@@ -133,13 +133,13 @@ else
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
-    [Parameter] public string QueueName { get; set; }
+    [Parameter] public string? QueueName { get; set; }
 
-    private IList<QueueWithTopEnqueuedJobsDto> _queues;
-    private JobList<EnqueuedJobDto> _jobs;
+    private IList<QueueWithTopEnqueuedJobsDto>? _queues;
+    private JobList<EnqueuedJobDto>? _jobs;
     private readonly ReversibleOrder _order = new();
     private string _activeQueue = "default";
     private long _totalCount;
@@ -148,7 +148,7 @@ else
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -197,7 +197,7 @@ else
         });
     }
 
-    private JobList<EnqueuedJobDto> FetchPage(long total) =>
+    private JobList<EnqueuedJobDto>? FetchPage(long total) =>
         _order.Fetch((from, count) => Monitor.GetEnqueuedJobs(_activeQueue, from, count),
             total, _from, _pageSize, j => j.EnqueuedAt);
 

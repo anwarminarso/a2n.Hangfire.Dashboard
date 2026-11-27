@@ -106,9 +106,9 @@
                                             }
                                         </td>
                                         <td class="text-end hf-cell-meta hf-nowrap" data-label="Started">
-                                            @if (job.Value.StartedAt.HasValue)
+                                            @if (job.Value!.StartedAt.HasValue)
                                             {
-                                                @if (_jobProgress.TryGetValue(job.Key, out var progress))
+                                                @if (_jobProgress!.TryGetValue(job.Key, out var progress))
                                                 {
                                                     <JobProgressCircle Value="@progress" />
                                                 }
@@ -137,20 +137,20 @@
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
-    private JobList<ProcessingJobDto> _jobs;
+    private JobList<ProcessingJobDto>? _jobs;
     private long _totalCount;
     private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private DashboardPoller _poller;
-    private Dictionary<string, double> _jobProgress = new();
+    private DashboardPoller? _poller;
+    private Dictionary<string, double>? _jobProgress = new();
     private bool _consoleEnabled;
-    private IList<ServerDto> _servers;
+    private IList<ServerDto>? _servers;
     private static readonly TimeSpan ServerAbortedThreshold = TimeSpan.FromMinutes(5);
 
     protected override async Task OnInitializedAsync()
@@ -173,7 +173,7 @@
 
             // Even if the job list hasn't changed, poll progress updates.
             var latest = _consoleEnabled && shown?.Count > 0 ? GetProgressForJobs(shown) : null;
-            return (total, (JobList<ProcessingJobDto>)null, latest);
+            return (total, (JobList<ProcessingJobDto>?)null, latest);
         }, ct);
 
         if (jobs is not null)
@@ -214,7 +214,7 @@
     private async Task<IList<ServerDto>> GetServersAsync(CancellationToken ct)
         => (await MetricsFeed.GetMetricsAsync(ct)).Servers.ToList();
 
-    private JobList<ProcessingJobDto> FetchPage(long total) =>
+    private JobList<ProcessingJobDto>? FetchPage(long total) =>
         _order.Fetch(Monitor.GetProcessingJobs, total, _from, _pageSize, j => j.StartedAt);
 
     private async Task ToggleOrder()
@@ -226,7 +226,7 @@
         await LoadData();
     }
 
-    private Dictionary<string, double> GetProgressForJobs(JobList<ProcessingJobDto> jobs)
+    private Dictionary<string, double> GetProgressForJobs(JobList<ProcessingJobDto>? jobs)
     {
         if (jobs is null || jobs.Count == 0)
             return new();
@@ -264,9 +264,9 @@
             s.Heartbeat < now.Add(ServerAbortedThreshold.Negate()));
     }
 
-    private static bool ProgressEquals(Dictionary<string, double> a, Dictionary<string, double> b)
+    private static bool ProgressEquals(Dictionary<string, double> a, Dictionary<string, double>? b)
     {
-        if (a.Count != b.Count) return false;
+        if (a.Count != b!.Count) return false;
         foreach (var kv in a)
         {
             if (!b.TryGetValue(kv.Key, out var val) || Math.Abs(val - kv.Value) > 0.01)

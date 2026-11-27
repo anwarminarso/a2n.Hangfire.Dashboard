@@ -113,7 +113,7 @@ public partial class HeatmapService
     /// duration-stats query. Returns <c>null</c> when no metrics provider is registered (every job
     /// then falls back to the configured default).
     /// </summary>
-    private async Task<IReadOnlyDictionary<string, (TimeSpan Duration, bool IsDefault)>> ResolveDurationsAsync(
+    private async Task<IReadOnlyDictionary<string, (TimeSpan Duration, bool IsDefault)>?> ResolveDurationsAsync(
         List<RecurringJobDto> dtos, CancellationToken ct)
     {
         if (_durationResolver == null || !_durationResolver.IsAvailable)
@@ -126,7 +126,7 @@ public partial class HeatmapService
             return _durationMemo;
         }
 
-        var keys = dtos.Select(JobTypeKey).Where(k => !string.IsNullOrEmpty(k));
+        var keys = dtos.Select(JobTypeKey).Where(k => !string.IsNullOrEmpty(k)).Select(k => k!);
         var (from, to) = DurationStatsWindow();
 
         try
@@ -149,7 +149,7 @@ public partial class HeatmapService
     /// job, matching <c>IStorageMetricsProvider.GetJobDurationStatsAsync</c>'s <c>JobType</c> format.
     /// Returns <c>null</c> when the job's type or method cannot be determined.
     /// </summary>
-    private static string JobTypeKey(RecurringJobDto dto)
+    private static string? JobTypeKey(RecurringJobDto dto)
     {
         var type = dto?.Job?.Type;
         var method = dto?.Job?.Method;

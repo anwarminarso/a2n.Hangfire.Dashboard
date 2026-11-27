@@ -53,7 +53,7 @@ public static class JobArgumentsRenderer
     /// <param name="invocationData">Raw invocation data; used for the original argument payload and
     /// as the fallback source when <paramref name="job"/> is <c>null</c>.</param>
     /// <param name="jobId">The job identifier, rendered as a leading comment.</param>
-    public static string RenderMethodCall(Job job, InvocationData invocationData, string jobId)
+    public static string RenderMethodCall(Job? job, InvocationData? invocationData, string jobId)
     {
         var builder = new StringBuilder();
 
@@ -91,7 +91,7 @@ public static class JobArgumentsRenderer
     /// Returns the job's arguments as plain text in their stored (JSON) form — the same text the
     /// <c>args:</c> search matches against — or an empty string when the job takes no arguments.
     /// </summary>
-    public static string GetArgumentsText(Job job, InvocationData invocationData)
+    public static string GetArgumentsText(Job? job, InvocationData? invocationData)
     {
         var raw = GetRawArguments(job, invocationData);
 
@@ -129,7 +129,7 @@ public static class JobArgumentsRenderer
 
     // ─── Rendering: resolved job ───────────────────────────────────────────────
 
-    private static void AppendResolvedCall(StringBuilder builder, Job job, InvocationData invocationData)
+    private static void AppendResolvedCall(StringBuilder builder, Job job, InvocationData? invocationData)
     {
         if (!string.IsNullOrEmpty(job.Type.Namespace))
         {
@@ -141,7 +141,7 @@ public static class JobArgumentsRenderer
             builder.AppendLine();
         }
 
-        string serviceName = null;
+        string? serviceName = null;
 
         if (!job.Method.IsStatic)
         {
@@ -189,7 +189,7 @@ public static class JobArgumentsRenderer
     /// when the stored payload has fewer arguments than the method has parameters.
     /// </summary>
     private static List<string> RenderArgumentValues(
-        Job job, InvocationData invocationData, ParameterInfo[] parameters, out int totalLength)
+        Job job, InvocationData? invocationData, ParameterInfo[] parameters, out int totalLength)
     {
         var arguments = GetRawArguments(job, invocationData);
         var rendered = new List<string>(parameters.Length);
@@ -220,11 +220,11 @@ public static class JobArgumentsRenderer
         return rendered;
     }
 
-    private static string RenderArgument(Type parameterType, string argument)
+    private static string RenderArgument(Type parameterType, string? argument)
     {
         var enumerableArgument = GetEnumerableGenericArgument(parameterType);
 
-        object argumentValue;
+        object? argumentValue;
         var isJson = true;
 
         try
@@ -272,7 +272,7 @@ public static class JobArgumentsRenderer
     /// not be resolved. Parameter names are unavailable, so the declared parameter types are used as
     /// tooltips instead.
     /// </summary>
-    private static void AppendUnresolvedCall(StringBuilder builder, InvocationData invocationData)
+    private static void AppendUnresolvedCall(StringBuilder builder, InvocationData? invocationData)
     {
         if (invocationData is null)
         {
@@ -306,7 +306,7 @@ public static class JobArgumentsRenderer
         var parameterTypes = DeserializeStringArray(invocationData.ParameterTypes);
 
         var rendered = new List<string>(arguments.Count);
-        var titles = new List<string>(arguments.Count);
+        var titles = new List<string?>(arguments.Count);
         var totalLength = 0;
 
         for (var i = 0; i < arguments.Count; i++)
@@ -333,7 +333,7 @@ public static class JobArgumentsRenderer
     /// attaching <paramref name="titles"/> as hover tooltips.
     /// </summary>
     private static void AppendArgumentList(
-        StringBuilder builder, IReadOnlyList<string> rendered, IReadOnlyList<string> titles, int totalLength)
+        StringBuilder builder, IReadOnlyList<string> rendered, IReadOnlyList<string?> titles, int totalLength)
     {
         for (var i = 0; i < rendered.Count; i++)
         {
@@ -369,7 +369,7 @@ public static class JobArgumentsRenderer
     /// <see cref="InvocationData.Arguments"/> payload is preferred (it is the exact stored text);
     /// otherwise the arguments are re-serialized from the resolved job.
     /// </summary>
-    private static IReadOnlyList<string> GetRawArguments(Job job, InvocationData invocationData)
+    private static IReadOnlyList<string?> GetRawArguments(Job? job, InvocationData? invocationData)
     {
         var fromInvocationData = DeserializeStringArray(invocationData?.Arguments);
         if (fromInvocationData.Count > 0)
@@ -390,7 +390,7 @@ public static class JobArgumentsRenderer
         }
     }
 
-    private static IReadOnlyList<string> DeserializeStringArray(string json)
+    private static IReadOnlyList<string> DeserializeStringArray(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
             return EmptyArguments;
@@ -428,7 +428,7 @@ public static class JobArgumentsRenderer
     /// dot, generic arguments spelled out. Equivalent to Hangfire's internal
     /// <c>ToGenericTypeString()</c>.
     /// </summary>
-    private static string FormatTypeName(Type type)
+    private static string FormatTypeName(Type? type)
     {
         if (type is null)
             return "";
@@ -506,7 +506,7 @@ public static class JobArgumentsRenderer
                && returnType.FullName.StartsWith("System.Threading.Tasks.ValueTask", StringComparison.Ordinal);
     }
 
-    private static Type GetEnumerableGenericArgument(Type type)
+    private static Type? GetEnumerableGenericArgument(Type type)
     {
         if (type == typeof(string))
             return null;
@@ -518,9 +518,10 @@ public static class JobArgumentsRenderer
             .FirstOrDefault();
     }
 
-    private static string Span(string cssClass, string value) => $"<span class=\"{cssClass}\">{value}</span>";
+    private static string Span(string cssClass, string? value) => $"<span class=\"{cssClass}\">{value}</span>";
 
-    private static string Encode(string value) => WebUtility.HtmlEncode(value);
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(value))]
+    private static string? Encode(string? value) => WebUtility.HtmlEncode(value);
 
     // ─── Type-aware argument renderers ────────────────────────────────────────
 
@@ -531,8 +532,8 @@ public static class JobArgumentsRenderer
     private sealed class ArgumentRenderer
     {
         private string _enclosingString;
-        private Type _deserializationType;
-        private Func<string, string> _valueRenderer;
+        private Type? _deserializationType;
+        private Func<string?, string> _valueRenderer;
 
         private ArgumentRenderer()
         {
@@ -540,7 +541,7 @@ public static class JobArgumentsRenderer
             _valueRenderer = value => value is null ? Span("code-keyword", "null") : Span("code-string", value);
         }
 
-        public string Render(bool isJson, string deserializedValue, string rawValue)
+        public string Render(bool isJson, string? deserializedValue, string? rawValue)
         {
             if (rawValue is null)
                 return Span("code-keyword", "null");
@@ -596,7 +597,7 @@ public static class JobArgumentsRenderer
                 return new ArgumentRenderer
                 {
                     _enclosingString = string.Empty,
-                    _valueRenderer = value => Span("code-keyword", value.ToLowerInvariant())
+                    _valueRenderer = value => Span("code-keyword", value!.ToLowerInvariant())
                 };
             }
 

@@ -58,9 +58,9 @@
 
     /// <summary>The request that renders this page. Set during the static render only.</summary>
     [CascadingParameter]
-    private HttpContext HttpContext { get; set; }
+    private HttpContext? HttpContext { get; set; }
 
-    private DashboardPermissions _permissions;
+    private DashboardPermissions? _permissions;
 
     protected override void OnInitialized()
     {

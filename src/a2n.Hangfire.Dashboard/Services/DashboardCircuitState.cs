@@ -57,7 +57,7 @@ public sealed class DashboardCircuitState : CircuitHandler
 
     internal void SetConnected(bool connected)
     {
-        TaskCompletionSource toComplete = null;
+        TaskCompletionSource? toComplete = null;
         lock (_lock)
         {
             if (connected)

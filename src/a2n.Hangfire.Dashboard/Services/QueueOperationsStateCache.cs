@@ -22,7 +22,7 @@ public sealed class QueueOperationsStateCache : IDisposable
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    private QueueOperationsState _state;
+    private QueueOperationsState? _state;
     private long _computedAtTicks;
 
     /// <summary>How long a state snapshot is reused before a fresh read. Default: 2 seconds.</summary>
@@ -39,7 +39,7 @@ public sealed class QueueOperationsStateCache : IDisposable
     public async Task<QueueOperationsState> GetAsync(bool forceRefresh = false, CancellationToken ct = default)
     {
         if (!forceRefresh && IsFresh())
-            return _state;
+            return _state!;
 
         var requestedAtTicks = DateTime.UtcNow.Ticks;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -52,7 +52,7 @@ public sealed class QueueOperationsStateCache : IDisposable
             }
             else if (IsFresh())
             {
-                return _state;
+                return _state!;
             }
 
             var state = await Task.Run(() =>

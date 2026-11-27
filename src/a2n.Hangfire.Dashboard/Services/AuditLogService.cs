@@ -33,15 +33,15 @@ public class AuditLogService
     private readonly JobStorage _storage;
     private readonly DashboardUIOptions _options;
     private readonly IHttpContextAccessor _httpContext;
-    private readonly AuditActorAccessor _actor;
-    private readonly ILogger<AuditLogService> _logger;
+    private readonly AuditActorAccessor? _actor;
+    private readonly ILogger<AuditLogService>? _logger;
 
     public AuditLogService(
         JobStorage storage,
         DashboardUIOptions options,
         IHttpContextAccessor httpContext,
-        AuditActorAccessor actor = null,
-        ILogger<AuditLogService> logger = null)
+        AuditActorAccessor? actor = null,
+        ILogger<AuditLogService>? logger = null)
     {
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -59,8 +59,8 @@ public class AuditLogService
     /// Explicit actor override. When supplied (non-null), it takes precedence over the ambient
     /// circuit/HTTP identity. Use when the caller already knows the acting user.
     /// </param>
-    public void Log(string action, string target = null, string reason = null,
-        IDictionary<string, string> metadata = null, string actor = null)
+    public void Log(string action, string? target = null, string? reason = null,
+        IDictionary<string, string>? metadata = null, string? actor = null)
     {
         if (string.IsNullOrEmpty(action)) throw new ArgumentNullException(nameof(action));
         if (!_options.AuditLog.Enabled) return;
@@ -285,7 +285,7 @@ public class AuditLogService
 
     // ---- Helpers ----
 
-    private (string user, string ip) ResolveActor(string explicitActor = null)
+    private (string user, string ip) ResolveActor(string? explicitActor = null)
     {
         // 1. Explicit override wins.
         if (!string.IsNullOrWhiteSpace(explicitActor))
@@ -294,7 +294,7 @@ public class AuditLogService
         // 2. Per-circuit accessor (the normal path for Blazor interactive actions, where
         //    HttpContext is null). Populated by the dashboard layout from AuthenticationStateProvider.
         if (_actor is { HasActor: true })
-            return (_actor.User, _actor.ClientIp ?? string.Empty);
+            return (_actor.User!, _actor.ClientIp ?? string.Empty);
 
         // 3. HttpContext fallback (classic request path, e.g. health endpoint or non-Blazor hosts).
         var ctx = _httpContext?.HttpContext;
@@ -304,7 +304,7 @@ public class AuditLogService
             return ("(system)", _actor?.ClientIp ?? string.Empty);
         }
 
-        string user = null;
+        string? user = null;
         if (ctx.User?.Identity?.IsAuthenticated == true)
         {
             user = ctx.User.Identity.Name;
@@ -327,7 +327,7 @@ public class AuditLogService
 
     private static AuditLogEntry HashToEntry(string id, Dictionary<string, string> hash)
     {
-        Dictionary<string, string> metadata = null;
+        Dictionary<string, string>? metadata = null;
         if (hash.TryGetValue("metadata", out var metaJson) && !string.IsNullOrEmpty(metaJson))
         {
             try { metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(metaJson); }
@@ -365,7 +365,7 @@ public class AuditLogService
         if (filter.FromUtc.HasValue && e.TimestampUtc < filter.FromUtc.Value) return false;
         if (filter.ToUtc.HasValue && e.TimestampUtc > filter.ToUtc.Value) return false;
         if (!string.IsNullOrEmpty(filter.ActionPrefix) &&
-            !e.Action.StartsWith(filter.ActionPrefix, StringComparison.OrdinalIgnoreCase))
+            !e.Action!.StartsWith(filter.ActionPrefix, StringComparison.OrdinalIgnoreCase))
             return false;
         if (!string.IsNullOrEmpty(filter.User) &&
             (e.User?.IndexOf(filter.User, StringComparison.OrdinalIgnoreCase) ?? -1) < 0)

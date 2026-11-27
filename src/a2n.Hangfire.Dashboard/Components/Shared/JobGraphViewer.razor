@@ -54,14 +54,14 @@
 }
 
 @code {
-    [Parameter] public string JobId { get; set; }
+    [Parameter] public string? JobId { get; set; }
 
     /// <summary>Hard ceiling to prevent runaway expansion regardless of how many times the user clicks "Load more".</summary>
     private const int MaxAllowedNodes = 200;
     private const int MaxAllowedDepth = 12;
 
-    private JobDependencyGraph _graph;
-    private string _renderedJobId;
+    private JobDependencyGraph? _graph;
+    private string? _renderedJobId;
     private int _currentMaxNodes;
     private int _currentMaxDepth;
     private bool _loading;
@@ -102,12 +102,12 @@
 
     private bool CanExpand() => _currentMaxNodes < MaxAllowedNodes || _currentMaxDepth < MaxAllowedDepth;
 
-    private RenderFragment RenderNode(JobGraphNode node, bool isRoot) => __builder =>
+    private RenderFragment RenderNode(JobGraphNode? node, bool isRoot) => __builder =>
     {
         <div class="hf-graph-node-wrapper">
             <div class="hf-graph-node @GetNodeClass(node)" title="@GetNodeTooltip(node)">
                 <div class="hf-graph-node-state">
-                    <i class="bi @GetStateIcon(node.StateName) @GetStateTextClass(node.StateName)"></i>
+                    <i class="bi @GetStateIcon(node!.StateName) @GetStateTextClass(node.StateName)"></i>
                 </div>
                 <div class="hf-graph-node-body">
                     @if (node.NotFound)
@@ -155,20 +155,20 @@
         </div>
     };
 
-    private string GetJobUrl(string jobId)
+    private string GetJobUrl(string? jobId)
         => Navigation.ToAbsoluteUri($"jobs/details/{jobId}").PathAndQuery;
 
-    private static string GetNodeClass(JobGraphNode node)
+    private static string GetNodeClass(JobGraphNode? node)
     {
         var cls = "hf-graph-node-card";
-        if (node.IsCurrent) cls += " hf-graph-node-current";
+        if (node!.IsCurrent) cls += " hf-graph-node-current";
         if (node.NotFound) cls += " hf-graph-node-missing";
         return cls;
     }
 
-    private static string GetNodeTooltip(JobGraphNode node)
+    private static string GetNodeTooltip(JobGraphNode? node)
     {
-        if (node.NotFound) return "This job has expired or was deleted.";
+        if (node!.NotFound) return "This job has expired or was deleted.";
         if (node.IsCurrent) return "Current job";
         return $"Open job #{node.JobId}";
     }
@@ -187,7 +187,7 @@
         _ => "",
     };
 
-    private static string GetStateIcon(string stateName) => stateName switch
+    private static string GetStateIcon(string? stateName) => stateName switch
     {
         "Succeeded" => "bi-check-circle-fill",
         "Failed" => "bi-x-circle-fill",
@@ -200,7 +200,7 @@
         _ => "bi-circle",
     };
 
-    private static string GetStateTextClass(string stateName) => stateName switch
+    private static string GetStateTextClass(string? stateName) => stateName switch
     {
         "Succeeded" => "text-success",
         "Failed" => "text-danger",

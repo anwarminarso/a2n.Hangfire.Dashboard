@@ -98,7 +98,7 @@ else
         <label class="form-label small fw-semibold text-body-secondary mb-1">
             <i class="bi bi-braces"></i> Parameter JSON
         </label>
-        <textarea class="form-control font-monospace@(_jsonError.Length == 0 ? "" : " is-invalid")"
+        <textarea class="form-control font-monospace@(_jsonError!.Length == 0 ? "" : " is-invalid")"
                   rows="8" spellcheck="false"
                   value="@_editorJson"
                   @onchange="e => OnEditorChanged(e.Value?.ToString())"></textarea>
@@ -194,7 +194,7 @@ else
             case ParameterInputKind.Bool:
                 <div class="form-check">
                     <input type="checkbox" class="form-check-input" id="@($"chk-{field.GetHashCode()}")"
-                           checked="@field.Bool" @onchange="e => OnBoolChanged(field, (bool)e.Value)" />
+                           checked="@field.Bool" @onchange="e => OnBoolChanged(field, (bool)e.Value!)" />
                     <label class="form-check-label" for="@($"chk-{field.GetHashCode()}")">@(field.Bool ? "True" : "False")</label>
                 </div>
                 break;
@@ -228,7 +228,7 @@ else
                             <input type="checkbox" class="form-check-input"
                                    id="@($"flag-{field.GetHashCode()}-{member}")"
                                    checked="@selected"
-                                   @onchange="e => OnEnumFlagToggled(field, member, (bool)e.Value)" />
+                                   @onchange="e => OnEnumFlagToggled(field, member, (bool)e.Value!)" />
                             <label class="form-check-label" for="@($"flag-{field.GetHashCode()}-{member}")">@member</label>
                         </div>
                     }

@@ -149,14 +149,14 @@ public class HealthCheckResult
 
     /// <summary>A short, human-readable description of the check outcome.</summary>
     [JsonPropertyName("description")]
-    public string Description { get; set; }
+    public string? Description { get; set; }
 
     /// <summary>
     /// Optional structured data for the check (counts, thresholds, queue names, etc.).
     /// Serialized as part of the JSON response so monitoring tools can scrape values.
     /// </summary>
     [JsonPropertyName("data")]
-    public Dictionary<string, object> Data { get; set; }
+    public Dictionary<string, object?>? Data { get; set; }
 }
 
 /// <summary>
@@ -170,7 +170,7 @@ public class HealthReport
 
     /// <summary>Dashboard package version.</summary>
     [JsonPropertyName("version")]
-    public string Version { get; set; }
+    public string? Version { get; set; }
 
     /// <summary>UTC timestamp of when the report was generated.</summary>
     [JsonPropertyName("timestamp")]

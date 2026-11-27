@@ -97,7 +97,7 @@
                                             </td>
                                         }
                                         <td class="text-end hf-cell-meta hf-nowrap" data-label="Deleted">
-                                            @if (job.Value.DeletedAt.HasValue)
+                                            @if (job.Value!.DeletedAt.HasValue)
                                             {
                                                 <RelativeTime UtcTime="@job.Value.DeletedAt.Value" />
                                             }
@@ -119,17 +119,17 @@
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
-    private JobList<DeletedJobDto> _jobs;
+    private JobList<DeletedJobDto>? _jobs;
     private long _totalCount;
     private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
     private bool _hasExceptionData;
 
     protected override async Task OnInitializedAsync()
@@ -164,13 +164,13 @@
         {
             _totalCount = Monitor.GetDeletedListCount();
             _jobs = FetchPage(_totalCount);
-            _hasExceptionData = _jobs.Any(j => j.Value?.StateData != null &&
+            _hasExceptionData = _jobs!.Any(j => j.Value?.StateData != null &&
                 j.Value.StateData.ContainsKey("Exception") &&
                 !string.IsNullOrWhiteSpace(j.Value.StateData["Exception"]));
         });
     }
 
-    private JobList<DeletedJobDto> FetchPage(long total) =>
+    private JobList<DeletedJobDto>? FetchPage(long total) =>
         _order.Fetch(Monitor.GetDeletedJobs, total, _from, _pageSize, j => j.DeletedAt);
 
     private async Task ToggleOrder()
@@ -231,7 +231,7 @@
 
     private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
 
-    private static string GetExceptionType(DeletedJobDto dto)
+    private static string? GetExceptionType(DeletedJobDto? dto)
     {
         if (dto?.StateData == null) return null;
         if (!dto.StateData.TryGetValue("Exception", out var serialized) || string.IsNullOrWhiteSpace(serialized))
@@ -250,7 +250,7 @@
         }
     }
 
-    private static string GetExceptionMessage(DeletedJobDto dto)
+    private static string? GetExceptionMessage(DeletedJobDto? dto)
     {
         if (dto?.StateData == null) return null;
         if (!dto.StateData.TryGetValue("Exception", out var serialized) || string.IsNullOrWhiteSpace(serialized))

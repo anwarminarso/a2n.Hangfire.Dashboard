@@ -21,7 +21,7 @@ public class TagsDataReader
     /// <summary>
     /// Gets all tags for a specific job.
     /// </summary>
-    public string[] GetJobTags(string jobId)
+    public string[] GetJobTags(string? jobId)
     {
         using var connection = _storage.GetReadOnlyConnection();
         if (connection is not JobStorageConnection storageConnection)

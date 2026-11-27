@@ -65,7 +65,8 @@ public static class JobParameterMatching
     /// <param name="storedValue"></param>
     /// <param name="knownPlainIds"></param>
     /// <returns></returns>
-    public static string ResolvePlainRecurringJobId(string storedValue, IReadOnlyList<string> knownPlainIds)
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(storedValue))]
+    public static string? ResolvePlainRecurringJobId(string? storedValue, IReadOnlyList<string> knownPlainIds)
     {
         if (string.IsNullOrEmpty(storedValue))
             return storedValue;
@@ -81,8 +82,9 @@ public static class JobParameterMatching
     /// <param name="storedValue"></param>
     /// <param name="storedValueToPlainId"></param>
     /// <returns></returns>
-    public static string ResolvePlainRecurringJobId(
-        string storedValue,
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(storedValue))]
+    public static string? ResolvePlainRecurringJobId(
+        string? storedValue,
         IReadOnlyDictionary<string, string> storedValueToPlainId)
     {
         if (string.IsNullOrEmpty(storedValue))

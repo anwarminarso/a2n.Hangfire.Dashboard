@@ -52,7 +52,7 @@ public partial class HeatmapService
 
         // Serve a fresh, previously-successful historical aggregation without re-querying (Req 13.2).
         if (_cache is not null
-            && _cache.TryGetValue(cacheKey, out CacheEntry cached)
+            && _cache.TryGetValue(cacheKey, out CacheEntry? cached)
             && cached is not null
             && DateTimeOffset.UtcNow < cached.ExpiresAtUtc)
         {
@@ -118,7 +118,7 @@ public partial class HeatmapService
         // guarantees we stop waiting at the deadline even if the provider never observes the token.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-        var queryTask = _metricsProvider.GetRecurringScheduleBucketsAsync(from, to, timeoutCts.Token);
+        var queryTask = _metricsProvider!.GetRecurringScheduleBucketsAsync(from, to, timeoutCts.Token);
 
         var completed = await Task.WhenAny(queryTask, Task.Delay(timeout, ct)).ConfigureAwait(false);
         if (completed != queryTask)

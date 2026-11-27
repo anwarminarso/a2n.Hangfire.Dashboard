@@ -274,7 +274,7 @@ public partial class PostgreSqlMetricsProvider
 
         foreach (var dto in results)
         {
-            if (!grouped.TryGetValue(dto.JobId, out var execs) || execs.Count == 0)
+            if (!grouped.TryGetValue(dto.JobId!, out var execs) || execs.Count == 0)
                 continue;
 
             dto.LastExecutionResults = execs.Take(10).Select(e => e.StateName == "Succeeded").ToList();

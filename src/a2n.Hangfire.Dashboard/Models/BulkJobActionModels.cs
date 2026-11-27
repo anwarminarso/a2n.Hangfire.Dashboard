@@ -21,5 +21,5 @@ public sealed record BulkJobActionResult(int Total, int Processed, int Succeeded
     /// <see cref="Succeeded"/> then include the jobs that batch got through before the one whose
     /// state change threw, which isn't counted in either.
     /// </summary>
-    public Exception Error { get; init; }
+    public Exception? Error { get; init; }
 }

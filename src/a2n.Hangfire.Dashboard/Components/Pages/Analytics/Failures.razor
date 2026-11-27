@@ -126,7 +126,7 @@ else
     // Stat card values
     private long _totalFailures;
     private double _failureRatePercent;
-    private string _mostAffectedJobType;
+    private string? _mostAffectedJobType;
     private long _mostAffectedFailures;
 
     // Chart data sources
@@ -138,12 +138,12 @@ else
     private IReadOnlyList<JobSummaryDto> _recentFailures = Array.Empty<JobSummaryDto>();
 
     // Chart.js data objects
-    private object _failureRateByTypeChartData;
-    private object _failureRateByTypeChartOptions;
-    private object _topExceptionsChartData;
-    private object _topExceptionsChartOptions;
-    private object _retryDistributionChartData;
-    private object _retryDistributionChartOptions;
+    private object? _failureRateByTypeChartData;
+    private object? _failureRateByTypeChartOptions;
+    private object? _topExceptionsChartData;
+    private object? _topExceptionsChartOptions;
+    private object? _retryDistributionChartData;
+    private object? _retryDistributionChartOptions;
 
     protected override async Task OnInitializedAsync()
     {
@@ -421,7 +421,7 @@ else
         };
     }
 
-    private static string ShortenJobType(string jobType)
+    private static string ShortenJobType(string? jobType)
     {
         if (string.IsNullOrEmpty(jobType)) return "Unknown";
 
@@ -432,7 +432,7 @@ else
         return jobType.Length > 40 ? jobType[..37] + "..." : jobType;
     }
 
-    private static string ShortenExceptionType(string exceptionType)
+    private static string ShortenExceptionType(string? exceptionType)
     {
         if (string.IsNullOrEmpty(exceptionType)) return "Unknown";
 
@@ -444,7 +444,7 @@ else
         return exceptionType.Length > 35 ? exceptionType[..32] + "..." : exceptionType;
     }
 
-    private static string ShortenId(string id)
+    private static string ShortenId(string? id)
     {
         if (string.IsNullOrEmpty(id)) return "—";
         return Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";

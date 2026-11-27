@@ -97,13 +97,13 @@ public class DemandRollupService : IHostedService, IDisposable
     /// <summary>Upper bound on executions examined per source per poll, so a poll is bounded.</summary>
     private const int MaxJobsPerPoll = 2000;
 
-    private readonly IStorageMetricsProvider _metricsProvider;
-    private readonly JobStorage _storage;
-    private readonly IFailedJobPageSource _failedJobs;
-    private readonly DashboardUIOptions _options;
+    private readonly IStorageMetricsProvider? _metricsProvider;
+    private readonly JobStorage? _storage;
+    private readonly IFailedJobPageSource? _failedJobs;
+    private readonly DashboardUIOptions? _options;
     private readonly ILogger<DemandRollupService> _logger;
 
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
 
     /// <summary>
     /// Indicates whether the rollup will actually run (a metrics provider and job storage are both
@@ -424,7 +424,7 @@ public class DemandRollupService : IHostedService, IDisposable
             return false;
         }
 
-        string recurringJobId = null;
+        string? recurringJobId = null;
         try
         {
             recurringJobId = connection.GetJobParameter(jobId, "RecurringJobId");
@@ -474,7 +474,7 @@ public class DemandRollupService : IHostedService, IDisposable
         IStorageConnection connection,
         long succeededWatermark,
         long failedWatermark,
-        Dictionary<RollupBucket, Sample> accumulator,
+        Dictionary<RollupBucket, Sample>? accumulator,
         long currentWeek)
     {
         // Merge each touched (queue, week) hash: read existing fields, add the new samples, then
@@ -590,7 +590,7 @@ public class DemandRollupService : IHostedService, IDisposable
             ? ticks
             : 0L;
 
-    private Dictionary<string, string> SafeReadHash(IStorageConnection connection, string key)
+    private Dictionary<string, string>? SafeReadHash(IStorageConnection connection, string key)
     {
         try
         {
@@ -735,7 +735,7 @@ public class DemandRollupService : IHostedService, IDisposable
                && Hour == other.Hour
                && string.Equals(Queue, other.Queue, StringComparison.Ordinal);
 
-        public override bool Equals(object obj) => obj is RollupBucket other && Equals(other);
+        public override bool Equals(object? obj) => obj is RollupBucket other && Equals(other);
 
         public override int GetHashCode()
         {

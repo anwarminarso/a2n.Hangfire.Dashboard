@@ -19,10 +19,10 @@ namespace a2n.Hangfire.Dashboard.Services;
 /// </remarks>
 internal sealed class DashboardPermissionsState
 {
-    private readonly DashboardUIOptions _options;
-    private DashboardPermissions _current;
+    private readonly DashboardUIOptions? _options;
+    private DashboardPermissions? _current;
 
-    public DashboardPermissionsState(DashboardUIOptions options = null)
+    public DashboardPermissionsState(DashboardUIOptions? options = null)
     {
         _options = options;
     }

@@ -51,7 +51,7 @@ internal sealed class ReversibleOrder
     }
 
     /// <summary>Fetches a page of jobs in the current direction and updates <see cref="NewestFirst"/>.</summary>
-    public JobList<T> Fetch<T>(
+    public JobList<T>? Fetch<T>(
         Func<int, int, JobList<T>> fetch, long total, int from, int count, Func<T, DateTime?> timestamp)
     {
         var (storageFrom, storageCount) = StorageRange(total, from, count);

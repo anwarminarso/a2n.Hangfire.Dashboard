@@ -236,7 +236,7 @@ public static partial class FailureFingerprint
     /// version (or anything else) should be recomputed from the job's state data.
     /// </summary>
     /// <param name="storedValue">The value of the <see cref="ParameterName"/> job parameter.</param>
-    public static bool IsCurrentVersion(string storedValue)
+    public static bool IsCurrentVersion(string? storedValue)
     {
         if (storedValue is null
             || storedValue.Length != VersionPrefix.Length + HashHexLength
@@ -265,7 +265,7 @@ public static partial class FailureFingerprint
     /// used, to prefer the application's own frames; both forms give the same result. Null when unknown.
     /// </param>
     public static FailureFingerprintResult Compute(
-        string exceptionType, string exceptionMessage, string exceptionDetails, string jobTypeName = null)
+        string? exceptionType, string? exceptionMessage, string? exceptionDetails, string? jobTypeName = null)
     {
         var type = CleanTypeName(exceptionType);
         var innerType = string.Empty;
@@ -293,7 +293,7 @@ public static partial class FailureFingerprint
     /// </summary>
     /// <param name="stateData">State data with <c>ExceptionType</c>, <c>ExceptionMessage</c> and <c>ExceptionDetails</c>.</param>
     /// <param name="jobTypeName">The job's type name; see <see cref="Compute(string, string, string, string)"/>.</param>
-    public static FailureFingerprintResult Compute(IDictionary<string, string> stateData, string jobTypeName = null)
+    public static FailureFingerprintResult Compute(IDictionary<string, string>? stateData, string? jobTypeName = null)
     {
         return Compute(
             GetValue(stateData, ExceptionTypeKey),
@@ -302,14 +302,14 @@ public static partial class FailureFingerprint
             jobTypeName);
     }
 
-    private static string GetValue(IDictionary<string, string> data, string key)
+    private static string? GetValue(IDictionary<string, string>? data, string key)
         => data is not null && data.TryGetValue(key, out var value) ? value : null;
 
     /// <summary>
     /// Drops generic arguments, which carry assembly versions:
     /// <c>MyError`1[[System.Int32, System.Private.CoreLib, Version=9.0.0.0, …]]</c> → <c>MyError`1</c>.
     /// </summary>
-    private static string CleanTypeName(string typeName)
+    private static string CleanTypeName(string? typeName)
     {
         if (string.IsNullOrEmpty(typeName)) return string.Empty;
 
@@ -323,7 +323,10 @@ public static partial class FailureFingerprint
     /// A <c>---&gt;</c> that is part of a message is skipped: what follows it isn't a type name and a
     /// colon.
     /// </summary>
-    private static bool TryFindInnermostException(string details, out string type, out string message)
+    private static bool TryFindInnermostException(
+        string? details,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? type,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? message)
     {
         type = null;
         message = null;
@@ -376,7 +379,7 @@ public static partial class FailureFingerprint
         return header.ToString();
     }
 
-    private static string NormalizeMessage(string message)
+    private static string NormalizeMessage(string? message)
     {
         if (string.IsNullOrEmpty(message)) return string.Empty;
 
@@ -400,12 +403,12 @@ public static partial class FailureFingerprint
         return text;
     }
 
-    private static string FindTopFrame(string details, string jobRootNamespace)
+    private static string FindTopFrame(string? details, string? jobRootNamespace)
     {
         if (string.IsNullOrEmpty(details)) return string.Empty;
 
-        string firstFrame = null;
-        string firstApplicationFrame = null;
+        string? firstFrame = null;
+        string? firstApplicationFrame = null;
         foreach (var line in details.Split('\n'))
         {
             var frame = CleanFrame(line);
@@ -422,7 +425,7 @@ public static partial class FailureFingerprint
     /// namespace: a job such as <c>Console.WriteLine</c> says nothing about where the application's
     /// code lives.
     /// </summary>
-    private static string GetRootNamespace(string jobTypeName)
+    private static string? GetRootNamespace(string? jobTypeName)
     {
         if (string.IsNullOrWhiteSpace(jobTypeName)) return null;
 
@@ -446,7 +449,7 @@ public static partial class FailureFingerprint
     /// Reduces a stack-frame line to <c>Namespace.Type.Method</c>, or returns null when the line is
     /// not a frame.
     /// </summary>
-    private static string CleanFrame(string line)
+    private static string? CleanFrame(string line)
     {
         var text = line.TrimStart();
         if (!text.StartsWith("at ", StringComparison.Ordinal)) return null;

@@ -774,7 +774,7 @@ ORDER BY stateid DESC NULLS LAST, id DESC";
 
     private class JobRawRow
     {
-        public string? JobId { get; set; }
+        public string JobId { get; set; } = null!;
         public string? InvocationData { get; set; }
         public string? State { get; set; }
         public DateTime? CreatedAt { get; set; }
@@ -787,7 +787,7 @@ ORDER BY stateid DESC NULLS LAST, id DESC";
 
     private class SlowestJobRawRow
     {
-        public string? JobId { get; set; }
+        public string JobId { get; set; } = null!;
         public string? InvocationData { get; set; }
         public double DurationMs { get; set; }
         public DateTime? CompletedAt { get; set; }

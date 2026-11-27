@@ -273,17 +273,17 @@
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
     [Parameter] public string JobId { get; set; } = "";
 
-    private JobDetailsDto _job;
+    private JobDetailsDto? _job;
     private bool _notFound;
     private bool _isProcessing;
     private bool _actionInProgress;
-    private DashboardPoller _poller;
-    private string _previousState;
+    private DashboardPoller? _poller;
+    private string? _previousState;
     private HashSet<string> _expandedSessions = new();
 
     protected override async Task OnInitializedAsync()
@@ -395,7 +395,7 @@
 
     private static string Plural(int count, string unit) => count == 1 ? $"1 {unit}" : $"{count} {unit}s";
 
-    private static string GetBannerAlertClass(string stateName) => stateName switch
+    private static string GetBannerAlertClass(string? stateName) => stateName switch
     {
         "Succeeded" => "alert-success",
         "Failed" => "alert-danger",

@@ -26,14 +26,14 @@ public static class FailureGrouping
     /// invocation data on some storages only (Hangfire.PostgreSql 1.20 leaves it unset), so a computed
     /// fingerprint would otherwise depend on which adapter is installed.
     /// </remarks>
-    public static string ReadJobTypeName(string invocationDataPayload)
+    public static string? ReadJobTypeName(string? invocationDataPayload)
         => ReadInvocationData(invocationDataPayload, arguments: null)?.Type;
 
     /// <summary>
     /// The job's invocation data with its arguments, which Hangfire.SqlServer and Hangfire.PostgreSql
     /// keep in a column of their own, or null when the payload can't be read.
     /// </summary>
-    public static InvocationData ReadInvocationData(string invocationDataPayload, string arguments)
+    public static InvocationData? ReadInvocationData(string? invocationDataPayload, string? arguments)
     {
         if (string.IsNullOrWhiteSpace(invocationDataPayload))
             return null;
@@ -56,7 +56,7 @@ public static class FailureGrouping
     /// missing or can't be read. A missing exception field then counts as empty, as it does in
     /// <see cref="FailureFingerprint.Compute(IDictionary{string, string}, string)"/>.
     /// </summary>
-    public static Dictionary<string, string> ReadStateData(string json)
+    public static Dictionary<string, string>? ReadStateData(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
             return null;
@@ -76,7 +76,7 @@ public static class FailureGrouping
     /// When the job failed: the state's <c>FailedAt</c>, or the time the state was recorded when that
     /// is missing or unreadable (as on the Failed Jobs page, see <c>IFailedJobPageSource</c>).
     /// </summary>
-    public static DateTime? ReadFailedAt(IDictionary<string, string> stateData, DateTime? stateCreatedAt)
+    public static DateTime? ReadFailedAt(IDictionary<string, string>? stateData, DateTime? stateCreatedAt)
     {
         if (stateData != null && stateData.TryGetValue("FailedAt", out var text) && !string.IsNullOrEmpty(text))
         {
@@ -144,11 +144,11 @@ public static class FailureGrouping
     /// </param>
     /// <param name="ct">Cancellation token</param>
     public static async Task<FailureGroupsResult> BuildAsync(
-        IEnumerable<StoredFailureGroup> stored,
+        IEnumerable<StoredFailureGroup>? stored,
         long unfingerprintedCount,
         IReadOnlyCollection<ComputedFailure> computed,
         int labelCount,
-        Func<IReadOnlyList<long>, CancellationToken, Task<IReadOnlyList<ComputedFailure>>> loadNewestJobs,
+        Func<IReadOnlyList<long>, CancellationToken, Task<IReadOnlyList<ComputedFailure>>>? loadNewestJobs,
         CancellationToken ct)
     {
         var groups = new Dictionary<string, GroupBuilder>(StringComparer.Ordinal);
@@ -183,7 +183,7 @@ public static class FailureGrouping
         // Matched by job id: a sample's sequence is whatever the adapter read it with.
         var samples = new Dictionary<string, ComputedFailure>(StringComparer.Ordinal);
         var missing = toLabel.Where(g => g.Newest is null && g.NewestStoredJobId.HasValue)
-            .Select(g => g.NewestStoredJobId.Value)
+            .Select(g => g.NewestStoredJobId!.Value)
             .ToList();
         if (missing.Count > 0 && loadNewestJobs != null)
         {
@@ -206,7 +206,7 @@ public static class FailureGrouping
             };
 
             var newest = group.Newest
-                ?? (samples.TryGetValue(group.NewestJobId, out var sample) ? sample : (ComputedFailure?)null);
+                ?? (samples.TryGetValue(group.NewestJobId!, out var sample) ? sample : (ComputedFailure?)null);
             if (labeled.Contains(group) && newest is { } label)
             {
                 dto.IsLabeled = true;
@@ -230,7 +230,7 @@ public static class FailureGrouping
 
     private const string FailedStateName = "Failed";
 
-    private static string Get(IDictionary<string, string> data, string key)
+    private static string? Get(IDictionary<string, string>? data, string key)
         => data != null && data.TryGetValue(key, out var value) ? value : null;
 
     private static DateTime? AsUtc(DateTime? value)
@@ -244,7 +244,7 @@ public static class FailureGrouping
         public long StoredCount { get; set; }
         public List<ComputedFailure> Computed { get; } = new();
         public long NewestSequence { get; private set; } = long.MinValue;
-        public string NewestJobId { get; private set; }
+        public string? NewestJobId { get; private set; }
 
         /// <summary>The newest job's id when it carries a stored fingerprint, for loading its label.</summary>
         public long? NewestStoredJobId { get; private set; }
@@ -312,20 +312,20 @@ public sealed class FailedJobRow
     public long? StateId { get; set; }
 
     /// <summary>The stored invocation data payload, as text.</summary>
-    public string InvocationData { get; set; }
+    public string? InvocationData { get; set; }
 
     /// <summary>The stored arguments, as text, when the storage keeps them in their own column.</summary>
-    public string Arguments { get; set; }
+    public string? Arguments { get; set; }
 
     /// <summary>When the job was created.</summary>
     public DateTime? CreatedAt { get; set; }
 
     /// <summary>The current state's reason.</summary>
-    public string Reason { get; set; }
+    public string? Reason { get; set; }
 
     /// <summary>When the current state was recorded.</summary>
     public DateTime? StateCreatedAt { get; set; }
 
     /// <summary>The current state's data, as JSON text.</summary>
-    public string StateData { get; set; }
+    public string? StateData { get; set; }
 }

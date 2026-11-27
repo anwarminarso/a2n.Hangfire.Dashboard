@@ -75,7 +75,7 @@ public sealed record JobParameterDescriptor(
 /// <param name="IsFormatTemplate">Whether <paramref name="QueueName"/> is a format template.</param>
 public sealed record QueueAttributeInfo(
     bool IsPresent,
-    string QueueName,
+    string? QueueName,
     bool IsFormatTemplate);
 
 /// <summary>
@@ -116,10 +116,10 @@ public enum ParameterInputKind
 /// </param>
 public sealed record MethodResolutionResult(
     bool Success,
-    MethodInfo Method,
-    string Error,
+    MethodInfo? Method,
+    string? Error,
     MethodResolutionError? ErrorKind,
-    Type ResolvedType = null);
+    Type? ResolvedType = null);
 
 /// <summary>
 /// Categories of method-resolution failure (Req 1.5–1.8).
@@ -143,7 +143,7 @@ public sealed record CustomMethodValidationResult(
     bool IsValid,
     CustomMethodCheck FailedCheck,
     string Message,
-    JobMethodDescriptor Descriptor);
+    JobMethodDescriptor? Descriptor);
 
 /// <summary>
 /// The ordered custom-method validation checks (Req 7).
@@ -169,8 +169,8 @@ public sealed record ParameterJsonValidation(
     ParameterJsonStatus Status,
     int ExpectedCount,
     int ActualCount,
-    string ParameterName,
-    string ExpectedType);
+    string? ParameterName,
+    string? ExpectedType);
 
 /// <summary>
 /// Parameter JSON validation status (Req 2.2–2.7).
@@ -194,10 +194,10 @@ public enum ParameterJsonStatus
 /// <param name="Error">An error message describing a conversion failure.</param>
 public sealed record ArgsBuildResult(
     bool Success,
-    object[] Args,
-    string ParameterName,
-    string ExpectedType,
-    string Error);
+    object?[]? Args,
+    string? ParameterName,
+    string? ExpectedType,
+    string? Error);
 
 /// <summary>
 /// Request to create or update a recurring job (Req 11).
@@ -208,8 +208,8 @@ public sealed record RecurringJobRequest(
     string MethodName,
     string ParameterJson,
     string Cron,
-    string Queue,
-    string TimeZoneId,
+    string? Queue,
+    string? TimeZoneId,
     bool IsCustomMethod);
 
 /// <summary>
@@ -219,7 +219,7 @@ public sealed record EnqueueJobRequest(
     string TypeName,
     string MethodName,
     string ParameterJson,
-    string Queue,
+    string? Queue,
     bool IsCustomMethod);
 
 /// <summary>
@@ -231,9 +231,9 @@ public sealed record EnqueueJobRequest(
 /// <param name="FailedField">The field that failed validation, when applicable.</param>
 public sealed record JobOperationResult(
     bool Success,
-    string JobId,
-    string Error,
-    string FailedField);
+    string? JobId,
+    string? Error,
+    string? FailedField);
 
 /// <summary>
 /// Cron builder field model (Req 10.2). Each field captures how the corresponding cron field

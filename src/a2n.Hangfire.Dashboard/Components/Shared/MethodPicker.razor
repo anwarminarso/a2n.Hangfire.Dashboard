@@ -162,13 +162,13 @@
     /// Full type name of the method to pre-select on first render (edit pre-fill, Req 3.1, 3.3,
     /// 11.2). Empty leaves nothing selected (Req 6.1).
     /// </summary>
-    [Parameter] public string InitialTypeName { get; set; }
+    [Parameter] public string? InitialTypeName { get; set; }
 
     /// <summary>
     /// Method name to pre-select on first render (edit pre-fill, Req 3.1, 3.3, 11.2). Empty leaves
     /// nothing selected (Req 6.1).
     /// </summary>
-    [Parameter] public string InitialMethodName { get; set; }
+    [Parameter] public string? InitialMethodName { get; set; }
 
     /// <summary>
     /// Raised whenever the operator selects a method, emitting the resolved
@@ -195,7 +195,7 @@
     // Custom-mode state — retained across (failed) validation attempts (Req 6.7, 7.2–7.5).
     private string _customTypeName = string.Empty;
     private string _customMethodName = string.Empty;
-    private string _customError;
+    private string? _customError;
     private bool _customValidated;
 
     protected override async Task OnInitializedAsync()

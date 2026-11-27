@@ -11,7 +11,7 @@ namespace a2n.Hangfire.Dashboard.Security;
 public sealed class HangfireDashboardAuthorizationFilterAdapter : IDashboardAuthorizationFilter
 {
     private readonly global::Hangfire.Dashboard.IDashboardAuthorizationFilter _inner;
-    private readonly DashboardOptions _options;
+    private readonly DashboardOptions? _options;
 
     public HangfireDashboardAuthorizationFilterAdapter(global::Hangfire.Dashboard.IDashboardAuthorizationFilter inner)
         : this(inner, null)
@@ -25,7 +25,7 @@ public sealed class HangfireDashboardAuthorizationFilterAdapter : IDashboardAuth
     /// </param>
     public HangfireDashboardAuthorizationFilterAdapter(
         global::Hangfire.Dashboard.IDashboardAuthorizationFilter inner,
-        DashboardOptions options)
+        DashboardOptions? options)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _options = options;
@@ -41,7 +41,7 @@ public sealed class HangfireDashboardAuthorizationFilterAdapter : IDashboardAuth
 public sealed class HangfireDashboardAsyncAuthorizationFilterAdapter : IDashboardAsyncAuthorizationFilter
 {
     private readonly global::Hangfire.Dashboard.IDashboardAsyncAuthorizationFilter _inner;
-    private readonly DashboardOptions _options;
+    private readonly DashboardOptions? _options;
 
     public HangfireDashboardAsyncAuthorizationFilterAdapter(global::Hangfire.Dashboard.IDashboardAsyncAuthorizationFilter inner)
         : this(inner, null)
@@ -55,7 +55,7 @@ public sealed class HangfireDashboardAsyncAuthorizationFilterAdapter : IDashboar
     /// </param>
     public HangfireDashboardAsyncAuthorizationFilterAdapter(
         global::Hangfire.Dashboard.IDashboardAsyncAuthorizationFilter inner,
-        DashboardOptions options)
+        DashboardOptions? options)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _options = options;
@@ -75,7 +75,7 @@ internal static class HangfireDashboardContextFactory
     /// <see cref="DashboardOptions"/> the host configured so filters and <c>IsReadOnlyFunc</c> see
     /// that instance; without one, the DI-registered instance or a new default is used.
     /// </summary>
-    internal static AspNetCoreDashboardContext Create(HttpContext context, DashboardOptions options = null)
+    internal static AspNetCoreDashboardContext Create(HttpContext context, DashboardOptions? options = null)
     {
         var storage = context.RequestServices.GetRequiredService<JobStorage>();
         options ??= context.RequestServices.GetService<DashboardOptions>() ?? new DashboardOptions();

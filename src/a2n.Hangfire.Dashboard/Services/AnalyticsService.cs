@@ -12,8 +12,8 @@ namespace a2n.Hangfire.Dashboard.Services;
 /// </summary>
 public class AnalyticsService
 {
-    private readonly IStorageMetricsProvider _metricsProvider;
-    private readonly MetricsQueryCache _cache;
+    private readonly IStorageMetricsProvider? _metricsProvider;
+    private readonly MetricsQueryCache? _cache;
     private readonly ILogger<AnalyticsService> _logger;
 
     /// <summary>

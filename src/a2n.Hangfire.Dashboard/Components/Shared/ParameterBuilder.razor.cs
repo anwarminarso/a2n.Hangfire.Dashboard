@@ -9,19 +9,19 @@ namespace a2n.Hangfire.Dashboard.Components.Shared;
 public partial class ParameterBuilder
 {
     /// <summary>The method whose Job_Parameters drive the form. When null, nothing is rendered.</summary>
-    [Parameter] public JobMethodDescriptor SelectedMethod { get; set; }
+    [Parameter] public JobMethodDescriptor? SelectedMethod { get; set; }
 
     /// <summary>
     /// Optional initial Parameter_JSON used to pre-fill the form (e.g. when editing an existing job).
     /// When absent or not interpretable for the selected method, the form starts at its defaults.
     /// </summary>
-    [Parameter] public string InitialParameterJson { get; set; }
+    [Parameter] public string? InitialParameterJson { get; set; }
 
     /// <summary>Raised whenever the captured Argument_Values, Parameter_JSON, or validity changes (Req 8.13).</summary>
     [Parameter] public EventCallback<ParameterState> OnParametersChanged { get; set; }
 
     private readonly List<FieldModel> _fields = new();
-    private JobMethodDescriptor _lastMethod;
+    private JobMethodDescriptor? _lastMethod;
     private string _parameterJson = "[]";
     private string _prettyJson = "[]";
     private bool _isValid = true;
@@ -31,7 +31,7 @@ public partial class ParameterBuilder
     // _jsonError carries the constraint-specific message when a JSON→Form switch is blocked (9.6).
     private bool _jsonMode;
     private string _editorJson = "[]";
-    private string _jsonError = "";
+    private string? _jsonError = "";
 
     protected override void OnParametersSet()
     {
@@ -104,7 +104,7 @@ public partial class ParameterBuilder
 
     // The operator edits the raw Parameter_JSON. Store it verbatim, clear any stale switch error,
     // and emit the current state from the edited JSON so the parent stays in sync while in JSON mode.
-    private void OnEditorChanged(string value)
+    private void OnEditorChanged(string? value)
     {
         _editorJson = value ?? "";
         _jsonError = "";
@@ -123,7 +123,7 @@ public partial class ParameterBuilder
     //     present, matching the Form-mode submit gate (Req 8.15).
     //   - false (the JSON→Form switch gate): a required parameter may stay blank — switching
     //     views must not force the operator to finish a field they haven't gotten to yet.
-    private (bool valid, string error) ValidateJsonForMethod(string json, bool requireAllPresent = true)
+    private (bool valid, string? error) ValidateJsonForMethod(string json, bool requireAllPresent = true)
     {
         var descriptors = SelectedMethod?.JobParameters ?? Array.Empty<JobParameterDescriptor>();
 
@@ -261,7 +261,7 @@ public partial class ParameterBuilder
 
     // Builds a field for a nested property or an array element, computing its kind from the same
     // ParameterInputMapper used for top-level parameters (Req 8.10 — same type-to-input mapping).
-    private static FieldModel BuildField(string name, Type type, int depth, bool required)
+    private static FieldModel BuildField(string name, Type? type, int depth, bool required)
     {
         var field = new FieldModel
         {
@@ -280,15 +280,15 @@ public partial class ParameterBuilder
     {
         if (field.Kind == ParameterInputKind.ScalarArray)
         {
-            field.ArrayElementType = field.DeclaredType.GetElementType();
+            field.ArrayElementType = field.DeclaredType!.GetElementType();
         }
     }
 
     // A nested object's sub-form is built only when the operator instantiates it (Req 8.10).
-    private static List<FieldModel> BuildChildren(Type type, int depth)
+    private static List<FieldModel> BuildChildren(Type? type, int depth)
     {
         var children = new List<FieldModel>();
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        var properties = type!.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanWrite && p.GetIndexParameters().Length == 0);
 
         foreach (var property in properties)
@@ -301,13 +301,13 @@ public partial class ParameterBuilder
 
     private IReadOnlyList<string> EnumMembers(FieldModel field)
     {
-        var enumType = Nullable.GetUnderlyingType(field.DeclaredType) ?? field.DeclaredType;
+        var enumType = Nullable.GetUnderlyingType(field.DeclaredType!) ?? field.DeclaredType!;
         return enumType.IsEnum ? Enum.GetNames(enumType) : Array.Empty<string>();
     }
 
     // --- Value capture handlers --------------------------------------------------------------
 
-    private void OnScalarChanged(FieldModel field, string value)
+    private void OnScalarChanged(FieldModel field, string? value)
     {
         field.Text = value ?? "";
         CommitScalar(field);
@@ -320,13 +320,13 @@ public partial class ParameterBuilder
         EmitState();
     }
 
-    private void OnTriStateChanged(FieldModel field, string value)
+    private void OnTriStateChanged(FieldModel field, string? value)
     {
         field.TriState = value ?? "";
         EmitState();
     }
 
-    private void OnEnumSingleChanged(FieldModel field, string value)
+    private void OnEnumSingleChanged(FieldModel field, string? value)
     {
         field.EnumValue = value ?? "";
         EmitState();
@@ -403,9 +403,9 @@ public partial class ParameterBuilder
     }
 
     // Converts a non-empty scalar string to its canonical JSON token, or reports why it is invalid.
-    private static (bool ok, string json, string error) TryScalarToJson(string raw, ParameterInputKind kind, Type declaredType)
+    private static (bool ok, string? json, string? error) TryScalarToJson(string raw, ParameterInputKind kind, Type? declaredType)
     {
-        var underlying = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+        var underlying = Nullable.GetUnderlyingType(declaredType!) ?? declaredType!;
         var inv = CultureInfo.InvariantCulture;
 
         switch (kind)
@@ -482,7 +482,7 @@ public partial class ParameterBuilder
         }
     }
 
-    private static string FormatNumber(object value) => value switch
+    private static string? FormatNumber(object value) => value switch
     {
         float f => f.ToString("R", CultureInfo.InvariantCulture),
         double d => d.ToString("R", CultureInfo.InvariantCulture),
@@ -490,7 +490,7 @@ public partial class ParameterBuilder
         _ => Convert.ToString(value, CultureInfo.InvariantCulture),
     };
 
-    private static string FriendlyType(Type type) => type.Name;
+    private static string FriendlyType(Type? type) => type!.Name;
 
     // --- Canonical JSON + validity -----------------------------------------------------------
 
@@ -500,7 +500,7 @@ public partial class ParameterBuilder
     {
         ParameterInputKind.Bool => field.Bool ? "true" : "false",
         ParameterInputKind.NullableBool => field.TriState.Length == 0 ? "null" : field.TriState,
-        ParameterInputKind.EnumSingle => field.EnumValue.Length == 0 ? "null" : JsonSerializer.Serialize(field.EnumValue),
+        ParameterInputKind.EnumSingle => field.EnumValue!.Length == 0 ? "null" : JsonSerializer.Serialize(field.EnumValue),
         ParameterInputKind.EnumFlags => field.EnumFlags.Count == 0 ? "null" : JsonSerializer.Serialize(string.Join(", ", field.EnumFlags)),
         ParameterInputKind.ScalarArray => "[" + string.Join(",", field.ArrayItems.Select(SlotJson)) + "]",
         ParameterInputKind.NestedObject => field.Instantiated
@@ -575,7 +575,7 @@ public partial class ParameterBuilder
 
     // Applies a Parameter_JSON array onto the current form fields, in order. Used for the initial
     // edit pre-fill and for the JSON→Form repopulation when the edited JSON is valid (Req 9.5).
-    private void PopulateFrom(string json)
+    private void PopulateFrom(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -634,7 +634,7 @@ public partial class ParameterBuilder
 
                 case ParameterInputKind.EnumFlags:
                     var raw = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
-                    foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    foreach (var part in raw!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     {
                         field.EnumFlags.Add(part);
                     }
@@ -691,30 +691,30 @@ public partial class ParameterBuilder
     private sealed class FieldModel
     {
         public string Name { get; set; } = "";
-        public Type DeclaredType { get; set; }
+        public Type? DeclaredType { get; set; }
         public ParameterInputKind Kind { get; set; }
         public bool IsNullable { get; set; }
         public bool IsRequired { get; set; }
         public int Depth { get; set; } = 1;
 
         // Editor text for the scalar text-bound kinds (Text/Integer/Float/Guid/Date/Time/DateTime/Json).
-        public string Text { get; set; } = "";
+        public string? Text { get; set; } = "";
 
         // Last valid canonical JSON token for the text-bound kinds; "null" represents a blank value.
-        public string CommittedJson { get; set; } = "null";
+        public string? CommittedJson { get; set; } = "null";
 
         // Validation state for a non-empty value that failed conversion (Req 8.14).
         public bool Invalid { get; set; }
-        public string Error { get; set; } = "";
+        public string? Error { get; set; } = "";
 
         // Choice-control state.
         public bool Bool { get; set; }
         public string TriState { get; set; } = "";   // "", "true", "false"
-        public string EnumValue { get; set; } = "";
+        public string? EnumValue { get; set; } = "";
         public HashSet<string> EnumFlags { get; } = new();
 
         // Composite-control state.
-        public Type ArrayElementType { get; set; }
+        public Type? ArrayElementType { get; set; }
         public List<FieldModel> ArrayItems { get; } = new();
         public bool Instantiated { get; set; }
         public List<FieldModel> Children { get; set; } = new();

@@ -23,10 +23,10 @@
     [Parameter] public EventCallback OnSort { get; set; }
 
     /// <summary>Extra classes for the <c>th</c> element, e.g. <c>text-end</c>.</summary>
-    [Parameter] public string CssClass { get; set; }
+    [Parameter] public string? CssClass { get; set; }
 
     /// <summary>Inline style for the <c>th</c> element, e.g. a fixed column width.</summary>
-    [Parameter] public string Style { get; set; }
+    [Parameter] public string? Style { get; set; }
 
     private string AriaSort => !IsActive ? "none" : Descending ? "descending" : "ascending";
 

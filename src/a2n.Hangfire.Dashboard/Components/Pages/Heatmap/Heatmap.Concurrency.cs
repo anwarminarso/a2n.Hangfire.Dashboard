@@ -38,7 +38,7 @@ public partial class Heatmap
     /// Demand_Profile (Combined class only, Req 19.1). Returns <c>null</c> outside Combined or when no
     /// demand is available, so the Concurrency view plots the cron contribution alone.
     /// </summary>
-    private IReadOnlyList<int> BuildConcurrencyBaseline(
+    private IReadOnlyList<int>? BuildConcurrencyBaseline(
         HeatmapQuery query, ProjectionWindow window, TimeZoneInfo tz, int dayIndex)
     {
         var workerMinutes = TryGetWorkerMinutesDemand(query);
@@ -58,7 +58,7 @@ public partial class Heatmap
     /// high demand at the cluster's peak minute. Returns <c>null</c> outside Combined or when no
     /// demand is available (cron-only recommendations).
     /// </summary>
-    private IReadOnlyList<int> BuildWeekAdHocBaseline(HeatmapQuery query, ProjectionWindow window, TimeZoneInfo tz)
+    private IReadOnlyList<int>? BuildWeekAdHocBaseline(HeatmapQuery query, ProjectionWindow window, TimeZoneInfo tz)
     {
         var workerMinutes = TryGetWorkerMinutesDemand(query);
         if (workerMinutes is null)
@@ -87,7 +87,7 @@ public partial class Heatmap
     /// approximates the average concurrent ad-hoc jobs that hour. Returns <c>null</c> when not Combined,
     /// no demand provider, or the profile is empty.
     /// </summary>
-    private DemandProfile TryGetWorkerMinutesDemand(HeatmapQuery query)
+    private DemandProfile? TryGetWorkerMinutesDemand(HeatmapQuery query)
     {
         if (!IsCombinedClass || !_demandAvailable)
         {

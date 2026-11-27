@@ -18,7 +18,7 @@ public partial class Failed
 {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
     /// <summary>
@@ -26,42 +26,42 @@ public partial class Failed
     /// isn't a current exception key is ignored and the page shows all failed jobs.
     /// </summary>
     [SupplyParameterFromQuery(Name = "exception")]
-    public string ExceptionQuery { get; set; }
+    public string? ExceptionQuery { get; set; }
 
-    private JobList<FailedJobDto> _jobs;
+    private JobList<FailedJobDto>? _jobs;
     private long _totalCount;
     private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
 
     // ── Exception groups ──
     // Loaded the first time the Exception filter gets focus, or when the page opens on a group, so
     // the default view costs no more than it did before grouping existed.
     private enum LoadStatus { NotLoaded, Loading, Loaded, TimedOut, Failed }
 
-    private sealed record GroupRow(JobSummaryDto Summary, Job Job);
+    private sealed record GroupRow(JobSummaryDto Summary, Job? Job);
 
-    private IStorageQueryProvider _queryProvider;
+    private IStorageQueryProvider? _queryProvider;
     private FailureGroupsResult _groups = new();
     private LoadStatus _groupsStatus = LoadStatus.NotLoaded;
-    private CancellationTokenSource _groupsCts;
+    private CancellationTokenSource? _groupsCts;
     private bool _menuOpen;
 
     // The option the arrow keys have moved to, by fingerprint (null is "All exceptions"), so it stays on
     // the same group if a refresh reorders the list. Its index is the fallback when that group is gone.
-    private string _activeFingerprint;
+    private string? _activeFingerprint;
     private int _activeIndex;
     private bool _scrollActiveOption;
 
-    private string _selectedFingerprint;
-    private FailureGroupDto _selectedGroup;
+    private string? _selectedFingerprint;
+    private FailureGroupDto? _selectedGroup;
     private int _groupSize = 10;
     private List<GroupRow> _groupRows = new();
     private LoadStatus _groupJobsStatus = LoadStatus.NotLoaded;
-    private CancellationTokenSource _groupJobsCts;
+    private CancellationTokenSource? _groupJobsCts;
 
     private bool ShowExceptionFilter => _queryProvider is { SupportsFailureGrouping: true } && _groups.IsSupported;
     private bool InGroupView => _selectedFingerprint is not null && ShowExceptionFilter;
@@ -71,17 +71,17 @@ public partial class Failed
     // it is still failed. Jobs that fail into the group afterwards are left alone.
     private enum GroupActionKind { Requeue, Delete }
 
-    private sealed record GroupAction(GroupActionKind Kind, string Fingerprint, string Label,
+    private sealed record GroupAction(GroupActionKind Kind, string? Fingerprint, string Label,
         IReadOnlyList<string> JobIds, bool IsPartial);
 
-    private GroupAction _pendingGroupAction;
-    private GroupAction _runningAction;
-    private BulkJobActionResult _groupActionProgress;
+    private GroupAction? _pendingGroupAction;
+    private GroupAction? _runningAction;
+    private BulkJobActionResult? _groupActionProgress;
     private bool _groupActionCancelRequested;
-    private CancellationTokenSource _groupActionCts;
-    private CancellationTokenSource _snapshotCts;
-    private string _groupActionMessage;
-    private string _groupActionMessageClass;
+    private CancellationTokenSource? _groupActionCts;
+    private CancellationTokenSource? _snapshotCts;
+    private string? _groupActionMessage;
+    private string? _groupActionMessageClass;
     private bool _disposed;
 
     private bool ShowGroupActions => InGroupView && !IsReadOnly;
@@ -91,11 +91,11 @@ public partial class Failed
     private int UnlabeledGroupCount => _groups.Groups.Count(g => !g.IsLabeled);
 
     // The list's options: null for "All exceptions", then the labeled groups once they are loaded.
-    private List<FailureGroupDto> MenuOptions
+    private List<FailureGroupDto?> MenuOptions
     {
         get
         {
-            var options = new List<FailureGroupDto> { null };
+            var options = new List<FailureGroupDto?> { null };
             if (_groupsStatus == LoadStatus.Loaded)
                 options.AddRange(LabeledGroups);
             return options;
@@ -104,7 +104,7 @@ public partial class Failed
 
     private static string OptionId(int index) => $"exception-option-{index}";
 
-    private int ActiveOptionIn(List<FailureGroupDto> options)
+    private int ActiveOptionIn(List<FailureGroupDto?> options)
     {
         var index = options.FindIndex(g => g?.Fingerprint == _activeFingerprint);
         // The group has gone in a refresh: stay at the same position, inside the list.
@@ -114,7 +114,7 @@ public partial class Failed
     private bool HasMenuStatus => _groupsStatus is LoadStatus.Loading or LoadStatus.TimedOut or LoadStatus.Failed
         || (_groupsStatus == LoadStatus.Loaded && UnlabeledGroupCount > 0);
 
-    private string MenuStatusClass => !HasMenuStatus ? null : "px-3 py-2 border-top " + _groupsStatus switch
+    private string? MenuStatusClass => !HasMenuStatus ? null : "px-3 py-2 border-top " + _groupsStatus switch
     {
         LoadStatus.TimedOut => "text-warning-emphasis",
         LoadStatus.Failed => "text-danger",
@@ -184,7 +184,7 @@ public partial class Failed
         });
     }
 
-    private JobList<FailedJobDto> FetchPage(long total) =>
+    private JobList<FailedJobDto>? FetchPage(long total) =>
         _order.Fetch(Monitor.GetFailedJobs, total, _from, _pageSize, j => j.FailedAt);
 
     // Grouping reads up to 1,000 failed jobs, so it is only redone while someone is looking at it.
@@ -281,7 +281,7 @@ public partial class Failed
         }
     }
 
-    private void MoveActiveOption(List<FailureGroupDto> options, int index)
+    private void MoveActiveOption(List<FailureGroupDto?> options, int index)
     {
         _activeFingerprint = options[index]?.Fingerprint;
         _activeIndex = index;
@@ -303,7 +303,7 @@ public partial class Failed
         }
     }
 
-    private async Task SelectGroup(string fingerprint)
+    private async Task SelectGroup(string? fingerprint)
     {
         _menuOpen = false;
         if (fingerprint == _selectedFingerprint)
@@ -364,7 +364,7 @@ public partial class Failed
             StateHasChanged();
         }
 
-        FailureGroupsResult result = null;
+        FailureGroupsResult? result = null;
         var status = LoadStatus.Loaded;
         try
         {
@@ -407,14 +407,14 @@ public partial class Failed
         _groupJobsStatus = LoadStatus.Loading;
         StateHasChanged();
 
-        List<GroupRow> rows = null;
+        List<GroupRow>? rows = null;
         var status = LoadStatus.Loaded;
         try
         {
             var size = _groupSize;
             rows = await Task.Run(async () =>
             {
-                var jobs = await _queryProvider.GetFailureGroupJobsAsync(group, size, cts.Token);
+                var jobs = await _queryProvider!.GetFailureGroupJobsAsync(group, size, cts.Token);
                 return (jobs ?? Array.Empty<JobSummaryDto>())
                     .Select(j => new GroupRow(j, TryLoadJob(j.InvocationData)))
                     .ToList();
@@ -442,12 +442,12 @@ public partial class Failed
         return cts;
     }
 
-    private FailureGroupDto FindGroup(string fingerprint)
+    private FailureGroupDto? FindGroup(string fingerprint)
         => _groups.Groups.FirstOrDefault(g => string.Equals(g.Fingerprint, fingerprint, StringComparison.Ordinal));
 
     // The job as the other lists show it (display name attributes, arguments); null when the dashboard
     // can't load the job's type, in which case the invocation data is shown instead.
-    private static Job TryLoadJob(InvocationData invocationData)
+    private static Job? TryLoadJob(InvocationData? invocationData)
     {
         if (invocationData is null)
             return null;
@@ -575,8 +575,8 @@ public partial class Failed
         var cts = NewTimeoutSource();
         _snapshotCts = cts;
 
-        IReadOnlyList<string> ids = null;
-        string error = null;
+        IReadOnlyList<string>? ids = null;
+        string? error = null;
         try
         {
             ids = await Task.Run(() => _queryProvider.GetFailureGroupJobIdsAsync(group, cts.Token));
@@ -629,7 +629,7 @@ public partial class Failed
         _groupActionProgress = new BulkJobActionResult(action.JobIds.Count, 0, 0, Cancelled: false);
         StateHasChanged();
 
-        var metadata = new Dictionary<string, string> { ["fingerprint"] = action.Fingerprint };
+        var metadata = new Dictionary<string, string> { ["fingerprint"] = action.Fingerprint! };
         var progress = new ProgressCallback(p => _ = InvokeAsync(() =>
         {
             if (_disposed || _runningAction != action)
@@ -638,7 +638,7 @@ public partial class Failed
             StateHasChanged();
         }));
 
-        BulkJobActionResult result = null;
+        BulkJobActionResult? result = null;
         try
         {
             result = action.Kind == GroupActionKind.Requeue
@@ -690,7 +690,7 @@ public partial class Failed
 
     // The result of a failed batch counts the jobs it changed before the error, so the numbers are
     // exact. Without a result (not expected), nothing is known beyond the audit log.
-    private static string GroupActionErrorMessage(GroupAction action, BulkJobActionResult result)
+    private static string GroupActionErrorMessage(GroupAction action, BulkJobActionResult? result)
     {
         var verb = action.Kind == GroupActionKind.Requeue ? "Requeue all" : "Delete all";
         if (result is null)
@@ -730,7 +730,7 @@ public partial class Failed
         await DeleteSelected();
     }
 
-    private static string ShortenId(string id)
+    private static string ShortenId(string? id)
     {
         if (Guid.TryParse(id, out _))
             return id[..8] + "…";
@@ -738,7 +738,7 @@ public partial class Failed
     }
 
 
-    private static string TruncateReason(string reason)
+    private static string? TruncateReason(string reason)
     {
         if (reason is null) return null;
         return reason.Length > 80 ? reason[..80] + "…" : reason;

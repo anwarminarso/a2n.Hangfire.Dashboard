@@ -46,7 +46,7 @@ public sealed record DashboardPermissions(bool IsReadOnly, ReadOnlyReason Reason
     /// outside the dashboard's own render tree (host code calling the services, component tests).
     /// Inside it, <c>DashboardRoutes</c> always supplies evaluated permissions, failing closed.
     /// </summary>
-    internal static DashboardPermissions FromOptions(DashboardUIOptions options)
+    internal static DashboardPermissions FromOptions(DashboardUIOptions? options)
         => options?.IsReadOnly == true ? ReadOnlyBecause(ReadOnlyReason.Option) : Writable;
 
     /// <summary>
@@ -54,7 +54,7 @@ public sealed record DashboardPermissions(bool IsReadOnly, ReadOnlyReason Reason
     /// otherwise <paramref name="scoped"/> (the cascaded or scope value), or full access when there
     /// is none. Pages and services both go through this, so they can't disagree.
     /// </summary>
-    internal static DashboardPermissions Resolve(DashboardPermissions scoped, DashboardUIOptions options)
+    internal static DashboardPermissions Resolve(DashboardPermissions? scoped, DashboardUIOptions options)
         => options?.IsReadOnly == true ? ReadOnlyBecause(ReadOnlyReason.Option) : scoped ?? Writable;
 
     /// <summary>A short explanation of why write actions are refused, for tooltips and error messages.</summary>

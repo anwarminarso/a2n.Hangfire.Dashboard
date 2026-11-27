@@ -42,7 +42,7 @@ public static class HangfireDashboardUIExtensions
     /// <returns>The service collection for chaining</returns>
     public static IServiceCollection AddHangfireDashboardUI(
         this IServiceCollection services,
-        Action<DashboardStorageOptionsBuilder> configure)
+        Action<DashboardStorageOptionsBuilder>? configure)
     {
         // Register default DashboardUIOptions (can be replaced by UseHangfireDashboardUI)
         services.AddSingleton(new DashboardUIOptions());
@@ -250,7 +250,7 @@ public static class HangfireDashboardUIExtensions
     public static IApplicationBuilder UseHangfireDashboardUI(
         this IApplicationBuilder app,
         string pathMatch = "/hangfire",
-        DashboardUIOptions options = null)
+        DashboardUIOptions? options = null)
     {
         options ??= app.ApplicationServices.GetService<DashboardUIOptions>() ?? new DashboardUIOptions();
 

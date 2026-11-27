@@ -79,7 +79,7 @@ else
 }
 
 @code {
-    private IList<ServerDto> _servers;
+    private IList<ServerDto>? _servers;
 
     private enum ServerSortColumn { None, Name, Workers, Started, Heartbeat }
 
@@ -90,7 +90,7 @@ else
         get
         {
             var descending = _sort.Descending;
-            IOrderedEnumerable<ServerDto> ordered = _sort.Column switch
+            IOrderedEnumerable<ServerDto>? ordered = _sort.Column switch
             {
                 ServerSortColumn.Name =>
                     GridSort.By(_servers, s => s.Name, s => !string.IsNullOrEmpty(s.Name), StringComparer.OrdinalIgnoreCase, descending),
@@ -102,7 +102,7 @@ else
                     GridSort.By(_servers, s => s.Heartbeat, s => s.Heartbeat.HasValue, Comparer<DateTime?>.Default, descending),
                 _ => null
             };
-            return ordered?.ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase) ?? (IEnumerable<ServerDto>)_servers;
+            return ordered?.ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase) ?? (IEnumerable<ServerDto>)_servers!;
         }
     }
 

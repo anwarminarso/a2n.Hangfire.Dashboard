@@ -51,7 +51,7 @@ public sealed record PlannerCell(
 public sealed record PlannerResult(
     IReadOnlyDictionary<PlannerCellKey, PlannerCell> Cells,
     double LowLoadThreshold,
-    PlannerCellKey BestWindow);
+    PlannerCellKey? BestWindow);
 
 /// <summary>
 /// Pure, deterministic helpers backing the Combined / Planner view (Requirement 18). They overlay
@@ -138,8 +138,8 @@ public static class PlannerHelpers
     /// <returns>The complete planner result over the window's 7 × 24 slot grid.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="window"/> is <c>null</c>.</exception>
     public static PlannerResult BuildPlanner(
-        HeatmapMatrix cronMatrix,
-        DemandProfile demand,
+        HeatmapMatrix? cronMatrix,
+        DemandProfile? demand,
         ProjectionWindow window,
         TimeZoneInfo viewerTimeZone,
         double lowLoadThreshold)
@@ -181,7 +181,7 @@ public static class PlannerHelpers
         }
 
         var cells = new Dictionary<PlannerCellKey, PlannerCell>(HeatmapTime.WindowDays * HoursPerDay);
-        PlannerCellKey bestWindow = null;
+        PlannerCellKey? bestWindow = null;
         var bestCombined = double.PositiveInfinity;
 
         for (var dayIndex = 0; dayIndex < HeatmapTime.WindowDays; dayIndex++)
@@ -225,14 +225,14 @@ public static class PlannerHelpers
     /// The <see cref="PlannerCellKey"/> of the lowest-combined-load slot, or <c>null</c> when
     /// <paramref name="cells"/> is null or empty.
     /// </returns>
-    public static PlannerCellKey FindBestWindow(IEnumerable<PlannerCell> cells)
+    public static PlannerCellKey? FindBestWindow(IEnumerable<PlannerCell> cells)
     {
         if (cells is null)
         {
             return null;
         }
 
-        PlannerCellKey best = null;
+        PlannerCellKey? best = null;
         var bestCombined = double.PositiveInfinity;
 
         foreach (var cell in cells)

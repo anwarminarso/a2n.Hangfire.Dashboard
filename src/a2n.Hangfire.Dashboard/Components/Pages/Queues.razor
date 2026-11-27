@@ -272,18 +272,18 @@ else
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
-    private QueueOperationsState _state;
-    private List<QueueRow> _rows;
-    private DashboardPoller _poller;
+    private QueueOperationsState? _state;
+    private List<QueueRow>? _rows;
+    private DashboardPoller? _poller;
     private string _maintenanceReason = string.Empty;
     private bool _filterRegistered = true;
 
     private sealed class QueueRow
     {
-        public string Name { get; init; }
+        public string Name { get; init; } = null!;
         public long? Length { get; init; }
         public long? Fetched { get; init; }
     }

@@ -64,8 +64,8 @@ public class DemandProfileProvider
     private const string QueuesSetKey = KeyPrefix + "queues";
     private const string WeeksSetKey = KeyPrefix + "weeks";
 
-    private readonly JobStorage _storage;
-    private readonly IStorageMetricsProvider _metricsProvider;
+    private readonly JobStorage? _storage;
+    private readonly IStorageMetricsProvider? _metricsProvider;
     private readonly ILogger<DemandProfileProvider> _logger;
 
     /// <summary>
@@ -110,10 +110,10 @@ public class DemandProfileProvider
             return DemandProfile.Empty(metric, statistic, requested);
         }
 
-        IStorageConnection connection = null;
+        IStorageConnection? connection = null;
         try
         {
-            connection = _storage.GetConnection();
+            connection = _storage!.GetConnection();
             if (connection == null)
             {
                 return DemandProfile.Empty(metric, statistic, requested);
@@ -294,7 +294,7 @@ public class DemandProfileProvider
     /// <param name="profile">The demand profile in native UTC coordinates.</param>
     /// <param name="viewerOffset">The viewer time zone's UTC offset (rounded to whole hours).</param>
     /// <returns>The profile rekeyed into viewer-local <c>day-of-week × hour</c> coordinates.</returns>
-    public static DemandProfile ShiftToViewerLocal(DemandProfile profile, TimeSpan viewerOffset)
+    public static DemandProfile? ShiftToViewerLocal(DemandProfile profile, TimeSpan viewerOffset)
     {
         if (profile?.Slots is null || profile.Slots.Count == 0)
         {
@@ -380,7 +380,7 @@ public class DemandProfileProvider
         return samples;
     }
 
-    private Dictionary<string, string> SafeReadHash(IStorageConnection connection, string key)
+    private Dictionary<string, string>? SafeReadHash(IStorageConnection connection, string key)
     {
         try
         {

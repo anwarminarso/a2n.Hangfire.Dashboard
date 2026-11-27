@@ -55,7 +55,7 @@ public class DashboardHub : Hub
             _subscriptions.RemoveAnalyticsSubscriber();
     }
 
-    public override async Task OnDisconnectedAsync(Exception exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (Context.Items.Remove("metrics"))
             _subscriptions.RemoveMetricsSubscriber();

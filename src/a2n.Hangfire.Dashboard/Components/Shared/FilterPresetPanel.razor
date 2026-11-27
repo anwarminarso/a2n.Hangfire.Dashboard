@@ -111,25 +111,25 @@
 </div>
 
 @code {
-    [Parameter] public SearchRequest CurrentRequest { get; set; }
+    [Parameter] public SearchRequest? CurrentRequest { get; set; }
     [Parameter] public EventCallback<FilterPreset> OnPresetSelected { get; set; }
-    [Parameter] public string PathPrefix { get; set; }
+    [Parameter] public string? PathPrefix { get; set; }
 
     private List<FilterPreset> _presets = new();
     private bool _storageUnavailable;
-    private string _errorMessage;
+    private string? _errorMessage;
 
     // Save form state
     private bool _showSaveForm;
     private string _presetName = "";
-    private string _saveValidationError;
+    private string? _saveValidationError;
 
     // Overwrite confirmation
     private bool _showOverwriteConfirm;
 
     // Delete confirmation
     private bool _showDeleteConfirm;
-    private string _presetToDelete;
+    private string? _presetToDelete;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -291,7 +291,7 @@
 
     // --- Delete Preset ---
 
-    private void RequestDelete(string presetName)
+    private void RequestDelete(string? presetName)
     {
         _presetToDelete = presetName;
         _showDeleteConfirm = true;

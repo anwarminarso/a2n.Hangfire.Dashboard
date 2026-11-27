@@ -113,7 +113,7 @@ else
     private bool _loading = true;
 
     // Realtime analytics from the in-process feed (non-null while "Last 1h" is selected).
-    private IDisposable _analyticsSubscription;
+    private IDisposable? _analyticsSubscription;
     private long _analyticsReceivedAtTicks;
 
     // Stat card values
@@ -129,14 +129,14 @@ else
     private IReadOnlyList<JobTypeVolumeDto> _topJobTypesData = Array.Empty<JobTypeVolumeDto>();
 
     // Chart.js data objects
-    private object _throughputChartData;
-    private object _throughputChartOptions;
-    private object _failureRateChartData;
-    private object _failureRateChartOptions;
-    private object _hourlyActivityChartData;
-    private object _hourlyActivityChartOptions;
-    private object _topJobTypesChartData;
-    private object _topJobTypesChartOptions;
+    private object? _throughputChartData;
+    private object? _throughputChartOptions;
+    private object? _failureRateChartData;
+    private object? _failureRateChartOptions;
+    private object? _hourlyActivityChartData;
+    private object? _hourlyActivityChartOptions;
+    private object? _topJobTypesChartData;
+    private object? _topJobTypesChartOptions;
 
     protected override async Task OnInitializedAsync()
     {
@@ -539,7 +539,7 @@ else
         return $"{ms / 60_000:F1} min";
     }
 
-    private static string ShortenJobType(string jobType)
+    private static string ShortenJobType(string? jobType)
     {
         if (string.IsNullOrEmpty(jobType)) return "Unknown";
 

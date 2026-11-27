@@ -50,7 +50,7 @@ internal static class ParameterInputMapper
     /// </param>
     /// <returns>The <see cref="ParameterInputKind"/> to render for <paramref name="type"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="type"/> is null.</exception>
-    public static ParameterInputKind Map(Type type, int depth = 1)
+    public static ParameterInputKind Map(Type? type, int depth = 1)
     {
         ArgumentNullException.ThrowIfNull(type);
 

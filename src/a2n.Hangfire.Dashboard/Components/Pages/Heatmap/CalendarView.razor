@@ -80,7 +80,7 @@ else
     private static readonly string[] WeekdayLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
 
     private readonly string _containerId = $"hf-cal-{Guid.NewGuid():N}";
-    private object _model;
+    private object? _model;
     private bool _rendered;
     private bool _pendingRender;
 
@@ -91,7 +91,7 @@ else
     [Parameter, EditorRequired] public HeatmapMatrix Matrix { get; set; }
 
     /// <summary>The viewer time-zone id used to locate the current day/hour; empty means UTC.</summary>
-    [Parameter] public string ViewerTimeZoneId { get; set; }
+    [Parameter] public string? ViewerTimeZoneId { get; set; }
 
     /// <summary>Whether to apply logarithmic intensity scaling to the ramp.</summary>
     [Parameter] public bool LogScale { get; set; }
@@ -113,7 +113,7 @@ else
     /// color-by-failure-rate (Req 6.3) and color-by-duration (Req 6.4) modes; the matrix itself carries
     /// no per-cell failure/duration data. May be <c>null</c> or empty (cells then render empty).
     /// </summary>
-    [Parameter] public IReadOnlyList<HeatmapHistoricalCell> HistoricalCells { get; set; }
+    [Parameter] public IReadOnlyList<HeatmapHistoricalCell>? HistoricalCells { get; set; }
 
     private string CaptionText
     {

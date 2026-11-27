@@ -120,7 +120,7 @@ public readonly struct RampColor : IEquatable<RampColor>
     public bool Equals(RampColor other) => R == other.R && G == other.G && B == other.B;
 
     /// <inheritdoc />
-    public override bool Equals(object obj) => obj is RampColor other && Equals(other);
+    public override bool Equals(object? obj) => obj is RampColor other && Equals(other);
 
     /// <inheritdoc />
     public override int GetHashCode() => (R << 16) | (G << 8) | B;

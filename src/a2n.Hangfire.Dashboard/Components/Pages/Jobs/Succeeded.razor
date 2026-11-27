@@ -89,17 +89,17 @@
 @code {
     // Read-only for this page load: DashboardUIOptions.IsReadOnly, or the permissions DashboardRoutes
     // cascades (absent only when a component is rendered on its own, as in tests).
-    [CascadingParameter] private DashboardPermissions Permissions { get; set; }
+    [CascadingParameter] private DashboardPermissions? Permissions { get; set; }
     private bool IsReadOnly => DashboardPermissions.Resolve(Permissions, Options).IsReadOnly;
 
-    private JobList<SucceededJobDto> _jobs;
+    private JobList<SucceededJobDto>? _jobs;
     private long _totalCount;
     private readonly ReversibleOrder _order = new();
     private int _from = 0;
     private int _pageSize = 20;
     private HashSet<string> _selectedJobs = new();
     private bool _selectAll;
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
 
     protected override async Task OnInitializedAsync()
     {
@@ -133,7 +133,7 @@
         });
     }
 
-    private JobList<SucceededJobDto> FetchPage(long total) =>
+    private JobList<SucceededJobDto>? FetchPage(long total) =>
         _order.Fetch(Monitor.GetSucceededJobs, total, _from, _pageSize, j => j.SucceededAt);
 
     private async Task ToggleOrder()
@@ -199,7 +199,7 @@
     }
 
 
-    private static string GetPerformanceDuration(SucceededJobDto dto)
+    private static string GetPerformanceDuration(SucceededJobDto? dto)
     {
         if (dto?.StateData == null) return FormatMs(dto?.TotalDuration);
         if (dto.StateData.TryGetValue("PerformanceDuration", out var duration) &&
@@ -210,7 +210,7 @@
         return FormatMs(dto.TotalDuration);
     }
 
-    private static string GetLatency(SucceededJobDto dto)
+    private static string GetLatency(SucceededJobDto? dto)
     {
         if (dto?.StateData == null) return "—";
         if (dto.StateData.TryGetValue("Latency", out var latency) &&

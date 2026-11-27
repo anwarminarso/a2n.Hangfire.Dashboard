@@ -30,7 +30,7 @@ else
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <h4 class="font-monospace mb-1">@_semaphore.Id</h4>
+                    <h4 class="font-monospace mb-1">@_semaphore!.Id</h4>
                     <p class="text-body-secondary mb-0">
                         @(_semaphore.Description ?? "No description.")
                     </p>
@@ -131,13 +131,13 @@ else
 }
 
 @code {
-    [Parameter] public string SemaphoreId { get; set; }
+    [Parameter] public string? SemaphoreId { get; set; }
 
     private bool _loading = true;
     private bool _notFound;
-    private SemaphoreDto _semaphore;
+    private SemaphoreDto? _semaphore;
     private IReadOnlyList<ThrottleHolderDto> _holders = [];
-    private DashboardPoller _poller;
+    private DashboardPoller? _poller;
 
     private enum HolderSort { None, Job, State, Server }
 
@@ -183,7 +183,7 @@ else
         {
             _semaphore = ThrottlingReader.GetSemaphore(SemaphoreId);
             _notFound = _semaphore is null;
-            _holders = _notFound ? [] : ThrottlingReader.GetHolderDetails(_semaphore.HolderJobIds);
+            _holders = _notFound ? [] : ThrottlingReader.GetHolderDetails(_semaphore!.HolderJobIds);
         }, ct);
 
         _loading = false;
@@ -196,7 +196,7 @@ else
 
     private int GetUsagePercent()
     {
-        if (_semaphore.MaxCount <= 0) return 0;
+        if (_semaphore!.MaxCount <= 0) return 0;
         var percent = (int)Math.Round(100.0 * _holders.Count / _semaphore.MaxCount);
         return Math.Min(percent, 100);
     }
@@ -226,5 +226,5 @@ else
         };
     }
 
-    private static string ShortenId(string id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
+    private static string ShortenId(string? id) => Guid.TryParse(id, out _) ? id[..8] + "…" : $"#{id}";
 }

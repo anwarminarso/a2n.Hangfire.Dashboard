@@ -21,12 +21,12 @@ public class SearchService
 
     private readonly JobStorage _storage;
     private readonly TagsDataReader _tagsReader;
-    private readonly IStorageQueryProvider _queryProvider;
+    private readonly IStorageQueryProvider? _queryProvider;
     private readonly bool _hasDedicatedProvider;
-    private readonly ILogger<SearchService> _logger;
+    private readonly ILogger<SearchService>? _logger;
 
-    public SearchService(JobStorage storage, TagsDataReader tagsReader, IStorageQueryProvider queryProvider = null,
-        ILogger<SearchService> logger = null)
+    public SearchService(JobStorage storage, TagsDataReader tagsReader, IStorageQueryProvider? queryProvider = null,
+        ILogger<SearchService>? logger = null)
     {
         _storage = storage;
         _tagsReader = tagsReader;
@@ -78,7 +78,7 @@ public class SearchService
         try
         {
             // All searches go through unified filter
-            var pagedResult = await _queryProvider.GetJobsWithFilterAsync(criteria, page, pageSize, ct);
+            var pagedResult = await _queryProvider!.GetJobsWithFilterAsync(criteria, page, pageSize, ct);
             sw.Stop();
 
             var searchResult = ConvertPagedResult(pagedResult, DetectMatchSource(mode));

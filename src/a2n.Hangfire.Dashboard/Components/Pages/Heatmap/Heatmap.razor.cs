@@ -52,7 +52,7 @@ public partial class Heatmap
     private string _colorBy = "volume";
 
     // Loaded data + freshness (Req 24.3).
-    private HeatmapResult _result;
+    private HeatmapResult? _result;
     private bool _loading = true;
     private DateTime? _loadedAtUtc;
     private bool _historicalErrorDismissed;
@@ -63,13 +63,13 @@ public partial class Heatmap
     // Auxiliary data feeding the views (task 16.x, 18.6, 13.5, 11.6). Loaded alongside the matrix
     // (specs / demand / historical cells) or lazily per active view (concurrency / recommendations).
     private IReadOnlyList<RecurringJobSpec> _specs = Array.Empty<RecurringJobSpec>();
-    private DemandProfile _demand;
+    private DemandProfile? _demand;
     private IReadOnlyList<HeatmapHistoricalCell> _historicalCells = Array.Empty<HeatmapHistoricalCell>();
     private IReadOnlyList<Recommendation> _recommendations = Array.Empty<Recommendation>();
-    private ConcurrencyResult _concurrency;
+    private ConcurrencyResult? _concurrency;
     private int _concurrencyDay;
     private int _concDay = -1; // -1 = auto (worst day); 0..6 = a specific window day.
-    private IReadOnlyList<int> _concurrencyBaseline;
+    private IReadOnlyList<int>? _concurrencyBaseline;
 
     // Queue filter chips (mirrors the v4 mockup): the queues available (cron ∪ ad-hoc) and the
     // operator's current selection. The views, analyses, and insights are scoped to the selection.
@@ -79,33 +79,33 @@ public partial class Heatmap
     // The queues that were available on the previous reconcile, so newly-appearing queues can be
     // auto-selected (and a transient source/class change never silently hides queues).
     private HashSet<string> _previousAvailableQueues = new(StringComparer.Ordinal);
-    private HeatmapMatrix _displayMatrix;
-    private DemandProfile _displayDemand;
+    private HeatmapMatrix? _displayMatrix;
+    private DemandProfile? _displayDemand;
 
     // Collision-free queue → color map over the available queues, shared by the chips, the recurring
     // table badges, the recommendation dots, and (pushed to heatmap.js) every renderer's dots/legends.
     private IReadOnlyDictionary<string, string> _queueColorMap = new Dictionary<string, string>();
-    private string _pushedQueueColorsSig;
+    private string? _pushedQueueColorsSig;
 
     // Insight summaries shown in the top cards (mirrors the v4 mockup's insights bar).
-    private string _insightBestWindow;
-    private string _insightAdhocPeak;
-    private string _insightAdhocWhen;
-    private string _insightPeakWhen;
+    private string? _insightBestWindow;
+    private string? _insightAdhocPeak;
+    private string? _insightAdhocWhen;
+    private string? _insightPeakWhen;
     private bool _insightPeakOver;
 
     // CSV export state (task 19.4). _exporting guards re-entrancy while the file is generated and
     // handed to the browser; _exportError surfaces a non-blocking notice when the download fails.
     private bool _exporting;
-    private string _exportError;
+    private string? _exportError;
 
     // Drill-down drawer state (task 20.2). The drawer is driven entirely from here.
-    private DotNetObjectReference<Heatmap> _selfRef;
-    private DrillDownResult _drillDown;
+    private DotNetObjectReference<Heatmap>? _selfRef;
+    private DrillDownResult? _drillDown;
     private bool _drawerVisible;
     private bool _drillDownLoading;
-    private string _drawerCellLabel;
-    private string _drawerSaveError;
+    private string? _drawerCellLabel;
+    private string? _drawerSaveError;
 
     private List<TimeZoneInfo> _timeZones = new();
 
@@ -266,7 +266,7 @@ public partial class Heatmap
     /// <summary>Derives the four insight-card summaries from the loaded matrix, demand, and concurrency.</summary>
     private void ComputeInsights(ProjectionWindow window, TimeZoneInfo tz)
     {
-        var matrix = _displayMatrix ?? _result.Matrix;
+        var matrix = _displayMatrix ?? _result!.Matrix;
         var demand = _displayDemand;
 
         // Best window to schedule = lowest combined (ad-hoc + cron) load slot (Req 18.6).

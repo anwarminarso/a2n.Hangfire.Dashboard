@@ -51,7 +51,7 @@ public class QueuePauseServerFilter : IElectStateFilter
     private bool _cachedMaintenanceMode;
 
     private readonly QueueOperationsOptions _options;
-    private readonly ILogger _logger;
+    private readonly ILogger? _logger;
 
     /// <summary>Constructs the filter with the given options.</summary>
     /// <param name="options">
@@ -60,7 +60,7 @@ public class QueuePauseServerFilter : IElectStateFilter
     /// filter unless the same instance is shared.
     /// </param>
     /// <param name="logger">Optional logger.</param>
-    public QueuePauseServerFilter(QueueOperationsOptions options = null, ILogger logger = null)
+    public QueuePauseServerFilter(QueueOperationsOptions? options = null, ILogger? logger = null)
     {
         _options = options ?? new QueueOperationsOptions();
         _logger = logger;

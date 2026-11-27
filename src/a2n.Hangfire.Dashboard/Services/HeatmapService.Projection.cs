@@ -10,7 +10,7 @@ public partial class HeatmapService
     /// filter when enabled. The returned fires retain their absolute UTC instants; callers convert to
     /// viewer-local time via <see cref="LocalDayFires"/> / <see cref="AllLocalFires"/> as needed.
     /// </summary>
-    private async Task<ProjectionContext> ProjectAsync(HeatmapQuery query, IReadOnlyList<string> queues, CancellationToken ct)
+    private async Task<ProjectionContext> ProjectAsync(HeatmapQuery query, IReadOnlyList<string>? queues, CancellationToken ct)
     {
         var viewerTz = HeatmapTime.ResolveTimeZone(query.ViewerTimeZoneId);
         var window = HeatmapTime.BuildWindow(query.WindowKind, DateTimeOffset.UtcNow, viewerTz);

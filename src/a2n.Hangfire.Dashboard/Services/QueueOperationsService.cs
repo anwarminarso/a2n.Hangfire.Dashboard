@@ -29,15 +29,15 @@ public class QueueOperationsService
     private readonly JobStorage _storage;
     private readonly DashboardUIOptions _options;
     private readonly AuditLogService _audit;
-    private readonly AuditActorAccessor _actor;
-    private readonly ILogger<QueueOperationsService> _logger;
+    private readonly AuditActorAccessor? _actor;
+    private readonly ILogger<QueueOperationsService>? _logger;
 
     public QueueOperationsService(
         JobStorage storage,
         DashboardUIOptions options,
         AuditLogService audit,
-        AuditActorAccessor actor = null,
-        ILogger<QueueOperationsService> logger = null)
+        AuditActorAccessor? actor = null,
+        ILogger<QueueOperationsService>? logger = null)
     {
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -51,7 +51,7 @@ public class QueueOperationsService
     /// factory. Null when the service is constructed directly, in which case only
     /// <see cref="DashboardUIOptions.IsReadOnly"/> applies.
     /// </summary>
-    internal DashboardPermissionsState Permissions { get; init; }
+    internal DashboardPermissionsState? Permissions { get; init; }
 
     /// <summary>Returns the current pause / maintenance state.</summary>
     public QueueOperationsState GetState()
@@ -93,7 +93,7 @@ public class QueueOperationsService
     }
 
     /// <summary>Pauses a specific queue. Idempotent — safe to call multiple times.</summary>
-    public void PauseQueue(string queueName, string reason = null)
+    public void PauseQueue(string queueName, string? reason = null)
     {
         if (string.IsNullOrWhiteSpace(queueName)) throw new ArgumentNullException(nameof(queueName));
         EnsureEnabled();
@@ -109,7 +109,7 @@ public class QueueOperationsService
     }
 
     /// <summary>Resumes a previously paused queue. Idempotent.</summary>
-    public void ResumeQueue(string queueName, string reason = null)
+    public void ResumeQueue(string queueName, string? reason = null)
     {
         if (string.IsNullOrWhiteSpace(queueName)) throw new ArgumentNullException(nameof(queueName));
         EnsureEnabled();
@@ -136,7 +136,7 @@ public class QueueOperationsService
     }
 
     /// <summary>Enables maintenance mode (pauses all queues globally). Idempotent.</summary>
-    public void EnableMaintenanceMode(string reason = null)
+    public void EnableMaintenanceMode(string? reason = null)
     {
         EnsureEnabled();
 
@@ -159,7 +159,7 @@ public class QueueOperationsService
     }
 
     /// <summary>Disables maintenance mode (does NOT clear individual queue pauses).</summary>
-    public void DisableMaintenanceMode(string reason = null)
+    public void DisableMaintenanceMode(string? reason = null)
     {
         EnsureEnabled();
 

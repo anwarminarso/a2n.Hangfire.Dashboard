@@ -40,14 +40,14 @@ namespace a2n.Hangfire.Dashboard.Storage;
 /// </remarks>
 public class FailureFingerprintFilter : IApplyStateFilter
 {
-    private readonly ILogger _logger;
+    private readonly ILogger? _logger;
 
     /// <summary>Constructs the filter.</summary>
     /// <param name="logger">
     /// Optional logger. When null, errors are logged through Hangfire's own log provider, which the
     /// host's Hangfire configuration (e.g. <c>AddHangfire</c>) connects to its logging.
     /// </param>
-    public FailureFingerprintFilter(ILogger logger = null)
+    public FailureFingerprintFilter(ILogger? logger = null)
     {
         _logger = logger;
     }
@@ -63,7 +63,7 @@ public class FailureFingerprintFilter : IApplyStateFilter
                 return;
 
             var jobId = context.BackgroundJob.Id;
-            var fingerprint = FailureFingerprint.Compute(context.NewState.SerializeData(), GetJobTypeName(context)).Fingerprint;
+            var fingerprint = FailureFingerprint.Compute(context.NewState!.SerializeData(), GetJobTypeName(context)).Fingerprint;
 
             // In the transaction the parameter commits together with the Failed state. Storages that
             // can't do that get it straight away, which only leaves it behind if the transition is
@@ -115,10 +115,10 @@ public class FailureFingerprintFilter : IApplyStateFilter
     /// is already failing.
     /// </para>
     /// </remarks>
-    private static string GetJobTypeName(ApplyStateContext context)
+    private static string? GetJobTypeName(ApplyStateContext context)
         => context.BackgroundJob.Job?.Type?.FullName;
 
-    private void LogFailure(Exception ex, string jobId)
+    private void LogFailure(Exception ex, string? jobId)
     {
         try
         {
