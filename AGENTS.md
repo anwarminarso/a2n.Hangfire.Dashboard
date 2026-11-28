@@ -3,6 +3,21 @@
 Guidance for AI coding agents (Claude Code, Codex, Cursor, Kiro, Copilot, …) working in this repository.
 Human contributors: see `CONTRIBUTING.md`. Release history: `CHANGELOG.md`. Roadmap: `docs/ROADMAP.md`.
 
+## Working with the maintainer
+
+These apply to every agent (Claude Code, Codex, Cursor, Kiro, Copilot, …):
+
+- The maintainer communicates in **Indonesian**; reply in Indonesian. Code, comments, commit messages, docs and
+  CHANGELOG stay in English.
+- Confirm before every `git commit` / `git push` (show the conventional-commit title + body first), and sign
+  commits with `--gpg-sign`. See "Git workflow" below.
+- Before a task that touches the original dashboard parity, Console/Tags/RecurringJobAdmin compatibility, the
+  heatmap, or release/stress testing, read the matching `.kiro/steering/*.md` file (see "Further reference").
+- For UI changes, verify in a running sample app (SampleApp with `--StorageProvider=InMemory` if no DB is up) and
+  check both light and dark theme.
+- On Windows, a tool's console output can lag or be cut off for long commands; write the output to a file and
+  read that instead.
+
 ## What this project is
 
 A modern, open-source alternative to the built-in Hangfire dashboard that also replaces the popular
@@ -160,29 +175,6 @@ Config: copy `config.example.toml` → `config.toml` (git-ignored, may hold secr
   feature branch (e.g. `feature/…`, `fix/…`, `docs/…`).
 - Work on the current branch. If the current branch is `main`, ask the user before creating a new branch.
 - Keep PRs focused (one feature/fix), reference issues (`Closes #42`).
-
-## Agent skills (Superpowers)
-
-The repository enables the [Superpowers](https://github.com/obra/superpowers) skills plugin for Claude Code
-through `.claude/settings.json`. It is pinned to the **v7.0.2** commit
-(`22f0b463e7a5e579904dd6211a520321035526f7`) on purpose: this library ships on NuGet, so plugin updates are a
-supply-chain change. To upgrade, review the upstream diff and release notes, then bump the commit id in a
-dedicated PR. Other agents may use the same skills, but the rules below apply to every agent.
-
-**This repository's rules override any skill workflow.** In particular:
-
-- **Commits and pushes:** skills such as `executing-plans`, `subagent-driven-development` and
-  `finishing-a-development-branch` commit after each task and offer to merge or push. Here, every commit and
-  push still needs the user's confirmation first (show the conventional-commit title + body), and commits
-  are GPG-signed. Batch plan steps into reviewable commits instead of committing silently.
-- **Merging:** never merge locally into `main` and never push to `main`. The only way to land work is a
-  pull request from a feature branch — pick the "push and create a PR" path, never "merge locally".
-- **Worktrees:** create a git worktree only when the user agrees. Worktrees go in `.worktrees/`
-  (git-ignored).
-- **Specs and plans:** `brainstorming` / `writing-plans` write to `docs/superpowers/` (git-ignored). Treat
-  them as working notes. If a design is worth keeping, move it to `docs/proposals/` in English when asked.
-- **Tests:** TDD is welcome, but the build must stay at 0 warnings / 0 errors on `net8.0;net9.0;net10.0`,
-  and stress/release checks stay manual (see "Python tooling").
 
 ## Workspace scope (multi-root)
 

@@ -1,18 +1,6 @@
 # CLAUDE.md
 
+All guidance for AI coding agents, Claude Code included, lives in [`AGENTS.md`](AGENTS.md): what the project is,
+how to build and test it, the conventions, the Git workflow and how to work with the maintainer.
+
 @AGENTS.md
-
-## Claude Code notes
-
-- The user communicates in **Indonesian**; reply in Indonesian. Code, comments, commit messages, docs and
-  CHANGELOG stay in English.
-- Confirm before `git commit` / `git push` (show the conventional-commit title + body first), and sign commits
-  with `--gpg-sign`.
-- Before a task that touches the original dashboard parity, Console/Tags/RecurringJobAdmin compatibility, the
-  heatmap, or release/stress testing, read the matching `.kiro/steering/*.md` file listed above.
-- For UI changes, verify in a running sample app (SampleApp with `--StorageProvider=InMemory` if no DB is up) and
-  check both light and dark theme.
-- The Superpowers plugin is enabled from `.claude/settings.json` (pinned commit). Its skills never override
-  the Git rules in `AGENTS.md`: confirm before every commit/push, GPG-sign, never merge locally or push to
-  `main`, and finish work through a PR. See "Agent skills (Superpowers)" in `AGENTS.md`.
-- On Windows the PowerShell tool can lag or queue output; for long commands, write output to a file and read it.
